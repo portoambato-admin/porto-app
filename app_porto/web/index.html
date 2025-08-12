@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base href="/" />
+    <meta charset="UTF-8" />
+    <meta name="description" content="Academia Oficial de Fútbol Porto Ambato. Entrenamientos por categorías, evaluaciones de rendimiento y gestión de pagos." />
+    <meta name="keywords" content="PortoAmbato, academia de fútbol, Ambato, entrenamientos, categorías, niños, jóvenes" />
+    <meta name="author" content="PortoAmbato" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta property="og:title" content="PortoAmbato - Academia Oficial de Fútbol" />
+    <meta property="og:description" content="Formamos talento. Inspiramos disciplina." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="favicon.png" />
+    <meta name="theme-color" content="#0D47A1"/>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <title>PortoAmbato | Academia Oficial de Fútbol</title>
+    <style>
+      /* Loader mínimo mientras carga Flutter */
+      .center {position:fixed;inset:0;display:grid;place-items:center;font-family:sans-serif;color:#0D47A1}
+    </style>
+    <script defer src="flutter.js"></script>
+  </head>
+  <body>
+    <div id="loader" class="center">Cargando PortoAmbato…</div>
+    <script>
+      window.addEventListener('load', function() {
+        _flutter.loader.loadEntrypoint({}).then(function(engineInitializer) {
+          return engineInitializer.initializeEngine();
+        }).then(function(appRunner) {
+          document.getElementById('loader')?.remove();
+          return appRunner.runApp();
+        });
+      });
+    </script>
+  </body>
+</html>
