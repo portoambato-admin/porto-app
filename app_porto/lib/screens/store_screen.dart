@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/top_navbar.dart';
-import '../utils/contact.dart'; // <- importante para WhatsApp
+import '../utils/contact.dart'; // showPurchaseDialog
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -12,6 +12,7 @@ class StoreScreen extends StatefulWidget {
 class _StoreScreenState extends State<StoreScreen> {
   static const double maxContentWidth = 1200;
 
+  // --- Estado de búsqueda y filtros ---
   final TextEditingController _searchCtrl = TextEditingController();
   String _category = 'Todos';
   String _sort = 'Relevancia';
@@ -41,6 +42,7 @@ class _StoreScreenState extends State<StoreScreen> {
     },
   ];
 
+  // Filtro aplicado sobre la lista
   List<Map<String, dynamic>> get _filtered {
     final q = _searchCtrl.text.trim().toLowerCase();
     List<Map<String, dynamic>> data = _products.where((p) {
@@ -58,18 +60,27 @@ class _StoreScreenState extends State<StoreScreen> {
         data.sort((a, b) => (b['price'] as num).compareTo(a['price'] as num));
         break;
       default:
-        // Relevancia (por ahora sin cambios)
+        // Relevancia (sin cambios por ahora)
         break;
     }
     return data;
   }
 
+  // Cantidad de filtros activos distintos a los valores por defecto
+  int get _activeFilterCount {
+    int c = 0;
+    if (_category != 'Todos') c++;
+    if (_sort != 'Relevancia') c++;
+    return c;
+  }
+
+  // Diálogo para agregar producto (igual que antes)
   Future<void> _openAddDialog() async {
     final formKey = GlobalKey<FormState>();
     final titleCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     String category = 'Indumentaria';
-    final imageCtrl = TextEditingController(text: 'assets/img/'); // ruta estática
+    final imageCtrl = TextEditingController(text: 'assets/img/');
 
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -106,8 +117,10 @@ class _StoreScreenState extends State<StoreScreen> {
                 DropdownButtonFormField<String>(
                   value: category,
                   items: const [
-                    DropdownMenuItem(value: 'Indumentaria', child: Text('Indumentaria')),
-                    DropdownMenuItem(value: 'Accesorios', child: Text('Accesorios')),
+                    DropdownMenuItem(
+                        value: 'Indumentaria', child: Text('Indumentaria')),
+                    DropdownMenuItem(
+                        value: 'Accesorios', child: Text('Accesorios')),
                   ],
                   onChanged: (v) => category = v ?? 'Indumentaria',
                   decoration: const InputDecoration(labelText: 'Categoría'),
@@ -128,7 +141,9 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
           FilledButton(
             onPressed: () {
               if (formKey.currentState!.validate()) {
@@ -155,11 +170,122 @@ class _StoreScreenState extends State<StoreScreen> {
     }
   }
 
+  // --- Bottom sheet de filtros ---
+  Future<void> _openFiltersSheet() async {
+    String tmpCategory = _category;
+    String tmpSort = _sort;
+
+    await showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Título
+                Row(
+                  children: [
+                    const Icon(Icons.filter_alt),
+                    const SizedBox(width: 8),
+                    Text('Filtros',
+                        style: Theme.of(ctx).textTheme.titleLarge),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _category = 'Todos';
+                          _sort = 'Relevancia';
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Restablecer'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Contenido
+                DropdownButtonFormField<String>(
+                  value: tmpCategory,
+                  items: const [
+                    DropdownMenuItem(value: 'Todos', child: Text('Todos')),
+                    DropdownMenuItem(
+                        value: 'Indumentaria', child: Text('Indumentaria')),
+                    DropdownMenuItem(
+                        value: 'Accesorios', child: Text('Accesorios')),
+                  ],
+                  onChanged: (v) => tmpCategory = v ?? 'Todos',
+                  decoration: const InputDecoration(
+                    labelText: 'Categoría',
+                    prefixIcon: Icon(Icons.category),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: tmpSort,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'Relevancia', child: Text('Relevancia')),
+                    DropdownMenuItem(
+                        value: 'Precio: menor a mayor',
+                        child: Text('Precio: menor a mayor')),
+                    DropdownMenuItem(
+                        value: 'Precio: mayor a menor',
+                        child: Text('Precio: mayor a menor')),
+                  ],
+                  onChanged: (v) => tmpSort = v ?? 'Relevancia',
+                  decoration: const InputDecoration(
+                    labelText: 'Ordenar por',
+                    prefixIcon: Icon(Icons.sort),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _category = tmpCategory;
+                            _sort = tmpSort;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const Text('Aplicar'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- UI ---
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-    final cross = w >= 1100 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
-
     return Scaffold(
       appBar: const TopNavBar(),
       floatingActionButton: FloatingActionButton.extended(
@@ -172,56 +298,82 @@ class _StoreScreenState extends State<StoreScreen> {
           constraints: const BoxConstraints(maxWidth: maxContentWidth),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Tienda', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
-                // Banner informativo
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(top: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Estamos trabajando para habilitar compras online. Por ahora, realiza tu pedido por WhatsApp.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _Toolbar(
-                  searchCtrl: _searchCtrl,
-                  category: _category,
-                  sort: _sort,
-                  onCategoryChanged: (v) => setState(() => _category = v),
-                  onSortChanged: (v) => setState(() => _sort = v),
-                  onSearchChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: GridView.builder(
-                    itemCount: _filtered.length,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cross,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      mainAxisExtent: 340,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final cross = w >= 1100
+                    ? 4
+                    : w >= 900
+                        ? 3
+                        : w >= 600
+                            ? 2
+                            : 1;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Tienda',
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w800),
                     ),
-                    itemBuilder: (_, i) {
-                      final p = _filtered[i];
-                      return _ProductCard(
-                        title: p['title'],
-                        price: p['price'],
-                        image: p['image'],
-                        onView: () => _openDetail(p),
-                        onBuy: () => showPurchaseDialog(context, p['title']), // <- Comprar por WhatsApp
-                      );
-                    },
-                  ),
-                ),
-              ],
+
+                    // Banner informativo
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Estamos trabajando para habilitar compras online. Por ahora, realiza tu pedido por WhatsApp.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // --- Toolbar minimal: Buscar + botón Filtros ---
+                    _SearchAndFilterBar(
+                      controller: _searchCtrl,
+                      onChanged: (_) => setState(() {}),
+                      onOpenFilters: _openFiltersSheet,
+                      activeFilters: _activeFilterCount,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // --- Grid de productos (responsivo) ---
+                    Expanded(
+                      child: GridView.builder(
+                        itemCount: _filtered.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: cross,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                          mainAxisExtent: 340,
+                        ),
+                        itemBuilder: (_, i) {
+                          final p = _filtered[i];
+                          return _ProductCard(
+                            title: p['title'],
+                            price: p['price'],
+                            image: p['image'],
+                            onView: () => _openDetail(p),
+                            onBuy: () =>
+                                showPurchaseDialog(context, p['title']),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -240,7 +392,7 @@ class _StoreScreenState extends State<StoreScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               AspectRatio(
-                aspectRatio: 16/9,
+                aspectRatio: 16 / 9,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.asset(
@@ -249,7 +401,8 @@ class _StoreScreenState extends State<StoreScreen> {
                     errorBuilder: (_, __, ___) => Container(
                       color: Colors.black12,
                       alignment: Alignment.center,
-                      child: const Icon(Icons.image, size: 40, color: Colors.black45),
+                      child: const Icon(Icons.image,
+                          size: 40, color: Colors.black45),
                     ),
                   ),
                 ),
@@ -257,18 +410,22 @@ class _StoreScreenState extends State<StoreScreen> {
               const SizedBox(height: 12),
               Text('Categoría: ${p['category']}'),
               const SizedBox(height: 4),
-              Text('Precio: \$${(p['price'] as num).toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  )),
+              Text(
+                'Precio: \$${(p['price'] as num).toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cerrar')),
           FilledButton(
-            onPressed: () => showPurchaseDialog(context, p['title']), // <- Comprar por WhatsApp
+            onPressed: () => showPurchaseDialog(context, p['title']),
             child: const Text('Comprar por WhatsApp'),
           ),
         ],
@@ -277,82 +434,98 @@ class _StoreScreenState extends State<StoreScreen> {
   }
 }
 
-class _Toolbar extends StatelessWidget {
-  final TextEditingController searchCtrl;
-  final String category;
-  final String sort;
-  final ValueChanged<String> onCategoryChanged;
-  final ValueChanged<String> onSortChanged;
-  final ValueChanged<String> onSearchChanged;
+// ===== Widgets auxiliares =====
 
-  const _Toolbar({
-    required this.searchCtrl,
-    required this.category,
-    required this.sort,
-    required this.onCategoryChanged,
-    required this.onSortChanged,
-    required this.onSearchChanged,
+class _SearchAndFilterBar extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onOpenFilters;
+  final int activeFilters;
+
+  const _SearchAndFilterBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onOpenFilters,
+    required this.activeFilters,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isSmall = MediaQuery.of(context).size.width < 700;
-    final row = [
-      // Buscar
-      Expanded(
-        flex: 3,
-        child: TextField(
-          controller: searchCtrl,
-          onChanged: onSearchChanged,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Buscar producto...',
-          ),
+    final isSmall = MediaQuery.of(context).size.width < 600;
+
+    final searchField = Expanded(
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.search),
+          hintText: 'Buscar producto…',
         ),
       ),
-      const SizedBox(width: 12),
-      // Categoría
-      Expanded(
-        flex: 2,
-        child: DropdownButtonFormField<String>(
-          value: category,
-          items: const [
-            DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-            DropdownMenuItem(value: 'Indumentaria', child: Text('Indumentaria')),
-            DropdownMenuItem(value: 'Accesorios', child: Text('Accesorios')),
-          ],
-          onChanged: (v) => onCategoryChanged(v ?? 'Todos'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_list), labelText: 'Categoría'),
-        ),
-      ),
-      const SizedBox(width: 12),
-      // Orden
-      Expanded(
-        flex: 2,
-        child: DropdownButtonFormField<String>(
-          value: sort,
-          items: const [
-            DropdownMenuItem(value: 'Relevancia', child: Text('Relevancia')),
-            DropdownMenuItem(value: 'Precio: menor a mayor', child: Text('Precio: menor a mayor')),
-            DropdownMenuItem(value: 'Precio: mayor a menor', child: Text('Precio: mayor a menor')),
-          ],
-          onChanged: (v) => onSortChanged(v ?? 'Relevancia'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.sort), labelText: 'Ordenar por'),
-        ),
-      ),
-    ];
+    );
+
+    final filterButton = _FilterButton(
+      onPressed: onOpenFilters,
+      activeCount: activeFilters,
+    );
 
     return isSmall
         ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              row[0],
-              const SizedBox(height: 12),
-              row[2],
-              const SizedBox(height: 12),
-              row[4],
+              searchField,
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: filterButton,
+              ),
             ],
           )
-        : Row(children: row);
+        : Row(
+            children: [
+              searchField,
+              const SizedBox(width: 12),
+              filterButton,
+            ],
+          );
+  }
+}
+
+class _FilterButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final int activeCount;
+  const _FilterButton({
+    required this.onPressed,
+    required this.activeCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.filter_alt),
+        const SizedBox(width: 6),
+        const Text('Filtros'),
+        if (activeCount > 0) ...[
+          const SizedBox(width: 8),
+          CircleAvatar(
+            radius: 10,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              '$activeCount',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+
+    return OutlinedButton(onPressed: onPressed, child: child);
   }
 }
 
@@ -361,7 +534,7 @@ class _ProductCard extends StatelessWidget {
   final num price;
   final String image;
   final VoidCallback onView;
-  final VoidCallback onBuy; // <- nuevo
+  final VoidCallback onBuy;
 
   const _ProductCard({
     required this.title,
@@ -381,14 +554,16 @@ class _ProductCard extends StatelessWidget {
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
               child: Image.asset(
                 image,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
                   color: Colors.black12,
                   alignment: Alignment.center,
-                  child: const Icon(Icons.image, size: 40, color: Colors.black45),
+                  child: const Icon(Icons.image,
+                      size: 40, color: Colors.black45),
                 ),
               ),
             ),
@@ -401,7 +576,8 @@ class _ProductCard extends StatelessWidget {
                 Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text('\$${price.toStringAsFixed(2)}',
-                    style: TextStyle(color: Theme.of(context).colorScheme.primary)),
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -414,10 +590,9 @@ class _ProductCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: FilledButton.icon(
-                        onPressed: onBuy, // <- Comprar por WhatsApp
-                        //icon: const Icon(Icons.shop_two),
-                        label: const Text('Comprar'),
+                      child: FilledButton(
+                        onPressed: onBuy,
+                        child: const Text('Comprar'),
                       ),
                     ),
                   ],

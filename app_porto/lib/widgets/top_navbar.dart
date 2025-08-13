@@ -6,11 +6,19 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => const Size.fromHeight(72);
 
+  void _navAndClose(BuildContext ctx, String route, {bool useRoot = true}) {
+    // Cerrar el bottom sheet si está abierto, luego navegar
+    Navigator.of(ctx).pop();
+    if (useRoot) {
+      Navigator.of(ctx, rootNavigator: true).pushNamed(route);
+    } else {
+      Navigator.of(ctx).pushNamed(route);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSmall = MediaQuery.of(context).size.width < 900;
-
-    // Ruta actual
     final currentRoute = ModalRoute.of(context)?.settings.name ?? '/';
 
     return AppBar(
@@ -27,17 +35,9 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               Image.asset(
                 'assets/img/banner.jpg',
                 height: 42,
-                errorBuilder: (_, __, ___) {
-                  return const Icon(Icons.sports_soccer, size: 32);
-                },
+                errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer, size: 32),
               ),
               const SizedBox(width: 12),
-              Text(
-                '', //aqui va algo de texto
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
               const Spacer(),
               if (!isSmall) ...[
                 _NavButton(
@@ -68,7 +68,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                   text: 'Profesores',
                   route: '/profesores',
                   currentRoute: currentRoute,
-                  onPressed: () {},
+                  onPressed: () => Navigator.pushNamed(context, '/profesores'), // <-- antes estaba vacío
                 ),
                 _NavButton(
                   text: 'Sponsors',
@@ -90,27 +90,42 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                     showModalBottomSheet(
                       context: context,
                       showDragHandle: true,
-                      builder: (_) => SafeArea(
+                      builder: (sheetCtx) => SafeArea(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             ListTile(
                               title: const Text('Inicio'),
-                              onTap: () => Navigator.pushNamed(context, '/'),
+                              onTap: () => _navAndClose(sheetCtx, '/'),
                             ),
                             ListTile(
                               title: const Text('Tienda'),
-                              onTap: () =>
-                                  Navigator.pushNamed(context, '/tienda'),
+                              onTap: () => _navAndClose(sheetCtx, '/tienda'),
                             ),
-                            const ListTile(title: Text('Categorías')),
-                            const ListTile(title: Text('Profesores')),
-                            const ListTile(title: Text('Contacto')),
+                            ListTile(
+                              title: const Text('Eventos'),
+                              onTap: () => _navAndClose(sheetCtx, '/eventos'),
+                            ),
+                            ListTile(
+                              title: const Text('Categorías'),
+                              onTap: () => _navAndClose(sheetCtx, '/categorias'),
+                            ),
+                            ListTile(
+                              title: const Text('Sponsors'),
+                              onTap: () => _navAndClose(sheetCtx, '/beneficios'),
+                            ),
+                            ListTile(
+                              title: const Text('Conócenos'),
+                              onTap: () => _navAndClose(sheetCtx, '/conocenos'),
+                            ),
                             const Divider(height: 0),
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: FilledButton(
-                                onPressed: () {},
+                                onPressed: () {
+                                  Navigator.of(sheetCtx).pop();
+                                  Navigator.of(context, rootNavigator: true).pushNamed('/login');
+                                },
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size.fromHeight(48),
                                 ),
@@ -154,9 +169,7 @@ class _NavButton extends StatelessWidget {
         text,
         style: TextStyle(
           fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          color: isActive
-              ? Theme.of(context).colorScheme.primary
-              : Colors.black87,
+          color: isActive ? Theme.of(context).colorScheme.primary : Colors.black87,
         ),
       ),
     );
