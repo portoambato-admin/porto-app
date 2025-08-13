@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../screens/home_screen.dart';
 
 class Footer extends StatelessWidget {
@@ -28,38 +29,52 @@ class Footer extends StatelessWidget {
                 spacing: 16,
                 alignment: WrapAlignment.center,
                 children: [
+                  // Facebook (sin cambios)
                   _SocialIcon(
-                    icon: Icons.facebook,
+                    icon: const Icon(Icons.facebook, color: Colors.white, size: 28),
                     label: 'Facebook',
                     onTap: () => _launchUrl('https://facebook.com/portoambato'),
                   ),
+
+                  // Instagram (SVG)
                   _SocialIcon(
-                    icon: Icons.camera_front_rounded,
+                    icon: SvgPicture.asset(
+                      'assets/icons/instagram.svg',
+                      width: 26,
+                      height: 26,
+                      colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                    ),
                     label: 'Instagram',
                     onTap: () => _launchUrl('https://instagram.com/portoambato'),
                   ),
+
+                  // YouTube (SVG)
                   _SocialIcon(
-                    icon: Icons.one_x_mobiledata,
-                    label: 'Twitter/X',
-                    onTap: () => _launchUrl('https://twitter.com/portoambato'),
-                  ),
-                  _SocialIcon(
-                    icon: Icons.youtube_searched_for,
+                    icon: SvgPicture.asset(
+                      'assets/icons/youtube.svg',
+                      width: 32,
+                      height: 32,
+                      colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                    ),
                     label: 'YouTube',
                     onTap: () => _launchUrl('https://youtube.com/portoambato'),
                   ),
+
+                  // WhatsApp (SVG)
                   _SocialIcon(
-                    icon: Icons.phonelink_setup,
+                    icon: SvgPicture.asset(
+                      'assets/icons/whatsapp.svg',
+                      width: 26,
+                      height: 26,
+                      colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                    ),
                     label: 'WhatsApp',
-                    onTap: () => _launchUrl('https://wa.me/593999999999'),
+                    onTap: () => _launchUrl('https://wa.me/593995650089'),
                   ),
+
+                  // TikTok (sin cambios)
                   _SocialIcon(
-                    icon: Icons.work_outline,
-                    label: 'LinkedIn',
-                    onTap: () => _launchUrl('https://linkedin.com/company/portoambato'),
-                  ),
-                  _SocialIcon(
-                    icon: Icons.tiktok,
+                    icon: const Icon(Icons.tiktok, color: Colors.white, size: 28),
                     label: 'TikTok',
                     onTap: () => _launchUrl('https://tiktok.com/@portoambato'),
                   ),
@@ -109,7 +124,7 @@ class _FooterLink extends StatelessWidget {
 }
 
 class _SocialIcon extends StatelessWidget {
-  final IconData icon;
+  final Widget icon;       // Acepta Icon o cualquier Widget (SVG, imagen, etc.)
   final String label;
   final VoidCallback onTap;
 
@@ -124,7 +139,7 @@ class _SocialIcon extends StatelessWidget {
     return IconButton(
       onPressed: onTap,
       tooltip: label,
-      icon: Icon(icon, color: Colors.white, size: 28),
+      icon: icon,
     );
   }
 }

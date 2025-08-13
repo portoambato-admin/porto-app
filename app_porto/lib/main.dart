@@ -9,6 +9,7 @@ import 'screens/store_screen.dart';
 import 'screens/events_screen.dart';
 import 'screens/categories_screen.dart';
 import 'screens/benefits_screen.dart';
+import 'screens/about_screen.dart';
 
 Future<void> main() async {                // <- Asegúrate que exista esta función
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,7 +50,8 @@ class PortoAmbatoApp extends StatelessWidget {
         '/tienda': (_) => const StoreScreen(),
         '/eventos': (_) => const EventsScreen(),
         '/categorias': (_) => const CategoriesScreen(),
-        '/beneficios':(_) => const BenefitsScreen() 
+        '/beneficios':(_) => const BenefitsScreen(),
+        '/conocenos': (_) => const AboutScreen(), // NUEVA
 
       },
     );

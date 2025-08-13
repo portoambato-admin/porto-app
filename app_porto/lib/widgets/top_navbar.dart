@@ -33,7 +33,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                '',//aqui va algo de texto
+                '', //aqui va algo de texto
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -71,16 +71,16 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                   onPressed: () {},
                 ),
                 _NavButton(
-                  text: 'Beneficios',
+                  text: 'Sponsors',
                   route: '/beneficios',
                   currentRoute: currentRoute,
                   onPressed: () => Navigator.pushNamed(context, '/beneficios'),
                 ),
                 _NavButton(
-                  text: 'Contacto',
-                  route: '/contacto',
+                  text: 'Conócenos',
+                  route: '/conocenos',
                   currentRoute: currentRoute,
-                  onPressed: () {},
+                  onPressed: () => Navigator.pushNamed(context, '/conocenos'),
                 ),
                 const SizedBox(width: 12),
                 FilledButton(onPressed: () {}, child: const Text('Ingresar')),

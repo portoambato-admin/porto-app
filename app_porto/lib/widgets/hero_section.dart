@@ -1,6 +1,7 @@
 // lib/widgets/hero_section.dart
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HeroSection extends StatelessWidget {
   const HeroSection({super.key});
@@ -11,22 +12,26 @@ class HeroSection extends StatelessWidget {
     final isSmall = w < 900;
 
     final textBlock = Column(
-      crossAxisAlignment: isSmall ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: isSmall
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Text(
           'Formamos talento. Inspiramos disciplina.',
           textAlign: isSmall ? TextAlign.center : TextAlign.start,
           style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                height: 1.1,
-              ),
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+          ),
         ),
         const SizedBox(height: 16),
         Text(
           'Academia Oficial de Fútbol Porto Ambato. Entrenamientos por categorías, '
           'evaluaciones de rendimiento y gestión integral para familias y estudiantes.',
           textAlign: isSmall ? TextAlign.center : TextAlign.start,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.black87),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(color: Colors.black87),
         ),
         const SizedBox(height: 24),
         Wrap(
@@ -35,12 +40,27 @@ class HeroSection extends StatelessWidget {
           alignment: isSmall ? WrapAlignment.center : WrapAlignment.start,
           children: [
             FilledButton.icon(
-              onPressed: () {},
+              onPressed: () async {
+                const phone = '+593995650089'; // Cambia por el número real
+                const message =
+                    'Hola, quiero más información sobre la preinscripción';
+                final url = Uri.parse(
+                  'https://wa.me/${phone.replaceAll('+', '')}?text=${Uri.encodeComponent(message)}',
+                );
+
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                } else {
+                  throw 'No se pudo abrir WhatsApp';
+                }
+              },
               icon: const Icon(Icons.how_to_reg),
               label: const Text('Preinscribirme'),
             ),
             OutlinedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.pushNamed(context, '/categorias');
+              },
               icon: const Icon(Icons.visibility),
               label: const Text('Ver categorías'),
             ),
@@ -83,9 +103,14 @@ class HeroSection extends StatelessWidget {
       color: const Color(0xFFF7F9FC),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: HomeScreen.maxContentWidth),
+          constraints: const BoxConstraints(
+            maxWidth: HomeScreen.maxContentWidth,
+          ),
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: isSmall ? 16 : 24, vertical: isSmall ? 32 : 64),
+            padding: EdgeInsets.symmetric(
+              horizontal: isSmall ? 16 : 24,
+              vertical: isSmall ? 32 : 64,
+            ),
             child: isSmall
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
