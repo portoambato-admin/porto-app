@@ -20,7 +20,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '11:00–12:00',
       'coach': 'Michelle Cherez, Victor Flores, Klever de la Cruz, Alvaro Ortiz',
       'level': 'Estimulación Temprana',
-      'image': 'assets/img/categorias/sub4.jpg',
+      'image': 'img/categorias/sub4.jpg',
       'desc':
           'Iniciación lúdica al fútbol: coordinación, psicomotricidad y trabajo en equipo con enfoque recreativo.',
     },
@@ -29,9 +29,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'age': '5–6 años',
       'days': 'Mar · Jue · Vir',
       'time': '16:00–18:00',
-      'coach': 'Victor Flores, Klever de la Cruz',       
+      'coach': 'Victor Flores, Klever de la Cruz',
       'level': 'Intermedia',
-      'image': 'assets/img/categorias/sub6.jpg',
+      'image': 'img/categorias/sub6.jpg',
       'desc':
           'Fundamentos técnicos básicos: pase, recepción y conducción, dinámicas divertidas con progresión.',
     },
@@ -42,7 +42,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '16:00–18:00',
       'coach': 'Victor Flores, Christian Llerena',
       'level': 'Intermedia',
-      'image': 'assets/img/categorias/sub8.jpg',
+      'image': 'img/categorias/sub8.jpg',
       'desc':
           'Perfeccionamiento técnico, nociones tácticas y disciplina competitiva acorde a la edad.',
     },
@@ -53,7 +53,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '16:00–18:00',
       'coach': 'Klever de la Cruz, Christian Llerena',
       'level': 'Intermedia',
-      'image': 'assets/img/categorias/sub10.jpg',
+      'image': 'img/categorias/sub10.jpg',
       'desc':
           'Trabajo táctico grupal, preparación física específica y evaluación de rendimiento.',
     },
@@ -63,8 +63,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'days': 'Lun · Mié · Vie',
       'time': '18:30–20:00',
       'coach': 'Christian Llerena, Victor Flores ',
-      'level': 'Formatica',
-      'image': 'assets/img/categorias/sub12.jpg',
+      'level': 'Formativa',
+      'image': 'img/categorias/sub12.jpg',
       'desc':
           'Modelo de juego, análisis de video, roles por posición y proyección competitiva.',
     },
@@ -73,8 +73,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   // Filtros/estado UI
   final TextEditingController _searchCtrl = TextEditingController();
   String _level = 'Todas'; // Formativa / Intermedia / Avanzada / Todas
-  String _day = 'Todos';   // Lunes, Martes... / Todos
+  String _day = 'Todos';   // Lun, Mar, Mié, Jue, Vie, Sáb / Todos
   String _sort = 'Por nombre'; // Por nombre / Más temprano
+
+  // Contador de filtros activos (distintos a los por defecto)
+  int get _activeFilterCount {
+    int c = 0;
+    if (_level != 'Todas') c++;
+    if (_day != 'Todos') c++;
+    if (_sort != 'Por nombre') c++;
+    return c;
+  }
 
   List<Map<String, dynamic>> get _filtered {
     final q = _searchCtrl.text.trim().toLowerCase();
@@ -83,14 +92,14 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       final matchText = q.isEmpty ||
           (c['name'] as String).toLowerCase().contains(q) ||
           (c['desc'] as String).toLowerCase().contains(q);
-      final matchLevel = _level == 'Todas' || c['level'] == _level;
-      final matchDay = _day == 'Todos' || (c['days'] as String).toLowerCase().contains(_day.toLowerCase());
+      final matchLevel = _level == 'Todas' || (c['level'] as String) == _level;
+      final matchDay =
+          _day == 'Todos' || (c['days'] as String).toLowerCase().contains(_day.toLowerCase());
       return matchText && matchLevel && matchDay;
     }).toList();
 
     switch (_sort) {
       case 'Más temprano':
-        // Ordena por hora de inicio (asumiendo formato HH:mm–HH:mm)
         int startMinutes(String time) {
           final p = time.split('–').first.trim(); // "16:00"
           final hhmm = p.split(':');
@@ -101,8 +110,136 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       default:
         data.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
     }
-
     return data;
+  }
+
+  // Sheet de filtros (Nivel / Día / Ordenar)
+  Future<void> _openFiltersSheet() async {
+    String tmpLevel = _level;
+    String tmpDay = _day;
+    String tmpSort = _sort;
+
+    await showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.filter_alt),
+                    const SizedBox(width: 8),
+                    Text('Filtros', style: Theme.of(ctx).textTheme.titleLarge),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _level = 'Todas';
+                          _day = 'Todos';
+                          _sort = 'Por nombre';
+                        });
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Restablecer'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                DropdownButtonFormField<String>(
+                  value: tmpLevel,
+                  items: const [
+                    DropdownMenuItem(value: 'Todas', child: Text('Todas')),
+                    DropdownMenuItem(value: 'Formativa', child: Text('Formativa')),
+                    DropdownMenuItem(value: 'Intermedia', child: Text('Intermedia')),
+                    DropdownMenuItem(value: 'Avanzada', child: Text('Avanzada')),
+                    DropdownMenuItem(value: 'Estimulación Temprana', child: Text('Estimulación Temprana')),
+                  ],
+                  onChanged: (v) => tmpLevel = v ?? 'Todas',
+                  decoration: const InputDecoration(
+                    labelText: 'Nivel',
+                    prefixIcon: Icon(Icons.school),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                DropdownButtonFormField<String>(
+                  value: tmpDay,
+                  items: const [
+                    DropdownMenuItem(value: 'Todos', child: Text('Todos')),
+                    DropdownMenuItem(value: 'Lun', child: Text('Lunes')),
+                    DropdownMenuItem(value: 'Mar', child: Text('Martes')),
+                    DropdownMenuItem(value: 'Mié', child: Text('Miércoles')),
+                    DropdownMenuItem(value: 'Jue', child: Text('Jueves')),
+                    DropdownMenuItem(value: 'Vie', child: Text('Viernes')),
+                    DropdownMenuItem(value: 'Sáb', child: Text('Sábado')),
+                  ],
+                  onChanged: (v) => tmpDay = v ?? 'Todos',
+                  decoration: const InputDecoration(
+                    labelText: 'Día',
+                    prefixIcon: Icon(Icons.event),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                DropdownButtonFormField<String>(
+                  value: tmpSort,
+                  items: const [
+                    DropdownMenuItem(value: 'Por nombre', child: Text('Por nombre')),
+                    DropdownMenuItem(value: 'Más temprano', child: Text('Más temprano')),
+                  ],
+                  onChanged: (v) => tmpSort = v ?? 'Por nombre',
+                  decoration: const InputDecoration(
+                    labelText: 'Ordenar',
+                    prefixIcon: Icon(Icons.sort),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancelar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _level = tmpLevel;
+                            _day = tmpDay;
+                            _sort = tmpSort;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const Text('Aplicar'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openDetail(Map<String, dynamic> c) {
@@ -124,7 +261,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: AspectRatio(
-                  aspectRatio: 16/9,
+                  aspectRatio: 16 / 9,
                   child: Image.asset(
                     c['image'],
                     fit: BoxFit.cover,
@@ -137,10 +274,14 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(c['name'], style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                c['name'],
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
               Wrap(
-                spacing: 8, runSpacing: 8,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _Chip(text: c['age']),
                   _Chip(text: c['level']),
@@ -157,7 +298,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: () {
-                        // Futuro: ir a formulario / WhatsApp
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('Inscripción para ${c['name']} (próximamente)')),
@@ -199,18 +339,20 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Categorías', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 12),
-                _Toolbar(
-                  searchCtrl: _searchCtrl,
-                  level: _level,
-                  day: _day,
-                  sort: _sort,
-                  onLevelChanged: (v) => setState(() => _level = v),
-                  onDayChanged: (v) => setState(() => _day = v),
-                  onSortChanged: (v) => setState(() => _sort = v),
-                  onSearchChanged: (_) => setState(() {}),
+                Text(
+                  'Categorías',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
+                const SizedBox(height: 12),
+
+                // Toolbar minimal: buscar + botón/ícono de filtros (con badge)
+                _SearchAndFilterBar(
+                  controller: _searchCtrl,
+                  onChanged: (_) => setState(() {}),
+                  onOpenFilters: _openFiltersSheet,
+                  activeFilters: _activeFilterCount,
+                ),
+
                 const SizedBox(height: 16),
                 Expanded(
                   child: _filtered.isEmpty
@@ -252,106 +394,126 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   }
 }
 
-class _Toolbar extends StatelessWidget {
-  final TextEditingController searchCtrl;
-  final String level;
-  final String day;
-  final String sort;
-  final ValueChanged<String> onLevelChanged;
-  final ValueChanged<String> onDayChanged;
-  final ValueChanged<String> onSortChanged;
-  final ValueChanged<String> onSearchChanged;
+// ===== Toolbar minimal (buscar + filtros con badge) =====
 
-  const _Toolbar({
-    required this.searchCtrl,
-    required this.level,
-    required this.day,
-    required this.sort,
-    required this.onLevelChanged,
-    required this.onDayChanged,
-    required this.onSortChanged,
-    required this.onSearchChanged,
+class _SearchAndFilterBar extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onOpenFilters;
+  final int activeFilters;
+
+  const _SearchAndFilterBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onOpenFilters,
+    required this.activeFilters,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isSmall = MediaQuery.of(context).size.width < 850;
+    final isSmall = MediaQuery.of(context).size.width < 600;
 
-    final row = [
-      Expanded(
-        flex: 3,
-        child: TextField(
-          controller: searchCtrl,
-          onChanged: onSearchChanged,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: 'Buscar categoría...',
-          ),
+    final searchField = Expanded(
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.search),
+          hintText: 'Buscar categoría…',
         ),
       ),
-      const SizedBox(width: 12),
-      Expanded(
-        flex: 2,
-        child: DropdownButtonFormField<String>(
-          value: level,
-          items: const [
-            DropdownMenuItem(value: 'Todas', child: Text('Todas')),
-            DropdownMenuItem(value: 'Formativa', child: Text('Formativa')),
-            DropdownMenuItem(value: 'Intermedia', child: Text('Intermedia')),
-            DropdownMenuItem(value: 'Avanzada', child: Text('Avanzada')),
-          ],
-          onChanged: (v) => onLevelChanged(v ?? 'Todas'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.filter_alt), labelText: 'Nivel'),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        flex: 2,
-        child: DropdownButtonFormField<String>(
-          value: day,
-          items: const [
-            DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-            DropdownMenuItem(value: 'Lun', child: Text('Lunes')),
-            DropdownMenuItem(value: 'Mar', child: Text('Martes')),
-            DropdownMenuItem(value: 'Mié', child: Text('Miércoles')),
-            DropdownMenuItem(value: 'Jue', child: Text('Jueves')),
-            DropdownMenuItem(value: 'Vie', child: Text('Viernes')),
-            DropdownMenuItem(value: 'Sáb', child: Text('Sábado')),
-          ],
-          onChanged: (v) => onDayChanged(v ?? 'Todos'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.event), labelText: 'Día'),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        flex: 2,
-        child: DropdownButtonFormField<String>(
-          value: sort,
-          items: const [
-            DropdownMenuItem(value: 'Por nombre', child: Text('Por nombre')),
-            DropdownMenuItem(value: 'Más temprano', child: Text('Más temprano')),
-          ],
-          onChanged: (v) => onSortChanged(v ?? 'Por nombre'),
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.sort), labelText: 'Ordenar'),
-        ),
-      ),
-    ];
+    );
 
-    return isSmall
-        ? Column(
-            children: [
-              row[0],
-              const SizedBox(height: 12),
-              row[2],
-              const SizedBox(height: 12),
-              row[4],
-              const SizedBox(height: 12),
-              row[6],
-            ],
-          )
-        : Row(children: row);
+    final filterButton = _FilterButton(
+      onPressed: onOpenFilters,
+      activeCount: activeFilters,
+      isIconOnly: isSmall, // icono en móvil; botón con texto en pantallas grandes
+    );
+
+    return Row(
+      children: [
+        searchField,
+        const SizedBox(width: 8),
+        filterButton,
+      ],
+    );
   }
 }
+
+class _FilterButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final int activeCount;
+  final bool isIconOnly;
+
+  const _FilterButton({
+    required this.onPressed,
+    required this.activeCount,
+    this.isIconOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isIconOnly) {
+      // Ícono con badge para móviles
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            onPressed: onPressed,
+            icon: const Icon(Icons.filter_alt),
+            tooltip: 'Filtros',
+          ),
+          if (activeCount > 0)
+            Positioned(
+              right: 2,
+              top: 2,
+              child: CircleAvatar(
+                radius: 8,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  '$activeCount',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    // Botón completo en pantallas grandes
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.filter_alt),
+        const SizedBox(width: 6),
+        const Text('Filtros'),
+        if (activeCount > 0) ...[
+          const SizedBox(width: 8),
+          CircleAvatar(
+            radius: 10,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              '$activeCount',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+
+    return OutlinedButton(onPressed: onPressed, child: child);
+  }
+}
+
+// ===== Tarjetas y utilitarios =====
 
 class _CategoryCard extends StatelessWidget {
   final String name;
@@ -473,7 +635,8 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Chip(
       label: Text(text),
-      backgroundColor: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.6),
+      backgroundColor:
+          Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.6),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       padding: const EdgeInsets.symmetric(horizontal: 6),

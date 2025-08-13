@@ -12,7 +12,7 @@ class BenefitsScreen extends StatelessWidget {
     {
       'name': 'Auspiciador 1',
       'logo': 'assets/img/auspiciantes/a1.png',
-      'videoId': 'dn3d8awSA0c', // <-- cambia por el de este sponsor
+      'videoId': 'dn3d8awSA0c',
       'desc': 'Beneficios: descuentos en uniformes, becas parciales y premios por desempeño.',
     },
     {
@@ -54,7 +54,7 @@ class BenefitsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final cross = w >= 1100 ? 5 : w >= 900 ? 4 : w >= 640 ? 3 : 2;
+    final cross = w < 640 ? 1 : 2; // Móvil 1, tablet y desktop 2
 
     return Scaffold(
       appBar: const TopNavBar(),
@@ -66,12 +66,13 @@ class BenefitsScreen extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'Beneficios y Auspiciantes',
+                  'Beneficios de nuestros SPONSORS',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 16),
-                // Grid compacto (logos más pequeños)
+
+                // Grid adaptable
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -80,7 +81,7 @@ class BenefitsScreen extends StatelessWidget {
                     crossAxisCount: cross,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
-                    mainAxisExtent: 120, // tarjetas bajitas
+                    mainAxisExtent: 200, // altura para logo + nombre
                   ),
                   itemBuilder: (_, i) {
                     final sp = sponsors[i];
@@ -103,10 +104,24 @@ class BenefitsScreen extends StatelessWidget {
                             ],
                           ),
                           padding: const EdgeInsets.all(10),
-                          child: Image.asset(
-                            sp['logo']!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 32),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Image.asset(
+                                  sp['logo']!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 32),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                sp['name'] ?? '',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -205,7 +220,7 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
               ),
               const SizedBox(height: 12),
 
-              // Video más pequeño (16:9 controlado)
+              // Video
               AspectRatio(
                 aspectRatio: 16 / 9,
                 child: ClipRRect(
@@ -215,7 +230,6 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
               ),
 
               const SizedBox(height: 12),
-              // Acciones (si luego quieres enlazar a su web/redes)
               Row(
                 children: [
                   Expanded(

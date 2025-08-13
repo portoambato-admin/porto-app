@@ -255,7 +255,7 @@ class _NextMatchSectionState extends State<NextMatchSection> {
           children: [
             // Imagen opcional de portada del partido (puede ser genérica)
             Image.asset(
-              'assets/img/partido.jpg',
+              'img/partido.jpg',
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
                 color: Colors.black12,

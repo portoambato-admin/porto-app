@@ -74,7 +74,7 @@ class _StoreScreenState extends State<StoreScreen> {
     return c;
   }
 
-  // Diálogo para agregar producto (igual que antes)
+  // Diálogo para agregar producto (en memoria)
   Future<void> _openAddDialog() async {
     final formKey = GlobalKey<FormState>();
     final titleCtrl = TextEditingController();
@@ -193,7 +193,7 @@ class _StoreScreenState extends State<StoreScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Título
+                // Título + Reset
                 Row(
                   children: [
                     const Icon(Icons.filter_alt),
@@ -339,7 +339,7 @@ class _StoreScreenState extends State<StoreScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // --- Toolbar minimal: Buscar + botón Filtros ---
+                    // --- Toolbar minimal: Buscar + botón/ícono de Filtros (con badge) ---
                     _SearchAndFilterBar(
                       controller: _searchCtrl,
                       onChanged: (_) => setState(() {}),
@@ -467,40 +467,64 @@ class _SearchAndFilterBar extends StatelessWidget {
     final filterButton = _FilterButton(
       onPressed: onOpenFilters,
       activeCount: activeFilters,
+      isIconOnly: isSmall, // 👈 icono en móvil, botón completo en pantallas grandes
     );
 
-    return isSmall
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              searchField,
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: filterButton,
-              ),
-            ],
-          )
-        : Row(
-            children: [
-              searchField,
-              const SizedBox(width: 12),
-              filterButton,
-            ],
-          );
+    return Row(
+      children: [
+        searchField,
+        const SizedBox(width: 8),
+        filterButton,
+      ],
+    );
   }
 }
 
 class _FilterButton extends StatelessWidget {
   final VoidCallback onPressed;
   final int activeCount;
+  final bool isIconOnly;
+
   const _FilterButton({
     required this.onPressed,
     required this.activeCount,
+    this.isIconOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (isIconOnly) {
+      // Ícono con badge para móviles
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            onPressed: onPressed,
+            icon: const Icon(Icons.filter_alt),
+            tooltip: 'Filtros',
+          ),
+          if (activeCount > 0)
+            Positioned(
+              right: 2,
+              top: 2,
+              child: CircleAvatar(
+                radius: 8,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  '$activeCount',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    // Botón completo en pantallas grandes
     final child = Row(
       mainAxisSize: MainAxisSize.min,
       children: [

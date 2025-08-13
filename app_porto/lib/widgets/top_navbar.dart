@@ -33,7 +33,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
           child: Row(
             children: [
               Image.asset(
-                'assets/img/banner.jpg',
+                'img/banner.jpg',
                 height: 42,
                 errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer, size: 32),
               ),
@@ -63,12 +63,6 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                   route: '/categorias',
                   currentRoute: currentRoute,
                   onPressed: () => Navigator.pushNamed(context, '/categorias'),
-                ),
-                _NavButton(
-                  text: 'Profesores',
-                  route: '/profesores',
-                  currentRoute: currentRoute,
-                  onPressed: () => Navigator.pushNamed(context, '/profesores'), // <-- antes estaba vacío
                 ),
                 _NavButton(
                   text: 'Sponsors',

@@ -18,35 +18,53 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Panamá',
       'year': 2025,
-      'cover': 'assets/img/eventos/brisas_cover.jpg',
+      'cover': 'img/eventos/panama2025/2025_3.jpg',
       'description':
           'Experiencia internacional de alto nivel con clubes invitados de la región. '
           'Desarrollo competitivo y vitrina para talento joven.',
-      'images': <String>[],
+      'images': [
+        'img/eventos/panama2025/2025_1.jpg',
+        'img/eventos/panama2025/2025_2.jpg',
+        'img/eventos/panama2025/2025_3.jpg',
+        'img/eventos/panama2025/2025_4.jpg',
+        'img/eventos/panama2025/2025_5.jpg',
+        'img/eventos/panama2025/2025_6.jpg',
+        'img/eventos/panama2025/2025_7.jpg',
+      ],
     },
     {
       'title': 'Caribe Champions',
       'subtitle': 'Campeonato Internacional',
       'location': 'Barranquilla',
       'year': 2024,
-      'cover': 'assets/img/eventos/caribe_cover.jpg',
+      'cover': 'img/eventos/barranquilla2024/2024_1.jpg',
       'description':
           'Torneo de referencia en el Caribe colombiano. Intensidad, disciplina y juego colectivo '
           'enfrentando a escuelas top del litoral.',
-      'images': <String>[],
+      'images': [
+        'img/eventos/barranquilla2024/2024_1.jpg',
+        'img/eventos/barranquilla2024/2024_2.jpg',
+        'img/eventos/barranquilla2024/2024_3.jpg',
+      ],
     },
     {
       'title': 'Sporturs Soccer Cup',
       'subtitle': 'Campeonato Internacional',
       'location': 'Medellín',
       'year': 2023,
-      'cover': 'assets/img/eventos/sporturs_cover.jpg',
+      'cover': 'img/eventos/medellin2023/2023_3.jpg',
       'description':
           'Competencia con metodología formativa y enfoque en el fair play. '
           'Gran oportunidad para medición de rendimiento y convivencia.',
-      'images': <String>[],
+      'images': [
+        'img/eventos/medellin2023/2023_1.jpg',
+        'img/eventos/medellin2023/2023_2.jpg',
+        'img/eventos/medellin2023/2023_3.jpg',
+      ],
     },
   ];
+
+  // ---------- Galería / Lightbox ----------
 
   void _openGallery(Map<String, dynamic> e) {
     final images = List<String>.from(e['images'] ?? []);
@@ -61,37 +79,188 @@ class _EventsScreenState extends State<EventsScreen> {
                   padding: EdgeInsets.all(8.0),
                   child: Text(
                     'Galería próxima a publicarse.\n'
-                    'Añade imágenes en assets/img/eventos/ y regístralas en "images".',
+                    'Añade imágenes en img/eventos/ y regístralas en "images".',
                   ),
                 )
               : SingleChildScrollView(
                   child: Wrap(
                     spacing: 12,
                     runSpacing: 12,
-                    children: images.map((p) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          p,
-                          width: 160, height: 120, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            width: 160, height: 120,
-                            color: Colors.black12,
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.broken_image),
+                    children: [
+                      for (int i = 0; i < images.length; i++)
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context); // cierra miniaturas
+                            _openLightbox(images, i); // abre visor en esa foto
+                          },
+                          child: Hero(
+                            tag: images[i],
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: _assetImage(
+                                images[i],
+                                width: 160,
+                                height: 120,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
                         ),
-                      );
-                    }).toList(),
+                    ],
                   ),
                 ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
         ],
       ),
     );
   }
+
+  void _openLightbox(List<String> images, int initialIndex) {
+    final controller = PageController(initialPage: initialIndex);
+    int current = initialIndex;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withOpacity(0.85),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                // Cierra tocando fondo
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.pop(ctx),
+                ),
+
+                // Paginador con swipe
+                PageView.builder(
+                  controller: controller,
+                  onPageChanged: (i) => setState(() => current = i),
+                  itemCount: images.length,
+                  itemBuilder: (ctx, i) {
+                    final path = images[i];
+                    return Center(
+                      child: Hero(
+                        tag: path,
+                        child: InteractiveViewer(
+                          minScale: 1,
+                          maxScale: 5,
+                          child: _assetImage(
+                            path,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                // Botón cerrar
+                Positioned(
+                  top: 20,
+                  right: 20,
+                  child: IconButton(
+                    style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(ctx),
+                    tooltip: 'Cerrar',
+                  ),
+                ),
+
+                // Flecha anterior
+                if (images.length > 1)
+                  Positioned(
+                    left: 12,
+                    child: IconButton(
+                      style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                      icon: const Icon(Icons.chevron_left, color: Colors.white, size: 32),
+                      onPressed: () {
+                        final prev = (current - 1).clamp(0, images.length - 1);
+                        controller.animateToPage(
+                          prev,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                    ),
+                  ),
+
+                // Flecha siguiente
+                if (images.length > 1)
+                  Positioned(
+                    right: 12,
+                    child: IconButton(
+                      style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                      icon: const Icon(Icons.chevron_right, color: Colors.white, size: 32),
+                      onPressed: () {
+                        final next = (current + 1).clamp(0, images.length - 1);
+                        controller.animateToPage(
+                          next,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                    ),
+                  ),
+
+                // Indicador 1/N
+                if (images.length > 1)
+                  Positioned(
+                    bottom: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black45,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${current + 1} / ${images.length}',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Helper para usar el mismo errorBuilder en todas las imágenes
+  Widget _assetImage(
+    String path, {
+    double? width,
+    double? height,
+    BoxFit? fit,
+  }) {
+    return Image.asset(
+      path,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder: (_, __, ___) {
+        debugPrint('NO se encontró asset: $path');
+        return Container(
+          width: width,
+          height: height,
+          color: Colors.black12,
+          alignment: Alignment.center,
+          child: const Icon(Icons.broken_image, color: Colors.black45, size: 48),
+        );
+      },
+    );
+  }
+
+  // ---------- UI ----------
 
   void _showStaticImagesInfo() {
     showDialog(
@@ -104,10 +273,10 @@ class _EventsScreenState extends State<EventsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '1) Coloca tus archivos en: assets/img/eventos/\n'
-                '2) Decláralos en pubspec.yaml (assets/img/ ya cubre subcarpetas)\n'
+                '1) Coloca tus archivos en: img/eventos/\n'
+                '2) Decláralos en pubspec.yaml (tu carpeta base actual)\n'
                 '3) Agrega rutas en "images" o cambia "cover" por tu portada.\n\n'
-                'Ej: "images": ["assets/img/eventos/brisas1.jpg", "assets/img/eventos/brisas2.jpg"]',
+                'Ej: "images": ["img/eventos/brisas1.jpg", "img/eventos/brisas2.jpg"]',
               ),
             ],
           ),
@@ -190,7 +359,17 @@ class _EventSection extends StatelessWidget {
                 children: [
                   if (!invert) Expanded(flex: 5, child: _Cover(cover: cover)),
                   SizedBox(width: isWide ? 24 : 0),
-                  Expanded(flex: 5, child: _Details(title: title, subtitle: subtitle, location: location, year: year, description: description, onOpenGallery: onOpenGallery)),
+                  Expanded(
+                    flex: 5,
+                    child: _Details(
+                      title: title,
+                      subtitle: subtitle,
+                      location: location,
+                      year: year,
+                      description: description,
+                      onOpenGallery: onOpenGallery,
+                    ),
+                  ),
                   if (invert) ...[
                     const SizedBox(width: 24),
                     Expanded(flex: 5, child: _Cover(cover: cover)),
@@ -202,7 +381,14 @@ class _EventSection extends StatelessWidget {
                 children: [
                   _Cover(cover: cover),
                   const SizedBox(height: 16),
-                  _Details(title: title, subtitle: subtitle, location: location, year: year, description: description, onOpenGallery: onOpenGallery),
+                  _Details(
+                    title: title,
+                    subtitle: subtitle,
+                    location: location,
+                    year: year,
+                    description: description,
+                    onOpenGallery: onOpenGallery,
+                  ),
                 ],
               ),
       ),
@@ -222,7 +408,7 @@ class _Cover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 16/9,
+      aspectRatio: 16 / 9,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: Stack(
@@ -242,7 +428,8 @@ class _Cover extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
                     colors: [Colors.black.withOpacity(0.25), Colors.transparent],
                   ),
                 ),
