@@ -137,7 +137,7 @@ G=c[14]
 H=c[22]
 B.LS.prototype={
 agI(d,e){A.a7P(C.M,new B.a9_(e),d,!0,!0,!1,y.z)},
-J(d){var x=null,w=A.bn(d,x,y.w).w.a.a<640?1:2,v=A.L(d).ok.e
+J(d){var x=null,w=A.bo(d,x,y.w).w.a.a<640?1:2,v=A.L(d).ok.e
 return A.Eb(G.iZ,A.da(new A.co(C.ca,A.Vv(A.cb(A.a([A.aX("Beneficios de nuestros SPONSORS",x,x,x,v==null?x:v.hz(C.bm),C.cu,x),C.bj,A.Bw(new A.oM(w,16,16,1,200),new B.a92(this,d),5,C.p5,!0)],y.p),C.F,C.u,C.I),x,C.fw),x),x,x),x)}}
 B.tX.prototype={
 aq(){return new B.a4J()}}
@@ -154,7 +154,7 @@ l(){var x=this.d
 x===$&&A.b()
 x.be()
 this.aY()},
-J(d){var x,w,v,u,t=this,s=null,r=y.w,q=A.bn(d,s,r).w.a.a>900?800:A.bn(d,s,r).w.a.a-24
+J(d){var x,w,v,u,t=this,s=null,r=y.w,q=A.bo(d,s,r).w.a.a>900?800:A.bo(d,s,r).w.a.a-24
 r=A.d2(8)
 x=t.a.c.h(0,"logo")
 if(x==null)x=""
@@ -636,7 +636,7 @@ $0(){return D.R5},
 $S:z+8}
 B.aEB.prototype={
 $2(d,e){var x
-if(e===C.p8)x=A.bn(d,null,y.w).w.a.gHl()
+if(e===C.p8)x=A.bo(d,null,y.w).w.a.gHl()
 else{this.b.a.toString
 x=1.7777777777777777}return new A.hb(x,this.a.a,null)},
 $S:543}
@@ -705,4 +705,4 @@ D.aqT=new B.YW(!1,!1)
 D.ap6=new B.YW(!0,!0)})();(function staticFields(){$.aWi=function(){var x=y.N
 return A.a([A.ak(["name","Auspiciador 1","logo","assets/img/auspiciantes/a1.png","videoId","dn3d8awSA0c","desc","Beneficios: descuentos en uniformes, becas parciales y premios por desempe\xf1o."],x,x),A.ak(["name","Auspiciador 2","logo","assets/img/auspiciantes/a2.png","videoId","dQw4w9WgXcQ","desc","Beneficios: hidrataci\xf3n oficial en competencias y kits deportivos trimestrales."],x,x),A.ak(["name","Auspiciador 3","logo","assets/img/auspiciantes/a3.png","videoId","5NV6Rdv1a3I","desc","Beneficios: cobertura fotogr\xe1fica de eventos y difusi\xf3n en redes."],x,x),A.ak(["name","Auspiciador 4","logo","assets/img/auspiciantes/a4.png","videoId","ktvTqknDobU","desc","Beneficios: charlas de nutrici\xf3n deportiva y evaluaci\xf3n de composici\xf3n corporal."],x,x),A.ak(["name","Auspiciador 5","logo","assets/img/auspiciantes/a5.png","videoId","CevxZvSJLk8","desc","Beneficios: becas de excelencia y apoyo a giras internacionales."],x,x)],A.Y("o<aQ<f,f>>"))}()})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_16",e:"endPart",h:b})})($__dart_deferred_initializers__,"SE9m4UA1/UoVpMpbvygh4Ba1Lqw=");
+a.eventLog.push({p:"main.dart.js_16",e:"endPart",h:b})})($__dart_deferred_initializers__,"rFwFoKpJbJEkc9j1vI6LWxIsfic=");

@@ -32,7 +32,7 @@ I=c[11]
 F=c[16]
 E=c[14]
 C.Lm.prototype={
-J(d){var x,w,v,u,t,s=null,r=A.bn(d,s,y.h).w.a.a
+J(d){var x,w,v,u,t,s=null,r=A.bo(d,s,y.h).w.a.a
 if(r>=1100)x=4
 else if(r>=850)x=3
 else{w=r>=600?2:1
@@ -70,7 +70,7 @@ s=s.h(0,"role")
 u=y.e
 return A.zQ(A.cb(A.a([w,new A.bv(G.jM,A.cb(A.a([v,F.f9,A.aX(s==null?"":s,t,t,t,t,t,t),B.b8,A.cz(A.a([A.cj(A.rk(B.k5,D.akV,new C.avJ(this,d)),1)],u),B.F,B.u,B.I)],u),B.bc,B.u,B.I),t)],u),B.bR,B.u,B.I),0.8,new A.ct(x,B.y))}}
 C.a0j.prototype={
-J(d){var x,w=A.bn(d,null,y.h).w.a.a
+J(d){var x,w=A.bo(d,null,y.h).w.a.a
 if(w>=1100)x=3
 else x=w>=800?2:1
 return A.Bw(new A.oM(x,16,16,1.7777777777777777,null),new C.axo(this),4,B.p5,!0)}}
@@ -135,4 +135,4 @@ D.akV=new A.b3("Ver m\xe1s",null,null,null,null,null,null,null,null)})();(functi
 return A.a([A.ak(["name","Andrea Torres","role","Profesora \xb7 Sub-8 / Sub-10","photo","assets/img/team/andrea.jpg","bio","Licenciada en Educaci\xf3n F\xedsica. Especialista en psicomotricidad y fundamentos t\xe9cnicos."],x,x),A.ak(["name","David P\xe9rez","role","Profesor \xb7 Sub-12","photo","assets/img/team/david.jpg","bio","Entrenador con certificaci\xf3n Conmebol. Enfoque en t\xe9cnica y comprensi\xf3n t\xe1ctica."],x,x),A.ak(["name","Luis Garc\xeda","role","Profesor \xb7 Sub-14","photo","assets/img/team/luis.jpg","bio","Preparaci\xf3n f\xedsica espec\xedfica y planificaci\xf3n por microciclos."],x,x),A.ak(["name","Miguel Rojas","role","Profesor \xb7 Sub-17","photo","assets/img/team/miguel.jpg","bio","Modelo de juego, an\xe1lisis de video y proyecci\xf3n competitiva."],x,x)],A.Y("o<aQ<f,f>>"))}()
 $.aW1=A.a(["img/webp/conocenos/instalaciones/ins_1.webp","img/webp/conocenos/instalaciones/ins_2.webp","img/webp/conocenos/instalaciones/ins_3.webp","img/webp/conocenos/instalaciones/ins_4.webp"],A.Y("o<f>"))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_17",e:"endPart",h:b})})($__dart_deferred_initializers__,"BzdjlsoZPozpVThH3l0vanXSvH0=");
+a.eventLog.push({p:"main.dart.js_17",e:"endPart",h:b})})($__dart_deferred_initializers__,"gDqfL++AR+NYbAdi4bcJkp04jnU=");
