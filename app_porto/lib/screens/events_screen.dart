@@ -18,7 +18,7 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Panamá',
       'year': 2025,
-      'cover': 'img/webp/main.webp',
+      'cover': 'assets/img/webp/main.webp',
       'description':
           'Experiencia internacional de alto nivel con clubes invitados de la región. '
           'Desarrollo competitivo y vitrina para talento joven.',

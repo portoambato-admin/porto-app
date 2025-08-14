@@ -77,7 +77,7 @@ class HeroSection extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Image.asset(
-              'img/webp/main.webp',
+              'assets/img/webp/main.webp',
               fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => Container(
                 color: Colors.black12,

@@ -6,8 +6,7 @@ class StoreSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.of(context).size.width;
-
+    
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: HomeScreen.maxContentWidth),
