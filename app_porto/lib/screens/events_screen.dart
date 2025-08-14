@@ -18,18 +18,18 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Panamá',
       'year': 2025,
-      'cover': 'img/eventos/panama2025/2025_3.jpg',
+      'cover': 'img/webp/main.webp',
       'description':
           'Experiencia internacional de alto nivel con clubes invitados de la región. '
           'Desarrollo competitivo y vitrina para talento joven.',
       'images': [
-        'img/eventos/panama2025/2025_1.jpg',
-        'img/eventos/panama2025/2025_2.jpg',
-        'img/eventos/panama2025/2025_3.jpg',
-        'img/eventos/panama2025/2025_4.jpg',
-        'img/eventos/panama2025/2025_5.jpg',
-        'img/eventos/panama2025/2025_6.jpg',
-        'img/eventos/panama2025/2025_7.jpg',
+        'img/thumbs/eventos/panama2025/2025_1_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_2_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_3_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_4_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_5_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_6_thumb.webp',
+        'img/thumbs/eventos/panama2025/2025_7_thumb.webp',
       ],
     },
     {
@@ -37,14 +37,14 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Barranquilla',
       'year': 2024,
-      'cover': 'img/eventos/barranquilla2024/2024_1.jpg',
+      'cover': 'img/webp/eventos/barranquilla2024/2024_1.webp',
       'description':
           'Torneo de referencia en el Caribe colombiano. Intensidad, disciplina y juego colectivo '
           'enfrentando a escuelas top del litoral.',
       'images': [
-        'img/eventos/barranquilla2024/2024_1.jpg',
-        'img/eventos/barranquilla2024/2024_2.jpg',
-        'img/eventos/barranquilla2024/2024_3.jpg',
+        'img/thumbs/eventos/barranquilla2024/2024_1_thumb.webp',
+        'img/thumbs/eventos/barranquilla2024/2024_2_thumb.webp',
+        'img/thumbs/eventos/barranquilla2024/2024_3_thumb.webp',
       ],
     },
     {
@@ -52,14 +52,14 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Medellín',
       'year': 2023,
-      'cover': 'img/eventos/medellin2023/2023_3.jpg',
+      'cover': 'img/webp/eventos/medellin2023/2023_3.webp',
       'description':
           'Competencia con metodología formativa y enfoque en el fair play. '
           'Gran oportunidad para medición de rendimiento y convivencia.',
       'images': [
-        'img/eventos/medellin2023/2023_1.jpg',
-        'img/eventos/medellin2023/2023_2.jpg',
-        'img/eventos/medellin2023/2023_3.jpg',
+        'img/thumbs/eventos/medellin2023/2023_1_thumb.webp',
+        'img/thumbs/eventos/medellin2023/2023_2_thumb.webp',
+        'img/thumbs/eventos/medellin2023/2023_3_thumb.webp',
       ],
     },
   ];
@@ -153,10 +153,7 @@ class _EventsScreenState extends State<EventsScreen> {
                         child: InteractiveViewer(
                           minScale: 1,
                           maxScale: 5,
-                          child: _assetImage(
-                            path,
-                            fit: BoxFit.contain,
-                          ),
+                          child: _assetImage(path, fit: BoxFit.contain),
                         ),
                       ),
                     );
@@ -168,7 +165,9 @@ class _EventsScreenState extends State<EventsScreen> {
                   top: 20,
                   right: 20,
                   child: IconButton(
-                    style: IconButton.styleFrom(backgroundColor: Colors.black45),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                    ),
                     icon: const Icon(Icons.close, color: Colors.white),
                     onPressed: () => Navigator.pop(ctx),
                     tooltip: 'Cerrar',
@@ -180,8 +179,14 @@ class _EventsScreenState extends State<EventsScreen> {
                   Positioned(
                     left: 12,
                     child: IconButton(
-                      style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                      icon: const Icon(Icons.chevron_left, color: Colors.white, size: 32),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black45,
+                      ),
+                      icon: const Icon(
+                        Icons.chevron_left,
+                        color: Colors.white,
+                        size: 32,
+                      ),
                       onPressed: () {
                         final prev = (current - 1).clamp(0, images.length - 1);
                         controller.animateToPage(
@@ -198,8 +203,14 @@ class _EventsScreenState extends State<EventsScreen> {
                   Positioned(
                     right: 12,
                     child: IconButton(
-                      style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                      icon: const Icon(Icons.chevron_right, color: Colors.white, size: 32),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black45,
+                      ),
+                      icon: const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white,
+                        size: 32,
+                      ),
                       onPressed: () {
                         final next = (current + 1).clamp(0, images.length - 1);
                         controller.animateToPage(
@@ -216,7 +227,10 @@ class _EventsScreenState extends State<EventsScreen> {
                   Positioned(
                     bottom: 20,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black45,
                         borderRadius: BorderRadius.circular(12),
@@ -254,7 +268,11 @@ class _EventsScreenState extends State<EventsScreen> {
           height: height,
           color: Colors.black12,
           alignment: Alignment.center,
-          child: const Icon(Icons.broken_image, color: Colors.black45, size: 48),
+          child: const Icon(
+            Icons.broken_image,
+            color: Colors.black45,
+            size: 48,
+          ),
         );
       },
     );
@@ -282,7 +300,10 @@ class _EventsScreenState extends State<EventsScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
         ],
       ),
     );
@@ -350,7 +371,9 @@ class _EventSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: _EventsScreenState.maxContentWidth),
+      constraints: const BoxConstraints(
+        maxWidth: _EventsScreenState.maxContentWidth,
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: isWide
@@ -430,7 +453,10 @@ class _Cover extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.25), Colors.transparent],
+                    colors: [
+                      Colors.black.withOpacity(0.25),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
@@ -470,7 +496,12 @@ class _Details extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              title,
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(subtitle, style: textTheme.titleMedium),
             const SizedBox(height: 8),
@@ -511,7 +542,9 @@ class _ComingSoonBanner extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35),
+              color: Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withOpacity(0.35),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(

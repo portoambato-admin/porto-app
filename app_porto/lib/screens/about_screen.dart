@@ -44,10 +44,10 @@ class AboutScreen extends StatelessWidget {
   ];
 
   static final List<String> facilities = [
-    'img/conocenos/instalaciones/ins_1.jpg',
-    'img/conocenos/instalaciones/ins_2.jpg',
-    'img/conocenos/instalaciones/ins_3.jpg',
-    'img/conocenos/instalaciones/ins_4.jpg',
+    'img/webp/conocenos/instalaciones/ins_1.webp',
+    'img/webp/conocenos/instalaciones/ins_2.webp',
+    'img/webp/conocenos/instalaciones/ins_3.webp',
+    'img/webp/conocenos/instalaciones/ins_4.webp',
   ];
   // =======================================================
 

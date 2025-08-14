@@ -4,14 +4,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
-import 'screens/home_screen.dart';
-import 'screens/store_screen.dart';
-import 'screens/events_screen.dart';
-import 'screens/categories_screen.dart';
-import 'screens/benefits_screen.dart';
-import 'screens/about_screen.dart';
+import 'router.dart'; // Importamos el router
 
-Future<void> main() async {                // <- Asegúrate que exista esta función
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es', null);
   Intl.defaultLocale = 'es';
@@ -26,7 +21,12 @@ class PortoAmbatoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(seedColor: primary, primary: primary, secondary: secondary);
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      primary: primary,
+      secondary: secondary,
+    );
+
     return MaterialApp(
       title: 'PortoAmbato | Academia Oficial de Fútbol',
       debugShowCheckedModeBanner: false,
@@ -45,15 +45,7 @@ class PortoAmbatoApp extends StatelessWidget {
         Locale('en', ''),
       ],
       initialRoute: '/',
-      routes: {
-        '/': (_) => const HomeScreen(),
-        '/tienda': (_) => const StoreScreen(),
-        '/eventos': (_) => const EventsScreen(),
-        '/categorias': (_) => const CategoriesScreen(),
-        '/beneficios':(_) => const BenefitsScreen(),
-        '/conocenos': (_) => const AboutScreen(), // NUEVA
-
-      },
+      onGenerateRoute: AppRouter.onGenerateRoute, // Usamos rutas dinámicas
     );
   }
 }

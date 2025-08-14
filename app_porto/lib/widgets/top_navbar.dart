@@ -33,7 +33,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
           child: Row(
             children: [
               Image.asset(
-                'img/banner.jpg',
+                'img/thumbs/banner_thumb.webp',
                 height: 42,
                 errorBuilder: (_, __, ___) => const Icon(Icons.sports_soccer, size: 32),
               ),
