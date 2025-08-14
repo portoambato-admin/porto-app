@@ -40700,7 +40700,7 @@ k=A.aX("Academia Oficial de F\xfatbol Porto Ambato. Entrenamientos por categor\x
 s=n?B.pX:B.cw
 r=t.E
 q=A.cb(A.a([l,B.bj,k,B.pD,A.p4(s,A.a([A.Bg(B.rR,B.alm,new A.afc()),A.rk(B.k5,B.ale,new A.afd(a))],r),12,12)],r),m,B.u,B.I)
-p=new A.hb(1.7777777777777777,A.hN(A.d2(16),A.hA(B.cz,A.a([A.hl("img/webp/main.webp",new A.afe(),B.ch,o,o),A.cF(o,o,B.t,o,o,new A.cN(o,o,o,o,o,new A.o1(B.fn,B.hD,B.dc,A.a([A.aP(38,B.p.F()>>>16&255,B.p.F()>>>8&255,B.p.F()&255),B.M],t.t_),o,o),B.ay),o,o,o,o,o,o,o)],r),B.U,B.uH,o),B.aU),o)
+p=new A.hb(1.7777777777777777,A.hN(A.d2(16),A.hA(B.cz,A.a([A.hl("assets/img/webp/main.webp",new A.afe(),B.ch,o,o),A.cF(o,o,B.t,o,o,new A.cN(o,o,o,o,o,new A.o1(B.fn,B.hD,B.dc,A.a([A.aP(38,B.p.F()>>>16&255,B.p.F()>>>8&255,B.p.F()&255),B.M],t.t_),o,o),B.ay),o,o,o,o,o,o,o)],r),B.U,B.uH,o),B.aU),o)
 m=n?16:24
 l=n?32:64
 k=n?A.cb(A.a([q,B.pD,p],r),B.F,B.u,B.I):A.cz(A.a([A.cj(q,5),B.pC,A.cj(p,5)],r),B.F,B.u,B.I)
@@ -40763,7 +40763,7 @@ j.push(A.cF(m,A.cz(A.a([B.a_P,B.cr,A.aX("Comienza en "+n.aa9(n.f),m,m,m,m,m,m)],
 j.push(B.bj)
 j.push(A.p4(B.cw,A.a([A.Bg(B.a0b,B.akN,new A.azT()),A.rk(B.a02,B.akQ,new A.azU())],f),12,12))
 p=A.cb(j,B.bc,B.u,B.I)
-o=new A.hb(1.7777777777777777,A.hN(A.d2(16),A.hA(B.cz,A.a([A.hl("img/webp/partido.webp",new A.azV(),B.ch,m,m),A.aII(0,A.qg(m,new A.cN(m,m,m,m,m,new A.o1(B.fn,B.hD,B.dc,A.a([A.aP(51,B.p.F()>>>16&255,B.p.F()>>>8&255,B.p.F()&255),B.M],t.t_),m,m),B.ay),B.dR))],f),B.U,B.uH,m),B.aU),m)
+o=new A.hb(1.7777777777777777,A.hN(A.d2(16),A.hA(B.cz,A.a([A.hl("assets/img/webp/partido.webp",new A.azV(),B.ch,m,m),A.aII(0,A.qg(m,new A.cN(m,m,m,m,m,new A.o1(B.fn,B.hD,B.dc,A.a([A.aP(51,B.p.F()>>>16&255,B.p.F()>>>8&255,B.p.F()&255),B.M],t.t_),m,m),B.ay),B.dR))],f),B.U,B.uH,m),B.aU),m)
 return A.da(A.cF(m,A.da(new A.co(B.ca,new A.bv(B.r5,k.a.a>=900?A.cz(A.a([A.cj(p,5),B.pC,A.cj(o,5)],f),B.F,B.u,B.I):A.cb(A.a([p,B.bj,o],f),B.bR,B.u,B.I),m),m),m,m),B.t,B.wz,m,m,m,m,m,m,m,m,m),m,m)}}
 A.azW.prototype={
 $1(a){return this.a.afD()},
