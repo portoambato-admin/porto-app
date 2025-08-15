@@ -8,46 +8,46 @@ class AboutScreen extends StatelessWidget {
 
   // ===== Datos estáticos (cámbialos por los reales) =====
   static const Map<String, String> ceo = {
-    'name': 'Cristian Naranjo',
+    'name': 'Christian Llerena',
     'role': 'Gerente General',
     'photo': 'assets/img/team/gerente.jpg',
     'bio':
         'Apasionado por el fútbol formativo y el desarrollo integral. '
-        '15+ años liderando proyectos deportivos con enfoque metodológico y humano.',
+        '5+ años liderando proyectos deportivos con enfoque metodológico y humano.',
   };
 
   static final List<Map<String, String>> coaches = [
     {
-      'name': 'Andrea Torres',
-      'role': 'Profesora · Sub-8 / Sub-10',
-      'photo': 'assets/img/team/andrea.jpg',
-      'bio': 'Licenciada en Educación Física. Especialista en psicomotricidad y fundamentos técnicos.',
+      'name': 'Victor Flores',
+      'role': 'Profesor · Sub-4 / Sub-6 / Sub-8 / Sub-12',
+      'photo': 'assets/img/profes/p1.webp',
+      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
     },
     {
-      'name': 'David Pérez',
-      'role': 'Profesor · Sub-12',
-      'photo': 'assets/img/team/david.jpg',
-      'bio': 'Entrenador con certificación Conmebol. Enfoque en técnica y comprensión táctica.',
+      'name': 'Michelle Cherez',
+      'role': 'Profesor · Sub-4',
+      'photo': 'assets/img/profes/p2.webp',
+      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
     },
     {
-      'name': 'Luis García',
-      'role': 'Profesor · Sub-14',
-      'photo': 'assets/img/team/luis.jpg',
-      'bio': 'Preparación física específica y planificación por microciclos.',
+      'name': 'Klever de la Cruz',
+      'role': 'Profesor · Sub-4 / Sub-6 / Sub-10',
+      'photo': 'assets/img/profes/p3.webp',
+      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
     },
     {
-      'name': 'Miguel Rojas',
-      'role': 'Profesor · Sub-17',
-      'photo': 'assets/img/team/miguel.jpg',
-      'bio': 'Modelo de juego, análisis de video y proyección competitiva.',
+      'name': 'Alvaro Ortiz',
+      'role': 'Profesor · Sub-4 ',
+      'photo': 'assets/img/profes/p4.webp',
+      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
     },
   ];
 
   static final List<String> facilities = [
-    'img/webp/conocenos/instalaciones/ins_1.webp',
-    'img/webp/conocenos/instalaciones/ins_2.webp',
-    'img/webp/conocenos/instalaciones/ins_3.webp',
-    'img/webp/conocenos/instalaciones/ins_4.webp',
+    'assets/img/conocenos/instalaciones/ins_1.webp',
+    'assets/img/conocenos/instalaciones/ins_2.webp',
+    'assets/img/conocenos/instalaciones/ins_3.webp',
+    'assets/img/conocenos/instalaciones/ins_4.webp',
   ];
   // =======================================================
 

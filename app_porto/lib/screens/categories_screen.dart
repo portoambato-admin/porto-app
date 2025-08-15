@@ -20,7 +20,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '11:00–12:00',
       'coach': 'Michelle Cherez, Victor Flores, Klever de la Cruz, Alvaro Ortiz',
       'level': 'Estimulación Temprana',
-      'image': 'assets/img/webp/categorias/sub4.webp',
+      'image': 'assets/img/categorias/sub4.webp',
       'desc':
           'Iniciación lúdica al fútbol: coordinación, psicomotricidad y trabajo en equipo con enfoque recreativo.',
     },
@@ -31,7 +31,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '16:00–18:00',
       'coach': 'Victor Flores, Klever de la Cruz',
       'level': 'Intermedia',
-      'image': 'assets/img/webp/categorias/sub6.webp',
+      'image': 'assets/img/categorias/sub6.webp',
       'desc':
           'Fundamentos técnicos básicos: pase, recepción y conducción, dinámicas divertidas con progresión.',
     },
@@ -42,7 +42,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '16:00–18:00',
       'coach': 'Victor Flores, Christian Llerena',
       'level': 'Intermedia',
-      'image': 'assets/img/webp/categorias/sub8.webp',
+      'image': 'assets/img/categorias/sub8.webp',
       'desc':
           'Perfeccionamiento técnico, nociones tácticas y disciplina competitiva acorde a la edad.',
     },
@@ -53,7 +53,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '16:00–18:00',
       'coach': 'Klever de la Cruz, Christian Llerena',
       'level': 'Intermedia',
-      'image': 'assets/img/webp/categorias/sub10.webp',
+      'image': 'assets/img/categorias/sub10.webp',
       'desc':
           'Trabajo táctico grupal, preparación física específica y evaluación de rendimiento.',
     },
@@ -64,7 +64,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       'time': '18:30–20:00',
       'coach': 'Christian Llerena, Victor Flores ',
       'level': 'Formativa',
-      'image': 'assets/img/webp/categorias/sub12.webp',
+      'image': 'assets/img/categorias/sub12.webp',
       'desc':
           'Modelo de juego, análisis de video, roles por posición y proyección competitiva.',
     },

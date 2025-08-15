@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/top_navbar.dart';
-import '../utils/contact.dart'; // showPurchaseDialog
+// import '../utils/contact.dart'; // showPurchaseDialog  // 👈 COMPRAS DESHABILITADAS
 
 class StoreScreen extends StatefulWidget {
   const StoreScreen({super.key});
@@ -74,7 +74,7 @@ class _StoreScreenState extends State<StoreScreen> {
     return c;
   }
 
-  // Diálogo para agregar producto (en memoria)
+  // Diálogo para agregar producto (en memoria) — actualmente no expuesto en UI
   Future<void> _openAddDialog() async {
     final formKey = GlobalKey<FormState>();
     final titleCtrl = TextEditingController();
@@ -288,11 +288,11 @@ class _StoreScreenState extends State<StoreScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const TopNavBar(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddDialog,
-        icon: const Icon(Icons.add),
-        label: const Text('Agregar'),
-      ),
+      // floatingActionButton: FloatingActionButton.extended( // 👈 ELIMINADO según pedido
+      //   onPressed: _openAddDialog,
+      //   icon: const Icon(Icons.add),
+      //   label: const Text('Agregar'),
+      // ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: maxContentWidth),
@@ -333,7 +333,7 @@ class _StoreScreenState extends State<StoreScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text(
-                        'Estamos trabajando para habilitar compras online. Por ahora, realiza tu pedido por WhatsApp.',
+                        'Próximamente habilitaremos compras online.',
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -365,8 +365,7 @@ class _StoreScreenState extends State<StoreScreen> {
                             price: p['price'],
                             image: p['image'],
                             onView: () => _openDetail(p),
-                            onBuy: () =>
-                                showPurchaseDialog(context, p['title']),
+                            // onBuy: () => showPurchaseDialog(context, p['title']), // 👈 COMPRAS DESHABILITADAS
                           );
                         },
                       ),
@@ -417,6 +416,16 @@ class _StoreScreenState extends State<StoreScreen> {
                   color: Theme.of(context).colorScheme.primary,
                 ),
               ),
+              const SizedBox(height: 12),
+
+              // 👇 Indicador de que las compras no están habilitadas
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  label: Text('Próximamente'),
+                  avatar: Icon(Icons.lock_clock, size: 18),
+                ),
+              ),
             ],
           ),
         ),
@@ -424,10 +433,10 @@ class _StoreScreenState extends State<StoreScreen> {
           TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cerrar')),
-          FilledButton(
-            onPressed: () => showPurchaseDialog(context, p['title']),
-            child: const Text('Comprar por WhatsApp'),
-          ),
+          // FilledButton( // 👈 COMPRAS DESHABILITADAS
+          //   onPressed: () => showPurchaseDialog(context, p['title']),
+          //   child: const Text('Comprar por WhatsApp'),
+          // ),
         ],
       ),
     );
@@ -558,14 +567,14 @@ class _ProductCard extends StatelessWidget {
   final num price;
   final String image;
   final VoidCallback onView;
-  final VoidCallback onBuy;
+  // final VoidCallback onBuy; // 👈 COMPRAS DESHABILITADAS
 
   const _ProductCard({
     required this.title,
     required this.price,
     required this.image,
     required this.onView,
-    required this.onBuy,
+    // required this.onBuy, // 👈 COMPRAS DESHABILITADAS
   });
 
   @override
@@ -612,14 +621,25 @@ class _ProductCard extends StatelessWidget {
                         label: const Text('Ver'),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: onBuy,
-                        child: const Text('Comprar'),
-                      ),
-                    ),
+                    // const SizedBox(width: 8),
+                    // Expanded( // 👈 COMPRAS DESHABILITADAS
+                    //   child: FilledButton(
+                    //     onPressed: onBuy,
+                    //     child: const Text('Comprar'),
+                    //   ),
+                    // ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    'Próximamente',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
+                  ),
                 ),
               ],
             ),

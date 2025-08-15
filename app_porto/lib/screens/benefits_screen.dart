@@ -1,5 +1,9 @@
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import '../widgets/top_navbar.dart';
 
 class BenefitsScreen extends StatelessWidget {
@@ -7,44 +11,59 @@ class BenefitsScreen extends StatelessWidget {
 
   static const double maxContentWidth = 1200;
 
-  // Data estática: cada auspiciante con logo, nombre, descripción y videoId
+  // 👉 Configura estos valores
+  static final Uri missionUrl = Uri.parse('https://tu-sitio.com'); // <-- tu URL real
+  static const String missionText =
+      'Súmate a la misión de PortoAmbato: formar deportistas con valores y alto rendimiento.';
+
+  // WhatsApp directo al número solicitado (Ecuador +593, sin 0 inicial)
+  static const String kWhatsappE164 = '593995650089';
+  static const String whatsappMessage =
+      'Hola, me gustaría conocer los requisitos para ser auspiciante de PortoAmbato.';
+
+  // Imagen de agradecimiento (usa la misma para fondo y centro)
+  static const String kThanksImage = 'assets/img/sponsors/agradecimiento.webp';
+
+  // Data: cada auspiciante con imagen (vertical), nombre, descripción y videoId
   static final List<Map<String, String>> sponsors = [
     {
-      'name': 'Auspiciador 1',
-      'logo': 'assets/img/auspiciantes/a1.png',
-      'videoId': 'dn3d8awSA0c',
-      'desc': 'Beneficios: descuentos en uniformes, becas parciales y premios por desempeño.',
+      'name': 'SANFRA',
+      'logo': 'assets/img/sponsors/sanfra.webp',
+      'videoId': 'ubQ0YvAggJg',
+      'desc': 'Sanfra Móvil: todo en una sola app. Disponible en Google Play y App Store.',
     },
     {
-      'name': 'Auspiciador 2',
-      'logo': 'assets/img/auspiciantes/a2.png',
-      'videoId': 'dQw4w9WgXcQ',
-      'desc': 'Beneficios: hidratación oficial en competencias y kits deportivos trimestrales.',
+      'name': 'MI NEGOCIO',
+      'logo': 'assets/img/sponsors/minegocio.webp',
+      'videoId': 'RZP6sA1hTEE',
+      'desc': '10% de descuento en todos los planes para nuestra comunidad.',
     },
     {
-      'name': 'Auspiciador 3',
-      'logo': 'assets/img/auspiciantes/a3.png',
+      'name': 'MUNDITO',
+      'logo': 'assets/img/sponsors/mundi.webp',
       'videoId': '5NV6Rdv1a3I',
-      'desc': 'Beneficios: cobertura fotográfica de eventos y difusión en redes.',
+      'desc': 'Cobertura fotográfica profesional y difusión en redes.',
     },
     {
-      'name': 'Auspiciador 4',
-      'logo': 'assets/img/auspiciantes/a4.png',
-      'videoId': 'ktvTqknDobU',
-      'desc': 'Beneficios: charlas de nutrición deportiva y evaluación de composición corporal.',
+      'name': 'OPALO',
+      'logo': 'assets/img/sponsors/opalo.webp',
+      'videoId': '7DW1B0QKObE',
+      'desc': 'Charlas de nutrición deportiva y evaluación de composición corporal.',
     },
     {
-      'name': 'Auspiciador 5',
-      'logo': 'assets/img/auspiciantes/a5.png',
-      'videoId': 'CevxZvSJLk8',
-      'desc': 'Beneficios: becas de excelencia y apoyo a giras internacionales.',
+      'name': 'TOGO',
+      'logo': 'assets/img/sponsors/togo.webp',
+      'videoId': 'wY2yE7gQcD8',
+      'desc': 'Becas de excelencia y apoyo a giras internacionales.',
     },
   ];
 
   void _openSponsor(BuildContext context, Map<String, String> sponsor) {
+    // Detalle SIN mostrar imagen
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _SponsorDetailSheet(sponsor: sponsor),
@@ -54,84 +73,184 @@ class BenefitsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    final cross = w < 640 ? 1 : 2; // Móvil 1, tablet y desktop 2
+    // 1 en móvil, 2 en tablet, 3 en desktop
+    final cross = w < 640 ? 1 : (w < 1024 ? 2 : 3);
 
     return Scaffold(
       appBar: const TopNavBar(),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: maxContentWidth),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Text(
-                  'Beneficios de nuestros SPONSORS',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Column(
+                    children: [
+                      Text(
+                        'Beneficios de nuestros SPONSORS',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .2,
+                            ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Aliados que impulsan nuestro crecimiento deportivo y formativo.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.black54),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 16),
+              ),
 
-                // Grid adaptable
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: sponsors.length,
+              // GRID optimizado: 1/2/3 columnas y tarjetas un poco más pequeñas
+              SliverPadding(
+                padding: const EdgeInsets.all(16),
+                sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: cross,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    mainAxisExtent: 200, // altura para logo + nombre
+                    crossAxisSpacing: 24,
+                    mainAxisSpacing: 28,
+                    childAspectRatio: 3 / 4, // alto > ancho (ideal fotos verticales)
                   ),
-                  itemBuilder: (_, i) {
-                    final sp = sponsors[i];
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => _openSponsor(context, sp),
-                      child: Tooltip(
-                        message: sp['name'] ?? '',
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.black12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 6,
-                                offset: const Offset(0, 3),
-                              )
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(10),
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: Image.asset(
-                                  sp['logo']!,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 32),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                sp['name'] ?? '',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) {
+                      final sp = sponsors[i];
+                      return _SponsorCard(
+                        sponsor: sp,
+                        onTap: () => _openSponsor(context, sp),
+                      );
+                    },
+                    childCount: sponsors.length,
+                  ),
                 ),
-              ],
-            ),
+              ),
+
+              // Agradecimiento (una sola imagen para evitar errores de asset)
+              const SliverToBoxAdapter(child: _GraciasSection()),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SponsorCard extends StatefulWidget {
+  final Map<String, String> sponsor;
+  final VoidCallback onTap;
+  const _SponsorCard({required this.sponsor, required this.onTap});
+
+  @override
+  State<_SponsorCard> createState() => _SponsorCardState();
+}
+
+class _SponsorCardState extends State<_SponsorCard> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.sponsor['name'] ?? '';
+    final logo = widget.sponsor['logo'] ?? '';
+    final desc = widget.sponsor['desc'] ?? '';
+
+    final card = AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      transform: _hover ? (Matrix4.identity()..scale(1.012)) : Matrix4.identity(),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(_hover ? 0.08 : 0.045),
+            blurRadius: _hover ? 14 : 9,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Imagen vertical ocupando todo
+          Image.asset(
+            logo,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: Colors.grey.shade200,
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image, size: 42),
+            ),
+          ),
+
+          // Degradado inferior para texto
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 28, 10, 10),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black54, Colors.black87],
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    desc,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white70, height: 1.15),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed: widget.onTap,
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Ver beneficios'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(.14),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        child: card,
       ),
     );
   }
@@ -167,85 +286,250 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
     super.dispose();
   }
 
+  List<String> _chipsFromDesc(String desc) {
+    final raw = desc.split(RegExp(r'[.,;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    return raw.isEmpty ? [desc] : raw;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final maxWidth = MediaQuery.of(context).size.width > 900 ? 800.0 : MediaQuery.of(context).size.width - 24;
+    final name = widget.sponsor['name'] ?? '';
+    final desc = widget.sponsor['desc'] ?? '';
+    final maxWidth = MediaQuery.of(context).size.width > 1000 ? 900.0 : MediaQuery.of(context).size.width - 24;
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header con logo y nombre
-              Row(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      widget.sponsor['logo'] ?? '',
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 36),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header simple SIN imagen
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      widget.sponsor['name'] ?? '',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-
-              // Descripción
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  widget.sponsor['desc'] ?? '',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Video
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: YoutubePlayer(controller: _yt),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
+                    IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Entendido'),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Cerrar',
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Chips de beneficios
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _chipsFromDesc(desc).map((t) {
+                      return Chip(
+                        label: Text(t),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        side: const BorderSide(color: Colors.black12),
+                        backgroundColor: Colors.grey.shade100,
+                      );
+                    }).toList(),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Video
+                AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: YoutubePlayer(controller: _yt),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.check_circle_outline),
+                        label: const Text('Entendido'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GraciasSection extends StatelessWidget {
+  const _GraciasSection();
+
+  static const double _heightMobile = 220;
+  static const double _heightWide = 260;
+
+  Future<void> _openWhatsApp() async {
+    final uri = Uri.parse(
+      'https://wa.me/$BenefitsScreen.kWhatsappE164?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}',
+    );
+    // por seguridad, si la interpolación arriba no compila en algunos analizadores:
+    final fixed = Uri.parse('https://wa.me/${BenefitsScreen.kWhatsappE164}?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}');
+    if (!await launchUrl(fixed, mode: LaunchMode.externalApplication)) {
+      throw Exception('No se pudo abrir WhatsApp');
+    }
+  }
+
+  Future<void> _shareMission() async {
+    final list = [
+      BenefitsScreen.missionText,
+      if (BenefitsScreen.missionUrl.toString().isNotEmpty) BenefitsScreen.missionUrl.toString(),
+    ];
+    await Share.share(list.join('\n'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 900;
+    final bannerHeight = isWide ? _heightWide : _heightMobile;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // Banner: fondo blur (cover) + misma imagen centrada (contain)
+          SizedBox(
+            height: bannerHeight,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Fondo desenfocado con cover
+                ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Image.asset(
+                    BenefitsScreen.kThanksImage,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+                // Overlay suave para contraste
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black26, Colors.black38],
+                    ),
+                  ),
+                ),
+                // Imagen centrada sin recorte (si el asset existe)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Image.asset(
+                      BenefitsScreen.kThanksImage,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.white,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_not_supported, size: 48),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              children: [
+                Text(
+                  '¡Gracias por unirse a la familia PortoAmbato! 💙⚽',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Su apoyo nos permite formar deportistas con valores, abrir oportunidades, '
+                  'potenciar el talento local y proyectarnos al mundo. ¡Juntos vamos más lejos!',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.black87, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: const [
+                    _ValuePill(icon: Icons.school, text: 'Formación con valores'),
+                    _ValuePill(icon: Icons.sports_soccer, text: 'Alto rendimiento'),
+                    _ValuePill(icon: Icons.public, text: 'Proyección internacional'),
+                    _ValuePill(icon: Icons.groups, text: 'Comunidad y familia'),
+                    _ValuePill(icon: Icons.workspace_premium, text: 'Excelencia y disciplina'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _openWhatsApp,
+                      icon: const Icon(Icons.volunteer_activism_outlined),
+                      label: const Text('Quiero ser auspiciante'),
+                    ),
+                    const SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      onPressed: _shareMission,
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Comparte nuestra misión'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ValuePill extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _ValuePill({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(icon, size: 18),
+      label: Text(text),
+      side: const BorderSide(color: Colors.black12),
+      backgroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
     );
   }
 }

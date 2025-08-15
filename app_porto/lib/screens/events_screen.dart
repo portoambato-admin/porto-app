@@ -23,13 +23,13 @@ class _EventsScreenState extends State<EventsScreen> {
           'Experiencia internacional de alto nivel con clubes invitados de la región. '
           'Desarrollo competitivo y vitrina para talento joven.',
       'images': [
-        'img/thumbs/eventos/panama2025/2025_1_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_2_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_3_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_4_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_5_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_6_thumb.webp',
-        'img/thumbs/eventos/panama2025/2025_7_thumb.webp',
+        'assets/img/eventos/panama2025/2025_1_thumb.webp',
+        'assets/img/eventos/panama2025/2025_2_thumb.webp',
+        'assets/img/eventos/panama2025/2025_3_thumb.webp',
+        'assets/img/eventos/panama2025/2025_4_thumb.webp',
+        'assets/img/eventos/panama2025/2025_5_thumb.webp',
+        'assets/img/eventos/panama2025/2025_6_thumb.webp',
+        'assets/img/eventos/panama2025/2025_7_thumb.webp',
       ],
     },
     {
@@ -37,14 +37,14 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Barranquilla',
       'year': 2024,
-      'cover': 'img/webp/eventos/barranquilla2024/2024_1.webp',
+      'cover': 'assets/img/eventosWebp/2024_1.webp',
       'description':
           'Torneo de referencia en el Caribe colombiano. Intensidad, disciplina y juego colectivo '
           'enfrentando a escuelas top del litoral.',
       'images': [
-        'img/thumbs/eventos/barranquilla2024/2024_1_thumb.webp',
-        'img/thumbs/eventos/barranquilla2024/2024_2_thumb.webp',
-        'img/thumbs/eventos/barranquilla2024/2024_3_thumb.webp',
+        'assets/img/eventos/barranquilla2024/2024_1_thumb.webp',
+        'assets/img/eventos/barranquilla2024/2024_2_thumb.webp',
+        'assets/img/eventos/barranquilla2024/2024_3_thumb.webp',
       ],
     },
     {
@@ -52,14 +52,14 @@ class _EventsScreenState extends State<EventsScreen> {
       'subtitle': 'Campeonato Internacional',
       'location': 'Medellín',
       'year': 2023,
-      'cover': 'img/webp/eventos/medellin2023/2023_3.webp',
+      'cover': 'assets/img/eventosWebp/2023_3.webp',
       'description':
           'Competencia con metodología formativa y enfoque en el fair play. '
           'Gran oportunidad para medición de rendimiento y convivencia.',
       'images': [
-        'img/thumbs/eventos/medellin2023/2023_1_thumb.webp',
-        'img/thumbs/eventos/medellin2023/2023_2_thumb.webp',
-        'img/thumbs/eventos/medellin2023/2023_3_thumb.webp',
+        'assets/img/eventos/medellin2023/2023_1_thumb.webp',
+        'assets/img/eventos/medellin2023/2023_2_thumb.webp',
+        'assets/img/eventos/medellin2023/2023_3_thumb.webp',
       ],
     },
   ];
