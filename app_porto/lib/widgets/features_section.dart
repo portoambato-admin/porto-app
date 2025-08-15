@@ -4,6 +4,8 @@ import '../screens/home_screen.dart';
 class FeaturesSection extends StatelessWidget {
   const FeaturesSection({super.key});
 
+  static const _routeConocenos = '/conocenos'; // <-- cámbiala si tu ruta es distinta
+
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
@@ -15,6 +17,13 @@ class FeaturesSection extends StatelessWidget {
       (Icons.payments, 'Pagos y mensualidades', 'Gestión clara y recordatorios.'),
       (Icons.groups_2, 'Profesores certificados', 'Equipo con experiencia y metodología.'),
     ];
+
+    void _onTapItem(int index) {
+      // índice 3 = "Profesores certificados"
+      if (index == 3) {
+        Navigator.of(context).pushNamed(_routeConocenos);
+      }
+    }
 
     return Center(
       child: ConstrainedBox(
@@ -40,27 +49,49 @@ class FeaturesSection extends StatelessWidget {
                 itemCount: items.length,
                 itemBuilder: (_, i) {
                   final (icon, title, desc) = items[i];
+                  final isProfes = i == 3;
+
                   return Card(
                     elevation: 0.5,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(icon, size: 28),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 8),
-                                Text(desc),
-                              ],
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _onTapItem(i),
+                      borderRadius: BorderRadius.circular(12),
+                      mouseCursor: SystemMouseCursors.click,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(icon, size: 28),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          title,
+                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                      if (isProfes)
+                                        const Tooltip(
+                                          message: 'Ir a Conócenos',
+                                          child: Icon(Icons.open_in_new, size: 18),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(desc),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   );

@@ -12,7 +12,9 @@ class BenefitsScreen extends StatelessWidget {
   static const double maxContentWidth = 1200;
 
   // 👉 Configura estos valores
-  static final Uri missionUrl = Uri.parse('https://tu-sitio.com'); // <-- tu URL real
+  static final Uri missionUrl = Uri.parse(
+    'https://tu-sitio.com',
+  ); // <-- tu URL real
   static const String missionText =
       'Súmate a la misión de PortoAmbato: formar deportistas con valores y alto rendimiento.';
 
@@ -30,31 +32,61 @@ class BenefitsScreen extends StatelessWidget {
       'name': 'SANFRA',
       'logo': 'assets/img/sponsors/sanfra.webp',
       'videoId': 'ubQ0YvAggJg',
-      'desc': 'Sanfra Móvil: todo en una sola app. Disponible en Google Play y App Store.',
+      'desc':
+          'Sanfra Móvil: todo en una sola app. Disponible en Google Play y App Store.',
     },
     {
       'name': 'MI NEGOCIO',
       'logo': 'assets/img/sponsors/minegocio.webp',
       'videoId': 'RZP6sA1hTEE',
-      'desc': '10% de descuento en todos los planes para nuestra comunidad.',
+      'desc':
+          '10% de descuento en todos los planes para nuestra comunidad PortoAmbato.',
     },
     {
-      'name': 'MUNDITO',
+      'name': 'MUNDITODO',
       'logo': 'assets/img/sponsors/mundi.webp',
-      'videoId': '5NV6Rdv1a3I',
-      'desc': 'Cobertura fotográfica profesional y difusión en redes.',
+      'videoId': 'HGx_lDLm0X8',
+      'desc': 'Obtén el 10% descuento en productos seleccionados.',
     },
     {
       'name': 'OPALO',
       'logo': 'assets/img/sponsors/opalo.webp',
       'videoId': '7DW1B0QKObE',
-      'desc': 'Charlas de nutrición deportiva y evaluación de composición corporal.',
+      'desc':
+          'Conoce sus proyectos y recibe un descuento por ser parte de la comunidad PortoAmbato.',
     },
     {
       'name': 'TOGO',
       'logo': 'assets/img/sponsors/togo.webp',
       'videoId': 'wY2yE7gQcD8',
-      'desc': 'Becas de excelencia y apoyo a giras internacionales.',
+      'desc':
+          'Obtén descuento en bebidas de hidratación por ser parte de la familia PortoAmbato.',
+    },
+    {
+      'name': 'MODERNA DENTAL CONCEPT ',
+      'logo': 'assets/img/sponsors/moderna.webp',
+      'videoId': 'xq9iypL-mMs',
+      'desc': 'Obtén un descuento especial para nuestros niños de PortoAmbato.',
+    },
+    {
+      'name': 'TARCO',
+      'logo': 'assets/img/sponsors/tarco.webp',
+      'videoId': 'C7nWZDIf9QI',
+      'desc':
+          'Obtén descuento en viajes seleccionados junto a la selección del Ecuador por ser parte de la familia PortoAmbato.',
+    },
+    {
+      'name': 'PASSPORT',
+      'logo': 'assets/img/sponsors/pass.webp',
+      'videoId': 'cQzg_s7waBs',
+      'desc':
+          'Obtén descuento en bebidas de hidratación por ser parte de la familia PortoAmbato.',
+    },
+    {
+      'name': 'WAIIKIKI',
+      'logo': 'assets/img/sponsors/waikiki.webp',
+      'videoId': 'SykfmJhNSQs',
+      'desc': 'Obtén descuentos por ser parte de la familia PortoAmbato.',
     },
   ];
 
@@ -91,7 +123,8 @@ class BenefitsScreen extends StatelessWidget {
                       Text(
                         'Beneficios de nuestros SPONSORS',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(
                               fontWeight: FontWeight.w900,
                               letterSpacing: .2,
                             ),
@@ -100,7 +133,9 @@ class BenefitsScreen extends StatelessWidget {
                       Text(
                         'Aliados que impulsan nuestro crecimiento deportivo y formativo.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.black54),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyLarge?.copyWith(color: Colors.black54),
                       ),
                     ],
                   ),
@@ -115,18 +150,16 @@ class BenefitsScreen extends StatelessWidget {
                     crossAxisCount: cross,
                     crossAxisSpacing: 24,
                     mainAxisSpacing: 28,
-                    childAspectRatio: 3 / 4, // alto > ancho (ideal fotos verticales)
+                    childAspectRatio:
+                        3 / 4, // alto > ancho (ideal fotos verticales)
                   ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) {
-                      final sp = sponsors[i];
-                      return _SponsorCard(
-                        sponsor: sp,
-                        onTap: () => _openSponsor(context, sp),
-                      );
-                    },
-                    childCount: sponsors.length,
-                  ),
+                  delegate: SliverChildBuilderDelegate((context, i) {
+                    final sp = sponsors[i];
+                    return _SponsorCard(
+                      sponsor: sp,
+                      onTap: () => _openSponsor(context, sp),
+                    );
+                  }, childCount: sponsors.length),
                 ),
               ),
 
@@ -162,7 +195,9 @@ class _SponsorCardState extends State<_SponsorCard> {
     final card = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
-      transform: _hover ? (Matrix4.identity()..scale(1.012)) : Matrix4.identity(),
+      transform: _hover
+          ? (Matrix4.identity()..scale(1.012))
+          : Matrix4.identity(),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -248,10 +283,7 @@ class _SponsorCardState extends State<_SponsorCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: InkWell(
-        onTap: widget.onTap,
-        child: card,
-      ),
+      child: InkWell(onTap: widget.onTap, child: card),
     );
   }
 }
@@ -287,7 +319,11 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
   }
 
   List<String> _chipsFromDesc(String desc) {
-    final raw = desc.split(RegExp(r'[.,;]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final raw = desc
+        .split(RegExp(r'[.,;]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
     return raw.isEmpty ? [desc] : raw;
   }
 
@@ -295,7 +331,9 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
   Widget build(BuildContext context) {
     final name = widget.sponsor['name'] ?? '';
     final desc = widget.sponsor['desc'] ?? '';
-    final maxWidth = MediaQuery.of(context).size.width > 1000 ? 900.0 : MediaQuery.of(context).size.width - 24;
+    final maxWidth = MediaQuery.of(context).size.width > 1000
+        ? 900.0
+        : MediaQuery.of(context).size.width - 24;
 
     return Container(
       decoration: const BoxDecoration(
@@ -316,7 +354,9 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
                     Expanded(
                       child: Text(
                         name,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -385,11 +425,13 @@ class _GraciasSection extends StatelessWidget {
   static const double _heightWide = 260;
 
   Future<void> _openWhatsApp() async {
-    final uri = Uri.parse(
+    Uri.parse(
       'https://wa.me/$BenefitsScreen.kWhatsappE164?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}',
     );
     // por seguridad, si la interpolación arriba no compila en algunos analizadores:
-    final fixed = Uri.parse('https://wa.me/${BenefitsScreen.kWhatsappE164}?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}');
+    final fixed = Uri.parse(
+      'https://wa.me/${BenefitsScreen.kWhatsappE164}?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}',
+    );
     if (!await launchUrl(fixed, mode: LaunchMode.externalApplication)) {
       throw Exception('No se pudo abrir WhatsApp');
     }
@@ -398,7 +440,8 @@ class _GraciasSection extends StatelessWidget {
   Future<void> _shareMission() async {
     final list = [
       BenefitsScreen.missionText,
-      if (BenefitsScreen.missionUrl.toString().isNotEmpty) BenefitsScreen.missionUrl.toString(),
+      if (BenefitsScreen.missionUrl.toString().isNotEmpty)
+        BenefitsScreen.missionUrl.toString(),
     ];
     await Share.share(list.join('\n'));
   }
@@ -418,50 +461,7 @@ class _GraciasSection extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // Banner: fondo blur (cover) + misma imagen centrada (contain)
-          SizedBox(
-            height: bannerHeight,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Fondo desenfocado con cover
-                ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Image.asset(
-                    BenefitsScreen.kThanksImage,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-                // Overlay suave para contraste
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black26, Colors.black38],
-                    ),
-                  ),
-                ),
-                // Imagen centrada sin recorte (si el asset existe)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Image.asset(
-                      BenefitsScreen.kThanksImage,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Container(
-                        color: Colors.white,
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.image_not_supported, size: 48),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
+          // 🔹 Primero el texto
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(
@@ -469,14 +469,19 @@ class _GraciasSection extends StatelessWidget {
                 Text(
                   '¡Gracias por unirse a la familia PortoAmbato! 💙⚽',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Su apoyo nos permite formar deportistas con valores, abrir oportunidades, '
-                  'potenciar el talento local y proyectarnos al mundo. ¡Juntos vamos más lejos!',
+                  'potenciar el talento local y proyectarnos al mundo. ¡Juntos vamos más lejos! ',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.black87, height: 1.35),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.black87,
+                    height: 1.35,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -484,11 +489,23 @@ class _GraciasSection extends StatelessWidget {
                   spacing: 10,
                   runSpacing: 10,
                   children: const [
-                    _ValuePill(icon: Icons.school, text: 'Formación con valores'),
-                    _ValuePill(icon: Icons.sports_soccer, text: 'Alto rendimiento'),
-                    _ValuePill(icon: Icons.public, text: 'Proyección internacional'),
+                    _ValuePill(
+                      icon: Icons.school,
+                      text: 'Formación con valores',
+                    ),
+                    _ValuePill(
+                      icon: Icons.sports_soccer,
+                      text: 'Alto rendimiento',
+                    ),
+                    _ValuePill(
+                      icon: Icons.public,
+                      text: 'Proyección internacional',
+                    ),
                     _ValuePill(icon: Icons.groups, text: 'Comunidad y familia'),
-                    _ValuePill(icon: Icons.workspace_premium, text: 'Excelencia y disciplina'),
+                    _ValuePill(
+                      icon: Icons.workspace_premium,
+                      text: 'Excelencia y disciplina',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -507,6 +524,47 @@ class _GraciasSection extends StatelessWidget {
                       label: const Text('Comparte nuestra misión'),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+
+          // 🔹 Luego la imagen
+          SizedBox(
+            height: bannerHeight,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Image.asset(
+                    BenefitsScreen.kThanksImage,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black26, Colors.black38],
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Image.asset(
+                      BenefitsScreen.kThanksImage,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.white,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_not_supported, size: 48),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

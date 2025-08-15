@@ -16,6 +16,24 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     }
   }
 
+  void _showComingSoon(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Próximamente'),
+        content: const Text(
+          'Estamos trabajando en el portal de usuarios para que padres, jugadores y profesores '
+          'puedan acceder a inscripciones, pagos, evaluaciones y mucho más.\n\n'
+          'Muy pronto podrás iniciar sesión, gestionar tu perfil y recibir notificaciones en tiempo real. '
+          '¡Gracias por ser parte de la familia PortoAmbato! 💙⚽',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Entendido')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSmall = MediaQuery.of(context).size.width < 900;
@@ -77,7 +95,11 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                   onPressed: () => Navigator.pushNamed(context, '/conocenos'),
                 ),
                 const SizedBox(width: 12),
-                FilledButton(onPressed: () {}, child: const Text('Ingresar')),
+                // 🔹 Ahora muestra el diálogo "Próximamente" en escritorio también
+                FilledButton(
+                  onPressed: () => _showComingSoon(context),
+                  child: const Text('Ingresar'),
+                ),
               ] else
                 IconButton(
                   onPressed: () {
@@ -118,7 +140,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                               child: FilledButton(
                                 onPressed: () {
                                   Navigator.of(sheetCtx).pop();
-                                  Navigator.of(context, rootNavigator: true).pushNamed('/login');
+                                  _showComingSoon(context);
                                 },
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size.fromHeight(48),

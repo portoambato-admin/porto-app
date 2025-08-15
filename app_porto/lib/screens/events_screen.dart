@@ -315,11 +315,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
     return Scaffold(
       appBar: const TopNavBar(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showStaticImagesInfo,
-        icon: const Icon(Icons.add_photo_alternate),
-        label: const Text('Agregar imágenes'),
-      ),
+      
       body: ListView.builder(
         padding: EdgeInsets.zero,
         itemCount: _events.length + 1, // +1 para el banner "próximamente"

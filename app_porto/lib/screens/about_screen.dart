@@ -45,7 +45,7 @@ class AboutScreen extends StatelessWidget {
 
   static final List<String> facilities = [
     'assets/img/conocenos/instalaciones/ins_1.webp',
-    'assets/img/conocenos/instalaciones/ins_2.webp',
+    'assets/img/conocenos/instalaciones/ins_2.jpg',
     'assets/img/conocenos/instalaciones/ins_3.webp',
     'assets/img/conocenos/instalaciones/ins_4.webp',
   ];
@@ -96,7 +96,7 @@ class AboutScreen extends StatelessWidget {
                 _FacilitiesGallery(images: facilities),
                 const SizedBox(height: 12),
                 const Text(
-                  'Contamos con canchas de césped, gimnasio, aula audiovisual y espacios seguros para el desarrollo deportivo.',
+                  'Contamos con canchas de césped natural, gimnasio y espacios seguros para el desarrollo deportivo.',
                   textAlign: TextAlign.center,
                 ),
               ],
