@@ -43101,12 +43101,12 @@ $3(a,b,c){var s=null
 return A.cf(B.U,B.rR,B.u,B.ap,s,s,s,s,s,s,s,s,s)},
 $S:17}
 A.D_.prototype={
-aw(){return new A.Il(A.af(["opponent","(Por confirmar)","category","Formativa","tournament","Copa la Hora","homeAway","Local","location","Estadio sint\xe9tico FDT, Ambato","puntoEncuentro","Ingreso puerta principal","presentarseAntesMin",20],t.N,t.z),B.K)}}
+aw(){return new A.Il(A.af(["opponent","Sporting","category","Formativa","tournament","Copa la Hora","homeAway","Semifinal","location","Estadio sint\xe9tico FDT, Ambato","puntoEncuentro","Ingreso puerta principal","presentarseAntesMin",20],t.N,t.z),B.K)}}
 A.Il.prototype={
 aR(){var s,r,q=this
 q.b9()
 s=new A.ep(Date.now(),0,!1)
-r=A.aI9(A.Dw(s),A.iS(s),A.TL(s),15,0,0,0)
+r=A.aI9(A.Dw(s),A.iS(s),A.TL(s),13,0,0,0)
 r=r.tQ(A.dv(B.h.bo(7-A.TM(r),7),0,0).a)
 q.f=!r.Jq(s)?r.tQ(6048e8):r
 q.NT()
