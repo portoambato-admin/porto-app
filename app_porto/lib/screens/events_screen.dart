@@ -280,34 +280,6 @@ class _EventsScreenState extends State<EventsScreen> {
 
   // ---------- UI ----------
 
-  void _showStaticImagesInfo() {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Agregar imágenes (estático)'),
-        content: const SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '1) Coloca tus archivos en: img/eventos/\n'
-                '2) Decláralos en pubspec.yaml (tu carpeta base actual)\n'
-                '3) Agrega rutas en "images" o cambia "cover" por tu portada.\n\n'
-                'Ej: "images": ["img/eventos/brisas1.jpg", "img/eventos/brisas2.jpg"]',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

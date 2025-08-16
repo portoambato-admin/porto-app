@@ -26,7 +26,7 @@ class BenefitsScreen extends StatelessWidget {
   // Imagen de agradecimiento (usa la misma para fondo y centro)
   static const String kThanksImage = 'assets/img/sponsors/agradecimiento.webp';
 
-  // Data: cada auspiciante con imagen (vertical), nombre, descripción y videoId
+  // Data
   static final List<Map<String, String>> sponsors = [
     {
       'name': 'SANFRA',
@@ -66,32 +66,31 @@ class BenefitsScreen extends StatelessWidget {
       'name': 'MODERNA DENTAL CONCEPT ',
       'logo': 'assets/img/sponsors/moderna.webp',
       'videoId': 'xq9iypL-mMs',
-      'desc': 'Obtén un descuento especial para nuestros niños de PortoAmbato.',
+      'desc': 'Obtén un descuento especial para nuestros niños de PortoAmbato.',
     },
     {
       'name': 'TARCO',
       'logo': 'assets/img/sponsors/tarco.webp',
       'videoId': 'C7nWZDIf9QI',
       'desc':
-          'Obtén descuento en viajes seleccionados junto a la selección del Ecuador por ser parte de la familia PortoAmbato.',
+          'Obtén descuento en bebidas de hidratación por ser parte de la familia PortoAmbato.',
     },
     {
       'name': 'PASSPORT',
       'logo': 'assets/img/sponsors/pass.webp',
       'videoId': 'cQzg_s7waBs',
       'desc':
-          'Obtén descuento en bebidas de hidratación por ser parte de la familia PortoAmbato.',
+          'Obtén descuento en viajes seleccionados junto a la selección del Ecuador por ser parte de la familia PortoAmbato.',
     },
     {
       'name': 'WAIIKIKI',
       'logo': 'assets/img/sponsors/waikiki.webp',
       'videoId': 'SykfmJhNSQs',
-      'desc': 'Obtén descuentos por ser parte de la familia PortoAmbato.',
+      'desc': 'Obtén descuentos por ser parte de la familia PortoAmbato.',
     },
   ];
 
   void _openSponsor(BuildContext context, Map<String, String> sponsor) {
-    // Detalle SIN mostrar imagen
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -105,7 +104,6 @@ class BenefitsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-    // 1 en móvil, 2 en tablet, 3 en desktop
     final cross = w < 640 ? 1 : (w < 1024 ? 2 : 3);
 
     return Scaffold(
@@ -123,8 +121,7 @@ class BenefitsScreen extends StatelessWidget {
                       Text(
                         'Beneficios de nuestros SPONSORS',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium
-                            ?.copyWith(
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.w900,
                               letterSpacing: .2,
                             ),
@@ -133,16 +130,14 @@ class BenefitsScreen extends StatelessWidget {
                       Text(
                         'Aliados que impulsan nuestro crecimiento deportivo y formativo.',
                         textAlign: TextAlign.center,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodyLarge?.copyWith(color: Colors.black54),
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.black54),
                       ),
                     ],
                   ),
                 ),
               ),
 
-              // GRID optimizado: 1/2/3 columnas y tarjetas un poco más pequeñas
+              // GRID: más alto para permitir más texto visible
               SliverPadding(
                 padding: const EdgeInsets.all(16),
                 sliver: SliverGrid(
@@ -150,20 +145,22 @@ class BenefitsScreen extends StatelessWidget {
                     crossAxisCount: cross,
                     crossAxisSpacing: 24,
                     mainAxisSpacing: 28,
-                    childAspectRatio:
-                        3 / 4, // alto > ancho (ideal fotos verticales)
+                    // Antes: 3/4  →  ahora: 2/3 (más alto)
+                    childAspectRatio: 2 / 3,
                   ),
-                  delegate: SliverChildBuilderDelegate((context, i) {
-                    final sp = sponsors[i];
-                    return _SponsorCard(
-                      sponsor: sp,
-                      onTap: () => _openSponsor(context, sp),
-                    );
-                  }, childCount: sponsors.length),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) {
+                      final sp = sponsors[i];
+                      return _SponsorCard(
+                        sponsor: sp,
+                        onTap: () => _openSponsor(context, sp),
+                      );
+                    },
+                    childCount: sponsors.length,
+                  ),
                 ),
               ),
 
-              // Agradecimiento (una sola imagen para evitar errores de asset)
               const SliverToBoxAdapter(child: _GraciasSection()),
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
@@ -195,9 +192,7 @@ class _SponsorCardState extends State<_SponsorCard> {
     final card = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
-      transform: _hover
-          ? (Matrix4.identity()..scale(1.012))
-          : Matrix4.identity(),
+      transform: _hover ? (Matrix4.identity()..scale(1.012)) : Matrix4.identity(),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -214,7 +209,7 @@ class _SponsorCardState extends State<_SponsorCard> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Imagen vertical ocupando todo
+          // Imagen vertical
           Image.asset(
             logo,
             fit: BoxFit.cover,
@@ -225,11 +220,11 @@ class _SponsorCardState extends State<_SponsorCard> {
             ),
           ),
 
-          // Degradado inferior para texto
+          // Panel inferior (más alto, sin "…")
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 28, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 32, 10, 10),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -251,20 +246,24 @@ class _SponsorCardState extends State<_SponsorCard> {
                       fontSize: 15,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
+
+                  // 🔹 Más líneas visibles y fade (no ellipsis)
                   Text(
                     desc,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    maxLines: kIsWeb ? 4 : 5, // muestra más en móvil
+                    overflow: TextOverflow.fade,
+                    softWrap: true,
                     style: const TextStyle(color: Colors.white70, height: 1.15),
                   ),
-                  const SizedBox(height: 8),
+
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonalIcon(
                       onPressed: widget.onTap,
                       icon: const Icon(Icons.play_circle_outline),
-                      label: const Text('Ver beneficios'),
+                      label: const Text('Ver beneficios y video'),
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.white.withOpacity(.14),
                         foregroundColor: Colors.white,
@@ -318,15 +317,6 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
     super.dispose();
   }
 
-  List<String> _chipsFromDesc(String desc) {
-    final raw = desc
-        .split(RegExp(r'[.,;]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    return raw.isEmpty ? [desc] : raw;
-  }
-
   @override
   Widget build(BuildContext context) {
     final name = widget.sponsor['name'] ?? '';
@@ -347,16 +337,17 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header simple SIN imagen
+                // Header
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         name,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
+                              fontWeight: FontWeight.w900,
+                            ),
                       ),
                     ),
                     IconButton(
@@ -366,26 +357,15 @@ class _SponsorDetailSheetState extends State<_SponsorDetailSheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
 
-                // Chips de beneficios
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _chipsFromDesc(desc).map((t) {
-                      return Chip(
-                        label: Text(t),
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        side: const BorderSide(color: Colors.black12),
-                        backgroundColor: Colors.grey.shade100,
-                      );
-                    }).toList(),
-                  ),
+                // 🔹 Descripción completa (sin truncar)
+                Text(
+                  desc,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
                 // Video
                 AspectRatio(
@@ -425,10 +405,6 @@ class _GraciasSection extends StatelessWidget {
   static const double _heightWide = 260;
 
   Future<void> _openWhatsApp() async {
-    Uri.parse(
-      'https://wa.me/$BenefitsScreen.kWhatsappE164?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}',
-    );
-    // por seguridad, si la interpolación arriba no compila en algunos analizadores:
     final fixed = Uri.parse(
       'https://wa.me/${BenefitsScreen.kWhatsappE164}?text=${Uri.encodeComponent(BenefitsScreen.whatsappMessage)}',
     );
@@ -461,7 +437,7 @@ class _GraciasSection extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // 🔹 Primero el texto
+          // Texto
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(
@@ -470,8 +446,8 @@ class _GraciasSection extends StatelessWidget {
                   '¡Gracias por unirse a la familia PortoAmbato! 💙⚽',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
+                        fontWeight: FontWeight.w900,
+                      ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -479,9 +455,9 @@ class _GraciasSection extends StatelessWidget {
                   'potenciar el talento local y proyectarnos al mundo. ¡Juntos vamos más lejos! ',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.black87,
-                    height: 1.35,
-                  ),
+                        color: Colors.black87,
+                        height: 1.35,
+                      ),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -489,23 +465,11 @@ class _GraciasSection extends StatelessWidget {
                   spacing: 10,
                   runSpacing: 10,
                   children: const [
-                    _ValuePill(
-                      icon: Icons.school,
-                      text: 'Formación con valores',
-                    ),
-                    _ValuePill(
-                      icon: Icons.sports_soccer,
-                      text: 'Alto rendimiento',
-                    ),
-                    _ValuePill(
-                      icon: Icons.public,
-                      text: 'Proyección internacional',
-                    ),
+                    _ValuePill(icon: Icons.school, text: 'Formación con valores'),
+                    _ValuePill(icon: Icons.sports_soccer, text: 'Alto rendimiento'),
+                    _ValuePill(icon: Icons.public, text: 'Proyección internacional'),
                     _ValuePill(icon: Icons.groups, text: 'Comunidad y familia'),
-                    _ValuePill(
-                      icon: Icons.workspace_premium,
-                      text: 'Excelencia y disciplina',
-                    ),
+                    _ValuePill(icon: Icons.workspace_premium, text: 'Excelencia y disciplina'),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -529,7 +493,7 @@ class _GraciasSection extends StatelessWidget {
             ),
           ),
 
-          // 🔹 Luego la imagen
+          // Imagen
           SizedBox(
             height: bannerHeight,
             child: Stack(

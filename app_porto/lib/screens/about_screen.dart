@@ -8,9 +8,9 @@ class AboutScreen extends StatelessWidget {
 
   // ===== Datos estáticos (cámbialos por los reales) =====
   static const Map<String, String> ceo = {
-    'name': 'Christian Llerena',
-    'role': 'Gerente General',
-    'photo': 'assets/img/team/gerente.jpg',
+    'name': 'Mg. Christian Llerena',
+    'role': 'Director Deportivo',
+    'photo': 'assets/img/profes/gerente.jpg',
     'bio':
         'Apasionado por el fútbol formativo y el desarrollo integral. '
         '5+ años liderando proyectos deportivos con enfoque metodológico y humano.',
@@ -21,25 +21,29 @@ class AboutScreen extends StatelessWidget {
       'name': 'Victor Flores',
       'role': 'Profesor · Sub-4 / Sub-6 / Sub-8 / Sub-12',
       'photo': 'assets/img/profes/p1.webp',
-      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
+      'bio': '• Licenciado en Pedagogía de la Actividad Física y Deporte.\n'
+          '• Certificación CONMEBOL Enfoque Lúdico Fútbol Infantil.',
     },
     {
       'name': 'Michelle Cherez',
       'role': 'Profesor · Sub-4',
       'photo': 'assets/img/profes/p2.webp',
-      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
+      'bio': '• Licenciado en Pedagogía de la Actividad Física y Deporte.\n'
+          '• Certificación CONMEBOL Enfoque Lúdico Fútbol Infantil.',
     },
     {
       'name': 'Klever de la Cruz',
       'role': 'Profesor · Sub-4 / Sub-6 / Sub-10',
       'photo': 'assets/img/profes/p3.webp',
-      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
+      'bio': '• Licenciado en Pedagogía de la Actividad Física y Deporte.\n'
+          '• Certificación CONMEBOL Enfoque Lúdico Fútbol Infantil.',
     },
     {
       'name': 'Alvaro Ortiz',
       'role': 'Profesor · Sub-4 ',
       'photo': 'assets/img/profes/p4.webp',
-      'bio': 'Licenciado en Pedagogía de la Actividad Física y Deporte.',
+      'bio': '• Licenciado en Pedagogía de la Actividad Física y Deporte.\n'
+          '• Certificación CONMEBOL Enfoque Lúdico Fútbol Infantil.',
     },
   ];
 
@@ -68,13 +72,19 @@ class AboutScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // ====== 1) Gerente General (Hero lateral) ======
-                Text('Conócenos', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Conócenos',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 16),
                 _CeoHero(data: ceo, isWide: isWide),
                 const SizedBox(height: 28),
 
                 // ====== 2) Profesores ======
-                Text('Profesores', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Profesores',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 12),
                 GridView.builder(
                   shrinkWrap: true,
@@ -91,7 +101,10 @@ class AboutScreen extends StatelessWidget {
                 const SizedBox(height: 28),
 
                 // ====== 3) Instalaciones (galería simple) ======
-                Text('Instalaciones', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Instalaciones',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 12),
                 _FacilitiesGallery(images: facilities),
                 const SizedBox(height: 12),
@@ -113,17 +126,90 @@ class _CeoHero extends StatelessWidget {
   final bool isWide;
   const _CeoHero({required this.data, required this.isWide});
 
+  void _openDetail(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(data['name'] ?? ''),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            // Evita overflow: limita la altura del contenido del diálogo
+            maxWidth: 520,
+            maxHeight: h * 0.75,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.asset(
+                      data['photo'] ?? '',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.black12,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.person, size: 40, color: Colors.black45),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    data['role'] ?? '',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    data['bio'] ?? '',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // ===== Zona para agregar más información del gerente =====
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Información adicional:\n\n'
+                    '• Mg. Marketing estratégico.\n'
+                    '• Ing. Negocios y Marketing Deportivo.\n'
+                    '• Mg. Docencia universitaria.\n'
+                    '• Director Técnico de Fútbol - Instructor de Fútbol Infantil (ATFA, Argentina).\n'
+                    '• Oficial de patrocinio, Liga Pro (Ecuador).\n'
+                    '• Diplomado en gestión deportiva (CONMEBOL Evolución).\n'
+                    '• Certificación CONMEBOL Enfoque Lúdico Fútbol Infantil.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final photo = data['photo'] ?? '';
     final name = data['name'] ?? '';
     final role = data['role'] ?? '';
-    final bio  = data['bio'] ?? '';
+    final bio = data['bio'] ?? '';
 
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: AspectRatio(
-        aspectRatio: 4/3,
+        aspectRatio: 4 / 3,
         child: Image.asset(
           photo,
           fit: BoxFit.cover,
@@ -144,11 +230,23 @@ class _CeoHero extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(name, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              name,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 4),
             Text(role, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             Text(bio, style: Theme.of(context).textTheme.bodyLarge),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: () => _openDetail(context),
+                icon: const Icon(Icons.visibility),
+                label: const Text('Ver más'),
+              ),
+            ),
           ],
         ),
       ),
@@ -179,41 +277,47 @@ class _CoachCard extends StatelessWidget {
   const _CoachCard({required this.coach});
 
   void _openDetail(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: Text(coach['name'] ?? ''),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: 16/9,
-                  child: Image.asset(
-                    coach['photo'] ?? '',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Colors.black12,
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.person, size: 40, color: Colors.black45),
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 520,
+            maxHeight: h * 0.75, // límite de altura para evitar overflow
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.asset(
+                      coach['photo'] ?? '',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.black12,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.person, size: 40, color: Colors.black45),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(coach['role'] ?? '', style: Theme.of(context).textTheme.titleMedium),
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(coach['bio'] ?? ''),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(coach['role'] ?? '', style: Theme.of(context).textTheme.titleMedium),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(coach['bio'] ?? ''),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
