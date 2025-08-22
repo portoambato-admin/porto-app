@@ -26,8 +26,9 @@ class HeroSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Academia Oficial de Fútbol Porto Ambato. Entrenamientos por categorías, '
-          'evaluaciones de rendimiento y gestión integral para familias y estudiantes.',
+          'Entrenamientos por categorías, '
+          'evaluaciones de rendimiento y gestión integral para estudiantes.'
+          'Proyección deportiva con conexiones a clubes profesionales de otros países',
           textAlign: isSmall ? TextAlign.center : TextAlign.start,
           style: Theme.of(
             context,

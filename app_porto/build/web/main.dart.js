@@ -43030,7 +43030,7 @@ A.aea.prototype={
 $0(){return A.cr(this.a,!1).dZ()},
 $S:0}
 A.aed.prototype={
-$0(){return this.a.lB("https://facebook.com/portoambato")},
+$0(){return this.a.lB("https://www.facebook.com/profile.php?id=100063497086028")},
 $S:0}
 A.aee.prototype={
 $0(){return this.a.lB("https://instagram.com/portoambato")},
@@ -43068,7 +43068,7 @@ I(a){var s,r,q,p,o=null,n=A.bk(a,o,t.l).w.a.a<900,m=n?B.E:B.aQ,l=n?B.c8:B.b9,k=A
 l=A.aD("Formamos talento. Inspiramos disciplina.",o,o,o,o,k==null?o:k.anB(B.bw,1.1),l,o)
 k=n?B.c8:B.b9
 s=A.D(a).ok.w
-k=A.aD("Academia Oficial de F\xfatbol Porto Ambato. Entrenamientos por categor\xedas, evaluaciones de rendimiento y gesti\xf3n integral para familias y estudiantes.",o,o,o,o,s==null?o:s.ce(B.a6),k,o)
+k=A.aD("Entrenamientos por categor\xedas, evaluaciones de rendimiento y gesti\xf3n integral para estudiantes.Proyecci\xf3n deportiva con conexiones a clubes profesionales\xa0de\xa0otros\xa0pa\xedses",o,o,o,o,s==null?o:s.ce(B.a6),k,o)
 s=n?B.j1:B.cl
 r=t.p
 q=A.bZ(A.a([l,B.bj,k,B.iS,A.l4(s,A.a([A.ql(B.rT,B.all,new A.afo()),A.o5(B.i1,B.alW,new A.afp(a))],r),12,12)],r),m,B.t,B.C)
@@ -43101,12 +43101,12 @@ $3(a,b,c){var s=null
 return A.cf(B.U,B.rR,B.u,B.ap,s,s,s,s,s,s,s,s,s)},
 $S:17}
 A.D_.prototype={
-aw(){return new A.Il(A.af(["opponent","Sporting","category","Formativa","tournament","Copa la Hora","homeAway","Semifinal","location","Estadio sint\xe9tico FDT, Ambato","puntoEncuentro","Ingreso puerta principal","presentarseAntesMin",20],t.N,t.z),B.K)}}
+aw(){return new A.Il(A.af(["opponent","KVE","category","Formativa","tournament","Copa la Hora","homeAway","Sub-6","location","Estadio Bellacista, Ambato","puntoEncuentro","Ingreso puerta principal","presentarseAntesMin",20],t.N,t.z),B.K)}}
 A.Il.prototype={
 aR(){var s,r,q=this
 q.b9()
 s=new A.ep(Date.now(),0,!1)
-r=A.aI9(A.Dw(s),A.iS(s),A.TL(s),13,0,0,0)
+r=A.aI9(A.Dw(s),A.iS(s),A.TL(s),11,0,0,0)
 r=r.tQ(A.dv(B.h.bo(7-A.TM(r),7),0,0).a)
 q.f=!r.Jq(s)?r.tQ(6048e8):r
 q.NT()

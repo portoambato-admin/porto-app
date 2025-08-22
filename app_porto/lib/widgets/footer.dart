@@ -59,7 +59,7 @@ class Footer extends StatelessWidget {
                   _SocialIcon(
                     icon: const Icon(Icons.facebook, color: Colors.white, size: 28),
                     label: 'Facebook',
-                    onTap: () => _launchUrl('https://facebook.com/portoambato'),
+                    onTap: () => _launchUrl('https://www.facebook.com/profile.php?id=100063497086028'),
                   ),
 
                   // Instagram (SVG)

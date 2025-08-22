@@ -15,16 +15,16 @@ class _NextMatchSectionState extends State<NextMatchSection> {
   // Día de la semana (usa constantes de DateTime): 
   // DateTime.monday ... DateTime.sunday
   static const int kWeekday = DateTime.sunday; // Ej: sábado
-  static const int kHour = 15;    // 0-23
+  static const int kHour = 11;    // 0-23
   static const int kMinute = 0; // 0-59
 
   // Datos del partido
   final Map<String, dynamic> _match = {
-    'opponent': '(Por confirmar)',
+    'opponent': 'KVE',
     'category': 'Formativa',
     'tournament': 'Copa la Hora',
-    'homeAway': 'Local', // 'Visitante'
-    'location': 'Estadio sintético FDT, Ambato',
+    'homeAway': 'Sub-6', // 'Visitante'
+    'location': 'Estadio Bellacista, Ambato',
     'puntoEncuentro': 'Ingreso puerta principal',
     'presentarseAntesMin': 20,
   };
