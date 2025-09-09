@@ -24,7 +24,7 @@ class _NextMatchSectionState extends State<NextMatchSection> {
     'category': 'Formativa',
     'tournament': 'Copa la Hora',
     'homeAway': 'Sub-6', // 'Visitante'
-    'location': 'Estadio Bellacista, Ambato',
+    'location': 'Estadio Bellavista, Ambato',
     'puntoEncuentro': 'Ingreso puerta principal',
     'presentarseAntesMin': 20,
   };

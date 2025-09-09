@@ -1,3 +1,4 @@
+// lib/widgets/top_navbar.dart
 import 'package:flutter/material.dart';
 
 class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
@@ -7,7 +8,6 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(72);
 
   void _navAndClose(BuildContext ctx, String route, {bool useRoot = true}) {
-    // Cerrar el bottom sheet si está abierto, luego navegar
     Navigator.of(ctx).pop();
     if (useRoot) {
       Navigator.of(ctx, rootNavigator: true).pushNamed(route);
@@ -16,21 +16,12 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     }
   }
 
-  void _showComingSoon(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Próximamente'),
-        content: const Text(
-          'Estamos trabajando en el portal de usuarios para que padres, jugadores y profesores '
-          'puedan acceder a inscripciones, pagos, evaluaciones y mucho más.\n\n'
-          'Muy pronto podrás iniciar sesión, gestionar tu perfil y recibir notificaciones en tiempo real. '
-          '¡Gracias por ser parte de la familia PortoAmbato! 💙⚽',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Entendido')),
-        ],
-      ),
+  void _goAuth(BuildContext context, {String? redirectTo}) {
+    final current = redirectTo ?? (ModalRoute.of(context)?.settings.name ?? '/');
+    Navigator.pushNamed(
+      context,
+      '/auth',
+      arguments: {'redirectTo': current},
     );
   }
 
@@ -95,9 +86,8 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                   onPressed: () => Navigator.pushNamed(context, '/conocenos'),
                 ),
                 const SizedBox(width: 12),
-                // 🔹 Ahora muestra el diálogo "Próximamente" en escritorio también
                 FilledButton(
-                  onPressed: () => _showComingSoon(context),
+                  onPressed: () => _goAuth(context, redirectTo: currentRoute),
                   child: const Text('Ingresar'),
                 ),
               ] else
@@ -110,41 +100,21 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            ListTile(
-                              title: const Text('Inicio'),
-                              onTap: () => _navAndClose(sheetCtx, '/'),
-                            ),
-                            ListTile(
-                              title: const Text('Tienda'),
-                              onTap: () => _navAndClose(sheetCtx, '/tienda'),
-                            ),
-                            ListTile(
-                              title: const Text('Eventos'),
-                              onTap: () => _navAndClose(sheetCtx, '/eventos'),
-                            ),
-                            ListTile(
-                              title: const Text('Categorías'),
-                              onTap: () => _navAndClose(sheetCtx, '/categorias'),
-                            ),
-                            ListTile(
-                              title: const Text('Sponsors'),
-                              onTap: () => _navAndClose(sheetCtx, '/beneficios'),
-                            ),
-                            ListTile(
-                              title: const Text('Conócenos'),
-                              onTap: () => _navAndClose(sheetCtx, '/conocenos'),
-                            ),
+                            ListTile(title: const Text('Inicio'), onTap: () => _navAndClose(sheetCtx, '/')),
+                            ListTile(title: const Text('Tienda'), onTap: () => _navAndClose(sheetCtx, '/tienda')),
+                            ListTile(title: const Text('Eventos'), onTap: () => _navAndClose(sheetCtx, '/eventos')),
+                            ListTile(title: const Text('Categorías'), onTap: () => _navAndClose(sheetCtx, '/categorias')),
+                            ListTile(title: const Text('Sponsors'), onTap: () => _navAndClose(sheetCtx, '/beneficios')),
+                            ListTile(title: const Text('Conócenos'), onTap: () => _navAndClose(sheetCtx, '/conocenos')),
                             const Divider(height: 0),
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: FilledButton(
                                 onPressed: () {
                                   Navigator.of(sheetCtx).pop();
-                                  _showComingSoon(context);
+                                  _goAuth(context, redirectTo: currentRoute);
                                 },
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(48),
-                                ),
+                                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
                                 child: const Text('Ingresar'),
                               ),
                             ),

@@ -18,6 +18,9 @@ dependencies:
   youtube_player_iframe: ^5.2.2
   flutter_svg: ^2.2.0
   share_plus: ^11.1.0
+  http: ^1.2.2
+  shared_preferences: ^2.2.3
+  flutter_secure_storage: ^9.2.2
   
 
 dev_dependencies:
