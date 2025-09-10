@@ -38,7 +38,7 @@ class BenefitsScreen extends StatelessWidget {
     {
       'name': 'MI NEGOCIO',
       'logo': 'assets/img/sponsors/minegocio.webp',
-      'videoId': 'RZP6sA1hTEE',
+      'videoId': 'MWDaxG_nFnY',
       'desc':
           '10% de descuento en todos los planes para nuestra comunidad PortoAmbato.',
     },
