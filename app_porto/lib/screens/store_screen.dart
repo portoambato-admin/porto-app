@@ -16,41 +16,41 @@ class _StoreScreenState extends State<StoreScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _category = 'Todos';
 
-  // Catálogo estático (restaurado completo)
+  // Catálogo estático
   final List<Map<String, dynamic>> _products = [
     {
       'id': '1',
-      'title': 'Uniforme Principal 5to aniversario Porto 2025',
+      'title': 'Uniforme Principal 5to Aniversario Porto 2025',
       'category': 'Indumentaria',
       'image': 'assets/img/tienda/uniforme1.webp',
     },
     {
       'id': '2',
-      'title': 'Uniforme Principal Waikiki 5to aniversario Porto 2025',
+      'title': 'Uniforme Principal Waikiki 5to Aniversario Porto 2025',
       'category': 'Indumentaria',
       'image': 'assets/img/tienda/uniforme2.webp',
     },
     {
       'id': '3',
-      'title': 'Camiseta polo de presentación 5to aniversario Porto 2025',
+      'title': 'Camiseta polo de presentación 5to Aniversario Porto 2025',
       'category': 'Indumentaria',
       'image': 'assets/img/tienda/polo.webp',
     },
     {
       'id': '4',
-      'title': 'Buzo de entrenamiento 5to aniversario Porto 2025',
+      'title': 'Buzo de entrenamiento 5to Aniversario Porto 2025',
       'category': 'Indumentaria',
       'image': 'assets/img/tienda/buzo.webp',
     },
     {
       'id': '5',
-      'title': 'Chompa de presentación 5to aniversario Porto 2025',
+      'title': 'Chompa de presentación 5to Aniversario Porto 2025',
       'category': 'Indumentaria',
       'image': 'assets/img/tienda/chompa.webp',
     },
     {
       'id': '6',
-      'title': 'Bolso Zapatera 5to aniversario Porto 2025',
+      'title': 'Bolso Zapatera 5to Aniversario Porto 2025',
       'category': 'Accesorio',
       'image': 'assets/img/tienda/bolozap.webp',
     },
@@ -58,17 +58,17 @@ class _StoreScreenState extends State<StoreScreen> {
       'id': '7',
       'title': 'Bolso de viaje Kipsta',
       'category': 'Accesorio',
-      'image': 'assets/img/tienda/polo.webp',
+      'image': 'assets/img/tienda/bolsoviaje.webp',
     },
     {
       'id': '8',
       'title': 'Medias antideslizantes Il Migliore Adultos',
       'category': 'Indumentaria',
-      'image': 'assets/img/tienda/bolzoviaje.webp',
+      'image': 'assets/img/tienda/medias.webp',
     },
     {
       'id': '9',
-      'title': 'Pechera Il Migliore - Corrector de postura',
+      'title': 'Pechera Il Migliore - Corrector de Postura',
       'category': 'Accesorio',
       'image': 'assets/img/tienda/pechera.webp',
     },
@@ -80,7 +80,7 @@ class _StoreScreenState extends State<StoreScreen> {
     },
     {
       'id': '11',
-      'title': 'Stickers Premium 5to aniversario Porto 2025',
+      'title': 'Stickers Premium 5to Aniversario Porto 2025',
       'category': 'Accesorio',
       'image': 'assets/img/tienda/stickets.webp',
     },
@@ -112,9 +112,7 @@ class _StoreScreenState extends State<StoreScreen> {
       showDragHandle: true,
       builder: (ctx) {
         return Padding(
-          padding: EdgeInsets.fromLTRB(
-            16, 8, 16, MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
+          padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: Column(
@@ -141,7 +139,7 @@ class _StoreScreenState extends State<StoreScreen> {
                   items: const [
                     DropdownMenuItem(value: 'Todos', child: Text('Todos')),
                     DropdownMenuItem(value: 'Indumentaria', child: Text('Indumentaria')),
-                    DropdownMenuItem(value: 'Accesorios', child: Text('Accesorios')),
+                    DropdownMenuItem(value: 'Accesorio', child: Text('Accesorios')), // 👈 coincide con los datos
                   ],
                   onChanged: (v) => tmpCategory = v ?? 'Todos',
                   decoration: const InputDecoration(
@@ -199,18 +197,31 @@ class _StoreScreenState extends State<StoreScreen> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final w = constraints.maxWidth;
+
+                // columnas por tamaño
                 final cross = w >= 1100 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
+
+                // Altura del ítem del grid (reducida y responsiva)
+                double itemExtent;
+                if (cross >= 4) {
+                  itemExtent = 330; // Desktop ancho
+                } else if (cross == 3) {
+                  itemExtent = 340;
+                } else if (cross == 2) {
+                  itemExtent = 360;
+                } else {
+                  itemExtent = 410; // móvil 1 columna
+                }
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Tienda',
+                      'TIENDA PORTO',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 12),
 
-                    // Barra de búsqueda + filtros
                     _SearchAndFilterBar(
                       controller: _searchCtrl,
                       onChanged: (_) => setState(() {}),
@@ -219,15 +230,14 @@ class _StoreScreenState extends State<StoreScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Grid de productos
                     Expanded(
                       child: GridView.builder(
                         itemCount: _filtered.length,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: cross,
                           crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          mainAxisExtent: 380, // un poco más alta para los dos botones
+                          mainAxisSpacing: 12, // un poco menos
+                          mainAxisExtent: itemExtent, // ⬅ más bajo
                         ),
                         itemBuilder: (_, i) {
                           final p = _filtered[i];
@@ -422,7 +432,7 @@ class _ProductCard extends StatelessWidget {
               color: Colors.grey[100],
               alignment: Alignment.center,
               child: Padding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6), // un poco menor
                 child: Image.asset(
                   image,
                   fit: BoxFit.contain,
@@ -432,35 +442,47 @@ class _ProductCard extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
 
-                // Ver (arriba)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: onView,
-                    icon: const Icon(Icons.visibility),
-                    label: const Text('Ver'),
+          // Contenido que ocupa el resto del alto disponible
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                // Comprar (abajo)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: onBuy,
-                    icon: const Icon(Icons.shopping_cart),
-                    label: const Text('Comprar'),
+                  // Empuja los botones hacia abajo (pero con itemExtent reducido el hueco es mínimo)
+                  const Spacer(),
+
+                  // Ver
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: onView,
+                      icon: const Icon(Icons.visibility),
+                      label: const Text('Ver'),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+
+                  // Comprar
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: onBuy,
+                      icon: const Icon(Icons.shopping_cart),
+                      label: const Text('Comprar'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
