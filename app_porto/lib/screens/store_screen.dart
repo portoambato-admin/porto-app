@@ -21,24 +21,80 @@ class _StoreScreenState extends State<StoreScreen> {
   final List<Map<String, dynamic>> _products = [
     {
       'id': '1',
-      'title': 'Camiseta Oficial',
+      'title': 'Uniforme Principal 5to aniversario Porto 2025',
       'price': 00.0,
       'category': 'Indumentaria',
-      'image': 'assets/img/camiseta.jpg',
+      'image': 'assets/img/tienda/uniforme1.webp',
     },
     {
       'id': '2',
-      'title': 'Pantaloneta Oficial',
+      'title': 'Uniforme Principal Waikiki 5to aniversario Porto 2025',
       'price': 00.0,
       'category': 'Indumentaria',
-      'image': 'assets/img/pantaloneta.jpg',
+      'image': 'assets/img/tienda/uniforme2.webp',
     },
     {
       'id': '3',
-      'title': 'Medias Deportivas',
+      'title': 'Camiseta polo de presentación 5to aniversario Porto 2025',
       'price': 00.0,
       'category': 'Indumentaria',
-      'image': 'assets/img/medias.jpg',
+      'image': 'assets/img/tienda/polo.webp',
+    },
+    {
+      'id': '4',
+      'title': 'Buzo de entrenamiento 5to aniversario Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/buzo.webp',
+    },
+    {
+      'id': '5',
+      'title': 'Chompa de presentación 5to aniversario Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/chompa.webp',
+    },
+    {
+      'id': '6',
+      'title': 'Bolso Zapatera 5to aniversario Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/bolozap.webp',
+    },
+    {
+      'id': '7',
+      'title': 'Camiseta polo de presentación 5to aniversario Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/polo.webp',
+    },
+    {
+      'id': '8',
+      'title': 'Medias antideslizantes Il Migliore Adultos',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/medias.webp',
+    },
+    {
+      'id': '9',
+      'title': 'Pechera Il Migliore',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/pechera.webp',
+    },
+    {
+      'id': '10',
+      'title': 'Canilleras Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/canilleras.webp',
+    },
+    {
+      'id': '11',
+      'title': 'Stickers Premium5to aniversario Porto 2025',
+      'price': 00.0,
+      'category': 'Indumentaria',
+      'image': 'assets/img/tienda/stickets.webp',
     },
   ];
 
@@ -60,13 +116,11 @@ class _StoreScreenState extends State<StoreScreen> {
         data.sort((a, b) => (b['price'] as num).compareTo(a['price'] as num));
         break;
       default:
-        // Relevancia (sin cambios por ahora)
         break;
     }
     return data;
   }
 
-  // Cantidad de filtros activos distintos a los valores por defecto
   int get _activeFilterCount {
     int c = 0;
     if (_category != 'Todos') c++;
@@ -74,7 +128,6 @@ class _StoreScreenState extends State<StoreScreen> {
     return c;
   }
 
-  // Diálogo para agregar producto (en memoria) — actualmente no expuesto en UI
   Future<void> _openAddDialog() async {
     final formKey = GlobalKey<FormState>();
     final titleCtrl = TextEditingController();
@@ -170,7 +223,6 @@ class _StoreScreenState extends State<StoreScreen> {
     }
   }
 
-  // --- Bottom sheet de filtros ---
   Future<void> _openFiltersSheet() async {
     String tmpCategory = _category;
     String tmpSort = _sort;
@@ -193,7 +245,6 @@ class _StoreScreenState extends State<StoreScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Título + Reset
                 Row(
                   children: [
                     const Icon(Icons.filter_alt),
@@ -214,7 +265,6 @@ class _StoreScreenState extends State<StoreScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // Contenido
                 DropdownButtonFormField<String>(
                   value: tmpCategory,
                   items: const [
@@ -288,11 +338,6 @@ class _StoreScreenState extends State<StoreScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const TopNavBar(),
-      // floatingActionButton: FloatingActionButton.extended( // 👈 ELIMINADO según pedido
-      //   onPressed: _openAddDialog,
-      //   icon: const Icon(Icons.add),
-      //   label: const Text('Agregar'),
-      // ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: maxContentWidth),
@@ -356,7 +401,7 @@ class _StoreScreenState extends State<StoreScreen> {
                           crossAxisCount: cross,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
-                          mainAxisExtent: 340,
+                          mainAxisExtent: 360, // altura consistente del tile
                         ),
                         itemBuilder: (_, i) {
                           final p = _filtered[i];
@@ -365,7 +410,6 @@ class _StoreScreenState extends State<StoreScreen> {
                             price: p['price'],
                             image: p['image'],
                             onView: () => _openDetail(p),
-                            // onBuy: () => showPurchaseDialog(context, p['title']), // 👈 COMPRAS DESHABILITADAS
                           );
                         },
                       ),
@@ -390,18 +434,23 @@ class _StoreScreenState extends State<StoreScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // ✅ Evita recortes en el detalle
               AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    p['image'],
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Colors.black12,
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.image,
-                          size: 40, color: Colors.black45),
+                aspectRatio: 16 / 10,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.black12,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Image.asset(
+                      p['image'],
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.medium,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 40, color: Colors.black45),
                     ),
                   ),
                 ),
@@ -417,8 +466,6 @@ class _StoreScreenState extends State<StoreScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // 👇 Indicador de que las compras no están habilitadas
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Chip(
@@ -430,13 +477,7 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar')),
-          // FilledButton( // 👈 COMPRAS DESHABILITADAS
-          //   onPressed: () => showPurchaseDialog(context, p['title']),
-          //   child: const Text('Comprar por WhatsApp'),
-          // ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
         ],
       ),
     );
@@ -476,7 +517,7 @@ class _SearchAndFilterBar extends StatelessWidget {
     final filterButton = _FilterButton(
       onPressed: onOpenFilters,
       activeCount: activeFilters,
-      isIconOnly: isSmall, // 👈 icono en móvil, botón completo en pantallas grandes
+      isIconOnly: isSmall,
     );
 
     return Row(
@@ -503,7 +544,6 @@ class _FilterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isIconOnly) {
-      // Ícono con badge para móviles
       return Stack(
         clipBehavior: Clip.none,
         children: [
@@ -533,7 +573,6 @@ class _FilterButton extends StatelessWidget {
       );
     }
 
-    // Botón completo en pantallas grandes
     final child = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -567,36 +606,37 @@ class _ProductCard extends StatelessWidget {
   final num price;
   final String image;
   final VoidCallback onView;
-  // final VoidCallback onBuy; // 👈 COMPRAS DESHABILITADAS
 
   const _ProductCard({
     required this.title,
     required this.price,
     required this.image,
     required this.onView,
-    // required this.onBuy, // 👈 COMPRAS DESHABILITADAS
   });
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias, // ✅ respeta bordes redondeados en la imagen
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.asset(
-                image,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  color: Colors.black12,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.image,
-                      size: 40, color: Colors.black45),
+          // ✅ Contener la imagen sin recortarla
+          AspectRatio(
+            aspectRatio: 16 / 10, // puedes ajustar (1, 4/3, 3/2, etc.)
+            child: Container(
+              color: Colors.grey[100],
+              alignment: Alignment.center,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  image,
+                  fit: BoxFit.contain, // 👈 clave para no recortar
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.image, size: 40, color: Colors.black45),
                 ),
               ),
             ),
@@ -609,8 +649,7 @@ class _ProductCard extends StatelessWidget {
                 Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text('\$${price.toStringAsFixed(2)}',
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary)),
+                    style: TextStyle(color: cs.primary)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -621,13 +660,6 @@ class _ProductCard extends StatelessWidget {
                         label: const Text('Ver'),
                       ),
                     ),
-                    // const SizedBox(width: 8),
-                    // Expanded( // 👈 COMPRAS DESHABILITADAS
-                    //   child: FilledButton(
-                    //     onPressed: onBuy,
-                    //     child: const Text('Comprar'),
-                    //   ),
-                    // ),
                   ],
                 ),
                 const SizedBox(height: 8),

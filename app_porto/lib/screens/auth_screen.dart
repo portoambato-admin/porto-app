@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
-import '../services/session.dart';
+import '../state/auth_state.dart'; // ⬅️ NUEVO
 
 enum _AuthMode { login, register }
 
@@ -137,7 +137,8 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
         throw Exception('Respuesta incompleta del servidor.');
       }
 
-      await Session.saveAuth(token: token, userJson: usuarioJson);
+      // ⬇️ Guarda y notifica a toda la app
+      await AuthScope.of(context).signIn(token: token, userJson: usuarioJson);
 
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(context, widget.redirectTo, (r) => false);
@@ -278,12 +279,7 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
           alignment: Alignment.centerRight,
           child: TextButton(
             onPressed: () {}, // TODO: recuperar contraseña cuando exista
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              padding: MaterialStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 8),
-              ),
-            ),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact), // más compatible
             child: const Text('¿Olvidaste tu contraseña?'),
           ),
         ),

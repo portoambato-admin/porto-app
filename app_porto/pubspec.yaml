@@ -21,6 +21,8 @@ dependencies:
   http: ^1.2.2
   shared_preferences: ^2.2.3
   flutter_secure_storage: ^9.2.2
+  file_picker: ^8.0.0
+  http_parser: ^4.1.2
   
 
 dev_dependencies:
@@ -45,4 +47,5 @@ flutter:
     - assets/img/conocenos/instalaciones/
     - assets/img/thumbs/
     - assets/img/profes/
+    - assets/img/tienda/
    
