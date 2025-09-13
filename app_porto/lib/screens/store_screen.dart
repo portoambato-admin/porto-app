@@ -51,7 +51,7 @@ class _StoreScreenState extends State<StoreScreen> {
     {
       'id': '6',
       'title': 'Bolso Zapatera 5to aniversario Porto 2025',
-      'category': 'Indumentaria',
+      'category': 'Accesorios',
       'image': 'assets/img/tienda/bolozap.webp',
     },
     {
@@ -69,19 +69,19 @@ class _StoreScreenState extends State<StoreScreen> {
     {
       'id': '9',
       'title': 'Pechera Il Migliore',
-      'category': 'Indumentaria',
+      'category': 'Accesorios',
       'image': 'assets/img/tienda/pechera.webp',
     },
     {
       'id': '10',
       'title': 'Canilleras Porto 2025',
-      'category': 'Indumentaria',
+      'category': 'Accesorios',
       'image': 'assets/img/tienda/canilleras.webp',
     },
     {
       'id': '11',
       'title': 'Stickers Premium 5to aniversario Porto 2025',
-      'category': 'Indumentaria',
+      'category': 'Accesoriosfl',
       'image': 'assets/img/tienda/stickets.webp',
     },
   ];
