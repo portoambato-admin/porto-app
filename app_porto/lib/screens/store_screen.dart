@@ -81,7 +81,7 @@ class _StoreScreenState extends State<StoreScreen> {
     {
       'id': '11',
       'title': 'Stickers Premium 5to aniversario Porto 2025',
-      'category': 'Accesoriosfl',
+      'category': 'Accesoriosgist ',
       'image': 'assets/img/tienda/stickets.webp',
     },
   ];
