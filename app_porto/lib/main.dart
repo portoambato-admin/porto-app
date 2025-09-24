@@ -6,8 +6,14 @@ import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 
-import 'router.dart';
-import 'state/auth_state.dart';
+// Scope de datos/repos (nuevo)
+import 'app/app_scope.dart';
+
+// Router actualizado (usa RouteNames + guards)
+import 'app/app_router.dart';
+
+// Tu estado de auth existente (se mantiene)
+import 'core/state/auth_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,7 +68,13 @@ class _PortoAmbatoAppState extends State<PortoAmbatoApp> {
       onUnknownRoute: (_) => MaterialPageRoute(builder: (_) => const _HomeFallback()),
     );
 
-    return AuthScope(controller: _auth, child: app);
+    // Conserva tu AuthScope y añade el AppScope para inyectar HttpClient/Repos
+    return AuthScope(
+      controller: _auth,
+      child: AppScope(
+        child: app,
+      ),
+    );
   }
 }
 
