@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../../../../core/services/api_service.dart';
-import '../../../../core/services/session.dart';
-import '../../../../core/state/auth_state.dart';
+
+import '../../../../core/state/auth_state.dart';            // seguimos usando tu AuthScope
+import 'package:http_parser/http_parser.dart' show MediaType;
+import '../../../../app/app_scope.dart';                    // NUEVO: repos/cliente
+import '../../../../core/constants/endpoints.dart';         // NUEVO: rutas relativas
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -41,16 +43,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadMe() async {
     try {
-      final token = await Session.getToken();
-      if (token == null) return;
-      final me = await ApiService.getMe(token);
+      final me = await AppScope.of(context).auth.me();
       _nameCtrl.text = (me['nombre'] ?? '') as String;
       _emailCtrl.text = (me['correo'] ?? '') as String;
       setState(() => _avatarUrl = (me['avatar_url'] as String?) ?? '');
       // sincroniza estado global
       await AuthScope.of(context).setUser(me);
     } catch (_) {
-      // opcional: mostrar error
+      // opcional: mostrar error/snackbar
     }
   }
 
@@ -67,28 +67,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  MediaType? _typeFor(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png':
+        return MediaType('image', 'png');
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'webp':
+        return MediaType('image', 'webp');
+      default:
+        return null;
+    }
+  }
+
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
 
     setState(() => _loading = true);
     try {
-      final token = await Session.getToken();
-      if (token == null) throw Exception('Sesión no disponible');
+      final http = AppScope.of(context).http;
 
+      // 1) Subir avatar si el usuario eligió uno nuevo
       String? url = _avatarUrl;
       if (_pickedBytes != null && _pickedName != null) {
-        url = await ApiService.uploadAvatar(
-          token: token,
+        final res = await http.uploadBytes(
+          Endpoints.meAvatar,
           bytes: _pickedBytes!,
           filename: _pickedName!,
+          field: 'file',
+          contentType: _typeFor(_pickedName!),
         );
+        url = (res is Map ? (res['avatar_url'] ?? res['url'] ?? res['avatar']) : null) as String?;
+        if (url == null) {
+          throw Exception('Respuesta inválida al subir avatar');
+        }
       }
 
-      final updated = await ApiService.updateProfile(
-        token: token,
-        nombre: _nameCtrl.text.trim(),
-        avatarUrl: url,
-      );
+      // 2) Guardar perfil
+      final updated = await http.patch(
+        Endpoints.me,
+        body: {
+          'nombre': _nameCtrl.text.trim(),
+          if (url != null) 'avatar_url': url,
+        },
+      ) as Map<String, dynamic>;
 
       await AuthScope.of(context).setUser(updated);
 
@@ -185,12 +209,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
                 try {
-                  final t = await Session.getToken();
-                  if (t == null) throw Exception('Sesión no disponible');
-                  await ApiService.changePassword(
-                    token: t,
-                    actual: actualCtrl.text,
-                    nueva: nuevaCtrl.text,
+                  final http = AppScope.of(context).http;
+                  await http.patch(
+                    Endpoints.mePassword,
+                    body: {
+                      'contrasena_actual': actualCtrl.text,
+                      'nueva_contrasena': nuevaCtrl.text,
+                    },
                   );
                   if (!mounted) return;
                   Navigator.pop(ctx);

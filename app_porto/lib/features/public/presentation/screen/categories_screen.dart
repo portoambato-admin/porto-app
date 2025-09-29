@@ -48,7 +48,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     },
     {
       'name': 'Sub-10',
-      'age': '10–12 años',
+      'age': '9–11 años',
       'days': 'Mar · Mie · Vie ',
       'time': '16:00–18:00',
       'coach': 'Klever de la Cruz, Christian Llerena',

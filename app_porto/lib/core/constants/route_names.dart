@@ -1,3 +1,4 @@
+// lib/core/constants/route_names.dart
 class RouteNames {
   // Públicas
   static const root        = '/';

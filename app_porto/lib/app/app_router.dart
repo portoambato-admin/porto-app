@@ -1,3 +1,4 @@
+// lib/app/app_router.dart
 import 'package:flutter/material.dart';
 
 // Constantes de rutas
@@ -18,9 +19,10 @@ import '../features/auth/presentation/screens/auth_screen.dart';
 
 // Perfil / Panel (NO diferido)
 import '../features/profile/presentation/screens/profile_screen.dart';
-import '../features/admin/presentation/usuarios/panel_screen.dart';
+import '../features/admin/presentation/panel/panel_screen.dart';
 
 // Admin: secciones (NO lazy, protegidas)
+import '../features/admin/sections/usuarios_screen.dart';
 import '../features/admin/presentation/profesores/profesores_screen.dart';
 import '../features/admin/sections/categorias_screen.dart';
 import '../features/admin/sections/subcategorias_screen.dart';
@@ -85,8 +87,11 @@ class AppRouter {
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
 
       case RouteNames.panel:
-      case RouteNames.adminUsuarios:
         return _guardedPlain(s, builder: (_) => const PanelScreen());
+
+      // /admin/usuarios → UsuariosScreen
+      case RouteNames.adminUsuarios:
+        return _guardedPlain(s, builder: (_) => const UsuariosScreen());
 
       case RouteNames.adminProfesores:
         return _guardedPlain(s, builder: (_) => const ProfesoresScreen());

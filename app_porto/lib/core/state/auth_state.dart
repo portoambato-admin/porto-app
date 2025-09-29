@@ -1,10 +1,17 @@
-import 'dart:convert'; // 👈 para jsonEncode
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:flutter/widgets.dart'; // 👈 IMPORTA Widgets (Widget, BuildContext, InheritedNotifier, ChangeNotifier)
+
 import '../services/session.dart';
-import '../services/api_service.dart';
+
+// Cliente HTTP central + token provider + endpoints
+import '../network/http_client.dart';
+import '../services/session_token_provider.dart';
+import '../constants/endpoints.dart';
 
 class AuthState extends ChangeNotifier {
+  String? _token;
   Map<String, dynamic>? _user;
+
   Map<String, dynamic>? get user => _user;
   bool get isLoggedIn => _user != null;
 
@@ -13,39 +20,90 @@ class AuthState extends ChangeNotifier {
   bool get isTeacher => roleId == 2;
   bool get isParent => roleId == 3;
 
+  // Cliente HTTP con token automático (lee de Session)
+  final HttpClient _http = HttpClient(tokenProvider: SessionTokenProvider());
+
+  /// Carga token y usuario desde Session.
+  /// Si no hay usuario cacheado, consulta GET /me y persiste con saveAuth.
   Future<void> load() async {
-    _user = await Session.getUser(); // lee de storage
-    notifyListeners();
-  }
+    try {
+      _token = await Session.getToken();
 
-  /// Actualiza el usuario en memoria y en storage
-  Future<void> setUser(Map<String, dynamic> u) async {
-    // ⚠️ Evitamos Session.saveUser para no chocar con el error del analizador.
-    // En su lugar, reusamos el token actual y guardamos todo con saveAuth.
-    final token = await Session.getToken();
-    if (token != null) {
-      await Session.saveAuth(token: token, userJson: jsonEncode(u));
+      if (_token == null) {
+        _user = null;
+        notifyListeners();
+        return;
+      }
+
+      // 1) Rehidrata desde caché si existe
+      final cached = await Session.getUser(); // <- tu API real
+      if (cached != null) {
+        _user = Map<String, dynamic>.from(cached);
+      } else {
+        // 2) Si no hay user cacheado, trae /me del backend
+        final res = await _http.get(Endpoints.me, headers: {});
+        if (res is Map && res['usuario'] is Map) {
+          _user = Map<String, dynamic>.from(res['usuario'] as Map);
+        } else {
+          _user = Map<String, dynamic>.from(res as Map);
+        }
+        // Persiste user junto con el token existente
+        await Session.saveAuth(
+          token: _token!,
+          userJson: jsonEncode(_user),
+        );
+      }
+    } catch (_) {
+      // Si algo falla, limpiamos estado en memoria
+      _token = null;
+      _user = null;
+      // (No borramos storage aquí para no forzar logout agresivo)
+    } finally {
+      notifyListeners();
     }
-    _user = u;
-    notifyListeners();
   }
 
-  Future<void> signIn({required String token, required String userJson}) async {
+  /// Guarda token+usuario y notifica (para el login).
+  Future<void> signIn({
+    required String token,
+    required String userJson,
+  }) async {
+    _token = token;
     await Session.saveAuth(token: token, userJson: userJson);
-    await load(); // refresca user
+
+    try {
+      _user = jsonDecode(userJson) as Map<String, dynamic>;
+    } catch (_) {
+      _user = null;
+    }
+    notifyListeners();
   }
 
-  Future<void> signOut() async {
-    final t = await Session.getToken();
+  /// Actualiza el usuario en memoria y en Session (manteniendo el token actual).
+  Future<void> setUser(Map<String, dynamic> u) async {
+    _user = Map<String, dynamic>.from(u);
+    final t = _token ?? await Session.getToken();
     if (t != null) {
-      try { await ApiService.logout(t); } catch (_) {}
+      await Session.saveAuth(token: t, userJson: jsonEncode(_user));
     }
+    notifyListeners();
+  }
+
+  /// Cierra sesión y limpia Session en disco.
+  Future<void> signOut() async {
+    // (Opcional) Puedes llamar a /auth/logout con _http.post si tu backend lo necesita.
     await Session.clear();
+    _token = null;
     _user = null;
     notifyListeners();
   }
 }
 
+/// Mantiene la API que ya usabas:
+/// - AuthScope.of(context).signIn(...)
+/// - AuthScope.of(context).setUser(...)
+/// - AuthScope.of(context).load()
+/// - AuthScope.of(context).signOut()
 class AuthScope extends InheritedNotifier<AuthState> {
   const AuthScope({
     super.key,

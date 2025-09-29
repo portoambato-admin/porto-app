@@ -47,19 +47,31 @@ class HttpClient {
   dynamic _decode(http.Response r) => r.body.isEmpty ? null : jsonDecode(r.body);
 
   // JSON
-  Future<dynamic> get(String path, {Map<String, String>? query}) async {
+  Future<dynamic> get(String path, {Map<String, String>? query, required Map<String, String> headers}) async {
     final r = await _client.get(_u(path, query), headers: await _headers());
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
     return _decode(r);
   }
+   Future<Map<String, dynamic>> getWithHeaders(
+    String path, {
+    Map<String, String>? query, required Map<String, String> headers,
+  }) async {
+    final r = await _client.get(_u(path, query), headers: await _headers());
+    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
+    final data = _decode(r);
+    return {
+      'data': data,
+      'headers': r.headers,
+    };
+  }
 
-  Future<dynamic> post(String path, {Object? body, Map<String, String>? query}) async {
+  Future<dynamic> post(String path, {Object? body, Map<String, String>? query, required Map<String, String> headers}) async {
     final r = await _client.post(_u(path, query), headers: await _headers(), body: jsonEncode(body ?? {}));
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
     return _decode(r);
   }
 
-  Future<dynamic> put(String path, {Object? body, Map<String, String>? query}) async {
+  Future<dynamic> put(String path, {Object? body, Map<String, String>? query, required Map<String, String> headers}) async {
     final r = await _client.put(_u(path, query), headers: await _headers(), body: jsonEncode(body ?? {}));
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
     return _decode(r);
@@ -71,7 +83,7 @@ class HttpClient {
     return _decode(r);
   }
 
-  Future<void> delete(String path, {Map<String, String>? query}) async {
+  Future<void> delete(String path, {Map<String, String>? query, required Map<String, String> headers}) async {
     final r = await _client.delete(_u(path, query), headers: await _headers(json: false));
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
   }

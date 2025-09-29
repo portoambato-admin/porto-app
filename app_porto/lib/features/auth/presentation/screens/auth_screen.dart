@@ -130,7 +130,7 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
           'nombre': _nombre.text.trim(),
           'correo': _correo.text.trim(),
           'contrasena': _pass.text,
-        });
+        }, headers: {});
       }
 
       // 2) Login con el AuthRepository (nuevo)

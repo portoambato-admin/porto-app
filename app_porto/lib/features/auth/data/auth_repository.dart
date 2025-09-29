@@ -12,7 +12,7 @@ class AuthRepository {
     final res = await _http.post(Endpoints.authLogin, body: {
       'correo': correo,
       'contrasena': contrasena,
-    });
+    }, headers: {});
 
     String? _findJwt(dynamic v) {
       final re = RegExp(r'^[A-Za-z0-9\\-\\_=]+\\.[A-Za-z0-9\\-\\_=]+\\.[A-Za-z0-9\\-\\_=]+$');
@@ -49,11 +49,11 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
-    await _http.post(Endpoints.authLogout, body: const {});
+    await _http.post(Endpoints.authLogout, body: const {}, headers: {});
   }
 
   Future<Map<String, dynamic>> me() async {
-    final res = await _http.get(Endpoints.me);
+    final res = await _http.get(Endpoints.me, headers: {});
     if (res is Map && res['usuario'] is Map) {
       return Map<String, dynamic>.from(res['usuario'] as Map);
     }

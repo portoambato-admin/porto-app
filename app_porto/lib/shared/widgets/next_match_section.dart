@@ -204,7 +204,7 @@ class _NextMatchSectionState extends State<NextMatchSection> {
       children: [
         Text('Próximo Evento', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
         const SizedBox(height: 8),
-        Text('PortoAmbato ${_match['opponent']}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+        Text('Porto Ambato Lanzamiento ${_match['opponent']}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         chips,
         const SizedBox(height: 16),
