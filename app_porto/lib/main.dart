@@ -3,8 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter_web_plugins/flutter_web_plugins.dart';
+
+// ❗️IMPORTANTE: no importes flutter_web_plugins aquí.
+// Usa nuestro selector condicional:
+import 'app/url_strategy.dart';
 
 // Scope de datos/repos (nuevo)
 import 'app/app_scope.dart';
@@ -19,7 +21,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es', null);
   Intl.defaultLocale = 'es';
-  if (kIsWeb) setUrlStrategy(PathUrlStrategy());
+
+  // En Web aplica PathUrlStrategy; en Android/iOS/Windows no hace nada
+  setAppUrlStrategy();
+
   runApp(const PortoAmbatoApp());
 }
 
@@ -71,9 +76,7 @@ class _PortoAmbatoAppState extends State<PortoAmbatoApp> {
     // Conserva tu AuthScope y añade el AppScope para inyectar HttpClient/Repos
     return AuthScope(
       controller: _auth,
-      child: AppScope(
-        child: app,
-      ),
+      child: AppScope(child: app),
     );
   }
 }

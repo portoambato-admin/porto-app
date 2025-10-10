@@ -42,6 +42,7 @@ class PanelScreen extends StatelessWidget {
       if (isAdmin) _Item('Subcategorías', Icons.folder, '/admin/subcategorias'),
       if (isAdmin) _Item('Asistencias', Icons.event_available, '/admin/asistencias'),
       if (isAdmin) _Item('Evaluaciones', Icons.assignment_turned_in, '/admin/evaluaciones'),
+      if (isAdmin) _Item('Estudiantes', Icons.people, '/admin/estudiantes'),
       if (isAdmin) _Item('Pagos', Icons.payments, '/admin/pagos'),
       _Item('Config', Icons.settings, '/admin/config'),
     ];

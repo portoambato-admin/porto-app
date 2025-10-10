@@ -77,7 +77,7 @@ class HttpClient {
     return _decode(r);
   }
 
-  Future<dynamic> patch(String path, {Object? body, Map<String, String>? query}) async {
+  Future<dynamic> patch(String path, {Object? body, Map<String, String>? query, required Map<String, String> headers}) async {
     final r = await _client.patch(_u(path, query), headers: await _headers(), body: jsonEncode(body ?? {}));
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
     return _decode(r);

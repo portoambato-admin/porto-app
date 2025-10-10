@@ -111,7 +111,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         body: {
           'nombre': _nameCtrl.text.trim(),
           if (url != null) 'avatar_url': url,
-        },
+        }, headers: {},
       ) as Map<String, dynamic>;
 
       await AuthScope.of(context).setUser(updated);
@@ -215,7 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     body: {
                       'contrasena_actual': actualCtrl.text,
                       'nueva_contrasena': nuevaCtrl.text,
-                    },
+                    }, headers: {},
                   );
                   if (!mounted) return;
                   Navigator.pop(ctx);

@@ -37,15 +37,14 @@ class CategoriasRepository {
         'Content-Type': 'application/json',
       };
 
+  /// Lista completa (sin paginar)
   Future<List<Map<String, dynamic>>> todos() async {
     try {
       final res = await _http.get(
         Endpoints.categorias,
         headers: _headers,
       );
-      final List data = (res is List)
-          ? res
-          : (res['data'] ?? []) as List;
+      final List data = (res is List) ? res : (res['data'] ?? []) as List;
       return data.cast<Map<String, dynamic>>().map(_catFromBackend).toList();
     } catch (e, st) {
       debugPrint('CategoriasRepository.todos error: $e\n$st');
@@ -53,9 +52,18 @@ class CategoriasRepository {
     }
   }
 
-  /// Soporta:
-  /// A) Array + X-Total-Count
-  /// B) Objeto {items,total,page,pageSize}
+  /// Lista simple para combos: [{id, nombre}]
+  Future<List<Map<String, dynamic>>> simpleList() async {
+  // Reusa el GET de categorías actual y filtra en cliente
+  final all = await todos();
+  return all
+      .where((e) => e['activo'] == true) // solo activas
+      .map((e) => {'id': e['id'], 'nombre': e['nombre']})
+      .toList();
+}
+
+
+  /// Paginado tolerante a diferentes formatos
   Future<Map<String, dynamic>> paged({
     int page = 1,
     int pageSize = 20,
@@ -92,7 +100,6 @@ class CategoriasRepository {
       if (th != null) totalFromHeader = int.tryParse(th.toString());
 
       if (data is List) {
-        // Formato A
         items = data.cast<Map<String, dynamic>>().map(_catFromBackend).toList();
         return {
           'items': items,
@@ -101,7 +108,6 @@ class CategoriasRepository {
           'pageSize': pageSize,
         };
       } else if (data is Map<String, dynamic>) {
-        // Formato B
         final rawItems = (data['items'] ?? const []) as List;
         items = rawItems.cast<Map<String, dynamic>>().map(_catFromBackend).toList();
         final total = (data['total'] is int)
@@ -114,8 +120,8 @@ class CategoriasRepository {
           'pageSize': data['pageSize'] ?? pageSize,
         };
       } else if (data is String) {
-        // Por si algún middleware te retorna string JSON
-        final parsed = jsonDecode(data);
+        final _ = jsonDecode(data); // solo para validar
+        // Relanzamos con los mismos parámetros
         return await paged(
           page: page,
           pageSize: pageSize,
@@ -126,7 +132,6 @@ class CategoriasRepository {
         );
       }
 
-      // Fallback seguro
       return {
         'items': items,
         'total': totalFromHeader ?? 0,

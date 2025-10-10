@@ -238,28 +238,6 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     if (ok == true) _loadCurrentTab();
   }
 
-  Future<void> _delete(Map<String, dynamic> r) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Eliminar categoría'),
-        content: Text('¿Seguro que deseas eliminar "${r['nombre']}"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Eliminar')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-
-    try {
-      await _repo.remove((r['id'] as num).toInt());
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Categoría eliminada')));
-      _loadCurrentTab();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
 
   Future<void> _toggleEstado(Map<String, dynamic> r) async {
     try {
