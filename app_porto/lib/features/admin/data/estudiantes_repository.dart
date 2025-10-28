@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../../../core/constants/endpoints.dart';
 import '../../../core/network/http_client.dart';
 
@@ -17,9 +18,9 @@ class EstudiantesRepository {
         'telefono': r['telefono'],
         'direccion': r['direccion'],
         'fechaNacimiento': r['fecha_nacimiento'],
+        'fecha_nacimiento': r['fecha_nacimiento'],
         'idAcademia': r['id_academia'],
         'activo': r['activo'],
-        // Estos pueden venir nulos si tu SELECT por id no los incluye:
         'idMatricula': r['id_matricula'],
         'idCategoria': r['id_categoria'],
         'categoriaNombre': r['nombre_categoria'],
@@ -32,24 +33,30 @@ class EstudiantesRepository {
     int? categoriaId,
     bool? onlyActive,
   }) async {
-    final query = <String, String>{
-      'page': '$page',
-      'pageSize': '$pageSize',
-      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
-      if (categoriaId != null) 'categoriaId': '$categoriaId',
-      if (onlyActive != null) 'onlyActive': onlyActive.toString(),
-    };
+    try {
+      final query = <String, String>{
+        'page': '$page',
+        'pageSize': '$pageSize',
+        if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+        if (categoriaId != null) 'categoriaId': '$categoriaId',
+        if (onlyActive != null) 'onlyActive': onlyActive.toString(),
+      };
 
-    final res = await _http.get(Endpoints.estudiantes, headers: _h, query: query);
-    if (res is Map && res['items'] is List) {
-      final items = List<Map<String, dynamic>>.from(res['items']).map(_from).toList();
-      final total = (res['total'] as num?)?.toInt() ?? items.length;
-      return {'items': items, 'total': total, 'page': page, 'pageSize': pageSize};
+      final res = await _http.get(Endpoints.estudiantes, headers: _h, query: query);
+
+      if (res is Map && res['items'] is List) {
+        final items = List<Map<String, dynamic>>.from(res['items']).map(_from).toList();
+        final total = (res['total'] as num?)?.toInt() ?? items.length;
+        return {'items': items, 'total': total, 'page': page, 'pageSize': pageSize};
+      }
+
+      final list = (res is List) ? res : [];
+      final items = List<Map<String, dynamic>>.from(list).map(_from).toList();
+      return {'items': items, 'total': items.length, 'page': 1, 'pageSize': items.length};
+    } catch (e, st) {
+      debugPrint('EstudiantesRepository.paged error: $e\n$st');
+      rethrow;
     }
-
-    final list = (res is List) ? res : [];
-    final items = List<Map<String, dynamic>>.from(list).map(_from).toList();
-    return {'items': items, 'total': items.length, 'page': 1, 'pageSize': items.length};
   }
 
   Future<Map<String, dynamic>?> byId(int id) async {
@@ -58,6 +65,45 @@ class EstudiantesRepository {
     return _from(Map<String, dynamic>.from(res));
   }
 
+  // ======= crear estudiante + matrícula en /estudiantes =======
+  Future<Map<String, dynamic>> crearConMatricula({
+    required String nombres,
+    required String apellidos,
+    String? fechaNacimientoISO, // YYYY-MM-DD
+    String? direccion,
+    String? telefono,
+    required int idCategoria,
+    String? ciclo,
+    String? fechaMatriculaISO,  // YYYY-MM-DD
+    int? idSubcategoria,        // si luego decides asociar directo
+  }) async {
+    final body = {
+      'estudiante': {
+        'nombres': nombres,
+        'apellidos': apellidos,
+        if (fechaNacimientoISO != null && fechaNacimientoISO.isNotEmpty)
+          'fecha_nacimiento': fechaNacimientoISO,
+        if (direccion != null && direccion.isNotEmpty) 'direccion': direccion,
+        if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
+      },
+      'matricula': {
+        'id_categoria': idCategoria,
+        if (ciclo != null && ciclo.isNotEmpty) 'ciclo': ciclo,
+        if (fechaMatriculaISO != null && fechaMatriculaISO.isNotEmpty)
+          'fecha_matricula': fechaMatriculaISO,
+        if (idSubcategoria != null) 'id_subcategoria': idSubcategoria,
+      },
+    };
+
+    final res = await _http.post(
+      Endpoints.estudiantes,
+      headers: _h,
+      body: body,
+    );
+    return (res as Map).cast<String, dynamic>();
+  }
+
+  // (CRUD simple por si lo sigues usando)
   Future<Map<String, dynamic>> crear({
     required String nombres,
     required String apellidos,
@@ -69,9 +115,9 @@ class EstudiantesRepository {
     final body = {
       'nombres': nombres,
       'apellidos': apellidos,
-      if (fechaNacimiento != null) 'fecha_nacimiento': fechaNacimiento,
-      if (direccion != null) 'direccion': direccion,
-      if (telefono != null) 'telefono': telefono,
+      if (fechaNacimiento != null && fechaNacimiento.isNotEmpty) 'fecha_nacimiento': fechaNacimiento,
+      if (direccion != null && direccion.isNotEmpty) 'direccion': direccion,
+      if (telefono != null && telefono.isNotEmpty) 'telefono': telefono,
       'id_academia': idAcademia,
     };
     final res = await _http.post(Endpoints.estudiantes, headers: _h, body: body);
@@ -105,8 +151,16 @@ class EstudiantesRepository {
     await _http.delete(Endpoints.estudianteId(idEstudiante), headers: _h);
   }
 
-  /// Back: PATCH /estudiantes/activar/:id — usamos POST al mismo path
   Future<void> activate(int idEstudiante) async {
     await _http.post(Endpoints.estudianteActivar(idEstudiante), headers: _h, body: const {});
+  }
+
+  Future<List<Map<String, dynamic>>> porSubcategoria(int idSubcategoria) async {
+    final res = await _http.get(
+      '${Endpoints.subcatEst}/subcategoria/$idSubcategoria/estudiantes',
+      headers: _h,
+    );
+    final list = (res is List) ? res : [];
+    return List<Map<String, dynamic>>.from(list).map(_from).toList();
   }
 }

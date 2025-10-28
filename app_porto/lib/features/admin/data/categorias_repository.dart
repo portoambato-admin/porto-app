@@ -37,7 +37,7 @@ class CategoriasRepository {
         'Content-Type': 'application/json',
       };
 
-  /// Lista completa (sin paginar)
+  /// Lista completa (sin paginar) mapeada
   Future<List<Map<String, dynamic>>> todos() async {
     try {
       final res = await _http.get(
@@ -52,15 +52,27 @@ class CategoriasRepository {
     }
   }
 
-  /// Lista simple para combos: [{id, nombre}]
+  /// ⚠️ NUEVO: Solo categorías activas (mapeadas completas).
+  Future<List<Map<String, dynamic>>> activas() async {
+    final all = await todos();
+    return all.where((e) => e['activo'] == true).toList();
+  }
+
+  /// Lista simple para combos: [{id, nombre}] solo activas.
   Future<List<Map<String, dynamic>>> simpleList() async {
-  // Reusa el GET de categorías actual y filtra en cliente
-  final all = await todos();
-  return all
-      .where((e) => e['activo'] == true) // solo activas
-      .map((e) => {'id': e['id'], 'nombre': e['nombre']})
-      .toList();
-}
+    final all = await todos();
+    return all
+        .where((e) => e['activo'] == true)
+        .map((e) => {'id': e['id'], 'nombre': e['nombre']})
+        .toList();
+  }
+
+    /// Alias para compatibilidad con pantallas que esperan este nombre.
+  /// Devuelve [{id, nombre}] SOLO de categorías activas.
+  Future<List<Map<String, dynamic>>> listarActivas() async {
+    return await simpleList();
+  }
+
 
 
   /// Paginado tolerante a diferentes formatos
@@ -120,8 +132,7 @@ class CategoriasRepository {
           'pageSize': data['pageSize'] ?? pageSize,
         };
       } else if (data is String) {
-        final _ = jsonDecode(data); // solo para validar
-        // Relanzamos con los mismos parámetros
+        final _ = jsonDecode(data); // valida
         return await paged(
           page: page,
           pageSize: pageSize,

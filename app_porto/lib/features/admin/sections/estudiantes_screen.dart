@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../app/app_scope.dart';
+import 'crear_estudiante_matricula_screen.dart';
 
 class AdminEstudiantesScreen extends StatefulWidget {
   const AdminEstudiantesScreen({super.key});
@@ -9,7 +10,6 @@ class AdminEstudiantesScreen extends StatefulWidget {
 
 class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   late final _repo = AppScope.of(context).estudiantes;
-  late final _cats = AppScope.of(context).categorias;
 
   bool _loading = false;
   String? _error;
@@ -54,19 +54,19 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     }
   }
 
-  Future<void> _newOrEdit({Map<String, dynamic>? row}) async {
+  Future<void> _edit({required Map<String, dynamic> row}) async {
     final formKey = GlobalKey<FormState>();
-    final nombres = TextEditingController(text: row?['nombres'] ?? '');
-    final apellidos = TextEditingController(text: row?['apellidos'] ?? '');
-    final fecha = TextEditingController(text: row?['fechaNacimiento'] ?? '');
-    final direccion = TextEditingController(text: row?['direccion'] ?? '');
-    final telefono = TextEditingController(text: row?['telefono'] ?? '');
-    int? idAcademia = row?['idAcademia'];
+    final nombres   = TextEditingController(text: row['nombres'] ?? '');
+    final apellidos = TextEditingController(text: row['apellidos'] ?? '');
+    final fecha     = TextEditingController(text: row['fechaNacimiento'] ?? '');
+    final direccion = TextEditingController(text: row['direccion'] ?? '');
+    final telefono  = TextEditingController(text: row['telefono'] ?? '');
+    int? idAcademia = row['idAcademia'];
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(row == null ? 'Nuevo estudiante' : 'Editar estudiante'),
+        title: const Text('Editar estudiante'),
         content: SizedBox(
           width: 480,
           child: Form(
@@ -101,7 +101,6 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                   decoration: const InputDecoration(labelText: 'Dirección (opcional)'),
                 ),
                 const SizedBox(height: 8),
-                // Si manejas multi-academia y la conoces desde el token, podrías ocultarlo.
                 TextFormField(
                   initialValue: idAcademia?.toString() ?? '1',
                   decoration: const InputDecoration(labelText: 'ID Academia'),
@@ -117,36 +116,25 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               try {
-                if (row == null) {
-                  await _repo.crear(
-                    nombres: nombres.text.trim(),
-                    apellidos: apellidos.text.trim(),
-                    fechaNacimiento: fecha.text.trim().isEmpty ? null : fecha.text.trim(),
-                    direccion: direccion.text.trim().isEmpty ? null : direccion.text.trim(),
-                    telefono: telefono.text.trim().isEmpty ? null : telefono.text.trim(),
-                    idAcademia: idAcademia ?? 1,
-                  );
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante creado')));
-                } else {
-                  await _repo.update(
-                    idEstudiante: (row['id'] as num).toInt(),
-                    nombres: nombres.text.trim(),
-                    apellidos: apellidos.text.trim(),
-                    fechaNacimiento: fecha.text.trim().isEmpty ? null : fecha.text.trim(),
-                    direccion: direccion.text.trim().isEmpty ? null : direccion.text.trim(),
-                    telefono: telefono.text.trim().isEmpty ? null : telefono.text.trim(),
-                    idAcademia: idAcademia,
-                  );
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante actualizado')));
-                }
-                if (mounted) Navigator.pop(context, true);
+                await _repo.update(
+                  idEstudiante: (row['id'] as num).toInt(),
+                  nombres: nombres.text.trim(),
+                  apellidos: apellidos.text.trim(),
+                  fechaNacimiento: fecha.text.trim().isEmpty ? null : fecha.text.trim(),
+                  direccion: direccion.text.trim().isEmpty ? null : direccion.text.trim(),
+                  telefono: telefono.text.trim().isEmpty ? null : telefono.text.trim(),
+                  idAcademia: idAcademia,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante actualizado')));
+                Navigator.pop(context, true);
               } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                }
               }
             },
-            child: Text(row == null ? 'Crear' : 'Guardar'),
+            child: const Text('Guardar'),
           ),
         ],
       ),
@@ -193,57 +181,67 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
           const SizedBox(width: 8),
         ],
       ),
+      // FAB ahora abre la pantalla combinada (no el diálogo)
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _newOrEdit(),
-        icon: const Icon(Icons.add),
-        label: const Text('Nuevo'),
-      ),
+  onPressed: () async {
+    final created = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()),
+    );
+    if (created == true) _load();
+  },
+  icon: const Icon(Icons.add),
+  label: const Text('Nuevo'),
+),
       body: Column(
         children: [
           _toolbar(),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Align(alignment: Alignment.centerLeft,
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             ),
           Expanded(
             child: _rows.isEmpty
-              ? const Center(child: Text('Sin resultados'))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _rows.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final r = _rows[i];
-                    final activo = r['activo'] == true;
-                    return Card(
-                      child: ListTile(
-                        leading: Icon(activo ? Icons.check_circle : Icons.cancel),
-                        title: Text('${r['nombres']} ${r['apellidos']}'),
-                        subtitle: Text(r['categoriaNombre'] == null
-                          ? 'Sin matrícula'
-                          : 'Últ. categoría: ${r['categoriaNombre']}'),
-                        onTap: () => Navigator.pushNamed(
-                          context,
-                          '/admin/estudiantes/detalle',
-                          arguments: {'id': (r['id'] as num).toInt()},
+                ? const Center(child: Text('Sin resultados'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _rows.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final r = _rows[i];
+                      final activo = r['activo'] == true;
+                      return Card(
+                        child: ListTile(
+                          leading: Icon(activo ? Icons.check_circle : Icons.cancel),
+                          title: Text('${r['nombres']} ${r['apellidos']}'),
+                          subtitle: Text(
+                            r['categoriaNombre'] == null
+                              ? 'Sin matrícula'
+                              : 'Últ. categoría: ${r['categoriaNombre']}',
+                          ),
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            '/admin/estudiantes/detalle',
+                            arguments: {'id': (r['id'] as num).toInt()},
+                          ),
+                          trailing: Wrap(
+                            spacing: 4,
+                            children: [
+                              IconButton(icon: const Icon(Icons.edit), onPressed: () => _edit(row: r)),
+                              IconButton(
+                                icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
+                                onPressed: () => _toggleEstado(r),
+                              ),
+                            ],
+                          ),
                         ),
-                        trailing: Wrap(
-                          spacing: 4,
-                          children: [
-                            IconButton(icon: const Icon(Icons.edit), onPressed: () => _newOrEdit(row: r)),
-                            IconButton(
-                              icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-                              onPressed: () => _toggleEstado(r),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),

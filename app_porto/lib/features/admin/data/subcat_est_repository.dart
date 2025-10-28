@@ -1,4 +1,3 @@
-// lib/features/admin/data/subcat_est_repository.dart
 import '../../../core/constants/endpoints.dart';
 import '../../../core/network/http_client.dart';
 
@@ -7,23 +6,24 @@ class SubcatEstRepository {
   SubcatEstRepository(this._http);
 
   Map<String, String> get _h => const {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-  };
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
 
   // Normaliza lo que venga del back
   Map<String, dynamic> _from(Map<String, dynamic> j) => {
-    'idEstudiante'   : j['id_estudiante'] ?? j['idEstudiante'],
-    'idSubcategoria' : j['id_subcategoria'] ?? j['idSubcategoria'],
-    'fechaUnion'     : j['fecha_union'] ?? j['fechaUnion'],
-    // Si tu back hace JOINs opcionales:
-    'categoria'      : j['categoria'] ?? j['categoriaNombre'],
-    'subcategoria'   : j['subcategoria'] ?? j['nombre_subcategoria'] ?? j['subcategoriaNombre'],
-    'nombres'        : j['nombres'],
-    'apellidos'      : j['apellidos'],
-    'estudiante'     : j['estudiante'], // nombres + apellidos si el back lo envía junto
-    'activo'         : j['activo'],
-  };
+        'idEstudiante': j['id_estudiante'] ?? j['idEstudiante'],
+        'idSubcategoria': j['id_subcategoria'] ?? j['idSubcategoria'],
+        'fechaUnion': j['fecha_union'] ?? j['fechaUnion'],
+        // Si tu back hace JOINs opcionales:
+        'categoria': j['categoria'] ?? j['categoriaNombre'],
+        'subcategoria':
+            j['subcategoria'] ?? j['nombre_subcategoria'] ?? j['subcategoriaNombre'],
+        'nombres': j['nombres'],
+        'apellidos': j['apellidos'],
+        'estudiante': j['estudiante'], // nombres + apellidos si el back lo envía junto
+        'activo': j['activo'],
+      };
 
   List<Map<String, dynamic>> _asList(dynamic res) {
     if (res is List) {
@@ -53,7 +53,9 @@ class SubcatEstRepository {
     } catch (_) {
       // Fallback si el endpoint no existe: traer todo y filtrar
       final all = await todas();
-      return all.where((m) => (m['idEstudiante'] as num?)?.toInt() == idEstudiante).toList();
+      return all
+          .where((m) => (m['idEstudiante'] as num?)?.toInt() == idEstudiante)
+          .toList();
     }
   }
 
@@ -61,7 +63,9 @@ class SubcatEstRepository {
   Future<List<Map<String, dynamic>>> porSubcategoria(int idSubcategoria) async {
     // Si más adelante expones GET /subcategoria-estudiante/subcategoria/:id, úsalo aquí.
     final all = await todas();
-    return all.where((m) => (m['idSubcategoria'] as num?)?.toInt() == idSubcategoria).toList();
+    return all
+        .where((m) => (m['idSubcategoria'] as num?)?.toInt() == idSubcategoria)
+        .toList();
   }
 
   // ========== Mutaciones ==========

@@ -34,8 +34,10 @@ abstract class Endpoints {
 
   // ===== Subcategoría-Estudiante
   static const subcatEst = '/subcategoria-estudiante';
-  static String subcatEstPorEstudiante(int idEst) => '/subcategoria-estudiante/estudiante/$idEst';
-  static String subcatEstEliminar(int idEst, int idSubcat) => '/subcategoria-estudiante/$idEst/$idSubcat';
+  static String subcatEstPorEstudiante(int idEst) =>
+      '/subcategoria-estudiante/estudiante/$idEst';
+  static String subcatEstEliminar(int idEst, int idSubcat) =>
+      '/subcategoria-estudiante/$idEst/$idSubcat';
 
   // ===== Matrículas
   static const matriculas = '/matriculas';
@@ -44,17 +46,25 @@ abstract class Endpoints {
   static const matriculasActivas = '/matriculas/activas';
   static const matriculasInactivas = '/matriculas/inactivas';
   static const matriculasTodas = '/matriculas/todas';
+  // Matriculas
 
+  static String matriculasPorEstudiante(int id) => '/matriculas/estudiante/$id';
+  static String get matriculasCrearConEstudiante => '/matriculas/crear-con-estudiante';
+
+  /// 🔴 NUEVO: usado por EstudiantesRepository.crearConMatricula()
+  /// Asegúrate que tu backend tenga esta ruta: POST /estudiantes/crear-con-matricula
+  static const String estudiantesCrearConMatricula = '/estudiantes/crear-con-matricula';
   // ===== Estudiantes
   static const estudiantes = '/estudiantes';
   static String estudianteId(int id) => '/estudiantes/$id';
-  // ⚠️ Tu back: PATCH /estudiantes/activar/:id
+  // ⚠️ Tu back: PATCH /estudiantes/activar/:ida
   // (con nuestro HttpClient usaremos POST al mismo path)
   static String estudianteActivar(int id) => '/estudiantes/activar/$id';
 
-   // ===== Mensualidades (asumimos estos endpoints; si tu back usa otros, cambia aquí)
+  // Mensualidades
   static const mensualidades = '/mensualidades';
-  static String mensualidadId(int id) => '/mensualidades/$id';
+  static String mensualidadesPorEstudiante(int id) =>
+      '/mensualidades/estudiante/$id';
 
   // ===== Pagos
   static const pagos = '/pagos';

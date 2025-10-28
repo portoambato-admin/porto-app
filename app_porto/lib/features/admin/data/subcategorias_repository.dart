@@ -6,7 +6,6 @@ class SubcategoriasRepository {
   final HttpClient _http;
   SubcategoriasRepository(this._http);
 
-  // headers requeridos por tu HttpClient
   static const Map<String, String> _h = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
@@ -25,7 +24,7 @@ class SubcategoriasRepository {
   Map<String, dynamic> _toCreateBody({
     required int idCategoria,
     required String nombre,
-    required String codigo, // <-- obligatorio
+    required String codigo,
   }) =>
       {
         'id_categoria': idCategoria,
@@ -147,6 +146,30 @@ class SubcategoriasRepository {
     return _asItems(res).map(_fromApi).toList();
   }
 
+  
+
+  /// ⚠️ NUEVO: listar subcategorías por categoría (con fallback si backend no filtra).
+  Future<List<Map<String, dynamic>>> porCategoria(int idCategoria) async {
+    // Intento 1: backend soporta query param
+    final res = await _http.get(
+      Endpoints.subcategorias,
+      headers: _h,
+      query: {'idCategoria': '$idCategoria'},
+    );
+
+    // Si el backend ya filtró:
+    if (res is List) {
+      return List<Map<String, dynamic>>.from(res).map(_fromApi).toList();
+    }
+    if (res is Map && res['items'] is List) {
+      return List<Map<String, dynamic>>.from(res['items']).map(_fromApi).toList();
+    }
+
+    // Fallback: traer todas y filtrar en cliente
+    final all = await todas();
+    return all.where((e) => (e['idCategoria'] as num?)?.toInt() == idCategoria).toList();
+  }
+
   // ---------- Paginado (con fallback en cliente) ----------
   Future<Map<String, dynamic>> paged({
     int page = 1,
@@ -220,7 +243,7 @@ class SubcategoriasRepository {
   Future<Map<String, dynamic>> crear({
     required int idCategoria,
     required String nombre,
-    required String codigo, // <-- obligatorio
+    required String codigo,
   }) async {
     final body = _toCreateBody(
       idCategoria: idCategoria,
@@ -238,7 +261,7 @@ class SubcategoriasRepository {
   Future<Map<String, dynamic>> update({
     required int idSubcategoria,
     String? nombre,
-    String? codigo, // puedes permitir actualizarlo
+    String? codigo,
     int? idCategoria,
     bool? activo,
   }) async {

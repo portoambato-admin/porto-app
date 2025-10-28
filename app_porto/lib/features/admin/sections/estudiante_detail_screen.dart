@@ -1,6 +1,6 @@
-// lib/features/admin/sections/estudiante_detail_screen.dart
 import 'package:flutter/material.dart';
-import '../../../app/app_scope.dart';
+import 'package:app_porto/app/app_scope.dart';
+import '../presentation/widgets/pagos_mensualidad_panel.dart';
 
 class EstudianteDetailScreen extends StatefulWidget {
   final int id;
@@ -10,23 +10,31 @@ class EstudianteDetailScreen extends StatefulWidget {
   State<EstudianteDetailScreen> createState() => _EstudianteDetailScreenState();
 }
 
-class _EstudianteDetailScreenState extends State<EstudianteDetailScreen> with SingleTickerProviderStateMixin {
+class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
+    with SingleTickerProviderStateMixin {
+  // Repos
   late final _est  = AppScope.of(context).estudiantes;
   late final _mat  = AppScope.of(context).matriculas;
-  late final _cats = AppScope.of(context).categorias;
   late final _asig = AppScope.of(context).subcatEst;
-  late final _mens = AppScope.of(context).mensualidades;
-  late final _pagos= AppScope.of(context).pagos;
+  late final _cats = AppScope.of(context).categorias;
+  late final _subs = AppScope.of(context).subcategorias;
 
-  late final TabController _tab = TabController(length: 3, vsync: this);
+  // Tabs
+  late final TabController _tab = TabController(length: 2, vsync: this);
 
+  // Estado
   Map<String, dynamic>? _info;
+  Map<String, dynamic>? _matricula; // única (si existe)
+  List<Map<String, dynamic>> _asignaciones = [];
+  List<Map<String, dynamic>> _categorias = [];
+
+  // UI asignación subcategoría
+  int? _catForAssign;
+  int? _subToAssign;
+  List<Map<String, dynamic>> _subsDeCat = [];
+
   bool _loading = true;
   String? _error;
-
-  List<Map<String, dynamic>> _matriculas = [];
-  List<Map<String, dynamic>> _asignaciones = [];
-  List<Map<String, dynamic>> _mensualidades = [];
 
   @override
   void initState() {
@@ -39,15 +47,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen> with Si
     try {
       final info  = await _est.byId(widget.id);
       final mats  = await _mat.porEstudiante(widget.id);
+      final unica = (mats.isNotEmpty) ? mats.first : null;
       final asign = await _asig.porEstudiante(widget.id);
-      // mensualidades por estudiante (si tu back aún no lo soporta, verás vacío por ahora)
-      final mens  = await _mens.porEstudiante(widget.id);
+      final cats  = await _fetchCategorias();
 
       setState(() {
         _info = info;
-        _matriculas = mats;
+        _matricula = unica;
         _asignaciones = asign;
-        _mensualidades = mens;
+        _categorias = cats;
       });
     } catch (e) {
       setState(() => _error = e.toString());
@@ -56,283 +64,163 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen> with Si
     }
   }
 
-  // ====== Matrículas ======
-  Future<void> _nuevaMatricula() async {
-    final formKey = GlobalKey<FormState>();
-    int? catSel;
-    final ciclo = TextEditingController();
+  // ---------- Helpers de formato ----------
+  String _fmt(Object? v) => (v == null || '$v'.trim().isEmpty) ? '—' : '$v';
 
-    final cats = await _cats.simpleList();
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Nueva matrícula'),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
-                value: catSel,
-                items: cats.map((c) => DropdownMenuItem(value: c['id'] as int, child: Text(c['nombre'] as String))).toList(),
-                onChanged: (v) => catSel = v,
-                decoration: const InputDecoration(labelText: 'Categoría', prefixIcon: Icon(Icons.category)),
-                validator: (v) => v == null ? 'Selecciona una categoría' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: ciclo,
-                decoration: const InputDecoration(labelText: 'Ciclo (opcional)'),
-              ),
-            ]),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                await _mat.crear(idEstudiante: widget.id, idCategoria: catSel!, ciclo: ciclo.text.trim().isEmpty ? null : ciclo.text.trim());
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            },
-            child: const Text('Crear'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok == true) _loadAll();
-  }
-
-  Future<void> _editarMatricula(Map<String, dynamic> row) async {
-    final formKey = GlobalKey<FormState>();
-    int? catSel = row['idCategoria'] as int?;
-    final ciclo = TextEditingController(text: row['ciclo'] ?? '');
-
-    final cats = await _cats.simpleList();
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Editar matrícula'),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
-                value: catSel,
-                items: cats.map((c) => DropdownMenuItem(value: c['id'] as int, child: Text(c['nombre'] as String))).toList(),
-                onChanged: (v) => catSel = v,
-                decoration: const InputDecoration(labelText: 'Categoría', prefixIcon: Icon(Icons.category)),
-                validator: (v) => v == null ? 'Selecciona una categoría' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: ciclo,
-                decoration: const InputDecoration(labelText: 'Ciclo (opcional)'),
-              ),
-            ]),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                await _mat.update(idMatricula: (row['id'] as num).toInt(), idCategoria: catSel, ciclo: ciclo.text.trim());
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok == true) _loadAll();
-  }
-
-  Future<void> _toggleMatricula(Map<String, dynamic> r) async {
-    final activo = r['activo'] == true;
-    final id = (r['id'] as num).toInt();
+  String _fmtDate(Object? v) {
+    if (v == null) return '—';
+    final s = v.toString();
     try {
-      if (activo) {
-        await _mat.deactivate(id); // ✅ ahora existe en el repo
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Matrícula desactivada')));
-      } else {
-        await _mat.activate(id);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Matrícula activada')));
-      }
-      _loadAll();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      final d = DateTime.parse(s);
+      return '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+    } catch (_) {
+      return s.isEmpty ? '—' : s; // ya formateada
     }
   }
 
-  // ====== Asignaciones (subcategorías) ======
-  Future<void> _asignarSubcategoria() async {
-    final formKey = GlobalKey<FormState>();
-    int? subcatSel;
+  String _categoriaLabel(Map<String, dynamic>? m) {
+    if (m == null) return '—';
+    final byName = m['categoriaNombre'];
+    if (byName != null && byName.toString().trim().isNotEmpty) return '$byName';
 
-    final subcats = await AppScope.of(context).subcategorias.todas();
-    final activas = subcats.where((e) => e['activo'] == true).toList();
+    final id = m['idCategoria'] ?? m['id_categoria'];
+    if (id == null) return '—';
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Asignar subcategoría'),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: DropdownButtonFormField<int>(
-              value: subcatSel,
-              isExpanded: true,
-              items: activas.map((s) => DropdownMenuItem(
-                value: s['id'] as int,
-                child: Text('${s['categoriaNombre'] ?? '—'}  •  ${s['nombre']}'),
-              )).toList(),
-              onChanged: (v) => subcatSel = v,
-              validator: (v) => v == null ? 'Selecciona una subcategoría' : null,
-              decoration: const InputDecoration(labelText: 'Subcategoría', prefixIcon: Icon(Icons.label)),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                await _asig.asignar(idEstudiante: widget.id, idSubcategoria: subcatSel!);
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            },
-            child: const Text('Asignar'),
-          ),
-        ],
-      ),
+    final match = _categorias.firstWhere(
+      (c) => ((c['id_categoria'] ?? c['id']).toString() == '$id'),
+      orElse: () => const {},
     );
-
-    if (ok == true) _loadAll();
+    return (match['nombre_categoria'] ?? match['nombre'] ?? '—').toString();
   }
 
-  Future<void> _eliminarAsignacion(Map<String, dynamic> r) async {
-    final idSubcat = (r['idSubcategoria'] as num?)?.toInt();
-    if (idSubcat == null) return;
+  // ---------- Helpers repos ----------
+  Future<List<Map<String, dynamic>>> _fetchCategorias() async {
+    final dyn = _cats as dynamic;
+    try { final r = await dyn.activas(); return List<Map<String, dynamic>>.from(r); } catch (_) {}
+    try { final r = await dyn.todas();   return List<Map<String, dynamic>>.from(r); } catch (_) {}
+    try { final r = await dyn.listar();  return List<Map<String, dynamic>>.from(r); } catch (_) {}
+    try { final r = await dyn.getAll();  return List<Map<String, dynamic>>.from(r); } catch (_) {}
+    return const <Map<String, dynamic>>[];
+  }
+
+  Future<void> _loadSubsForCat(int idCat) async {
+    final dyn = _subs as dynamic;
     try {
-      await _asig.eliminar(idEstudiante: widget.id, idSubcategoria: idSubcat);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asignación eliminada')));
-      _loadAll();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      final r = await dyn.porCategoria(idCat);
+      setState(() {
+        _subsDeCat = List<Map<String, dynamic>>.from(r);
+        _subToAssign = null;
+      });
+      return;
+    } catch (_) {}
+    // Fallback: traer todas y filtrar por id_categoria / idCategoria
+    try {
+      final all = await dyn.todas();
+      final list = List<Map<String, dynamic>>.from(all).where((e) {
+        final a = e['id_categoria'] ?? e['idCategoria'];
+        return a?.toString() == '$idCat';
+      }).toList();
+      setState(() {
+        _subsDeCat = list;
+        _subToAssign = null;
+      });
+    } catch (_) {
+      setState(() { _subsDeCat = []; _subToAssign = null; });
     }
   }
 
-  // ====== Pagos de mensualidades ======
-  Future<void> _registrarPago(Map<String, dynamic> mensualidad) async {
-    final formKey = GlobalKey<FormState>();
-    final monto = TextEditingController(text: (mensualidad['valor'] ?? '').toString());
-    String metodo = 'efectivo';
-    final obs = TextEditingController();
+  Future<void> _updateMatriculaFlexible({
+    required int idMatricula,
+    int? idCategoria,
+    String? ciclo,
+    String? fechaISO, // yyyy-MM-dd
+  }) async {
+    final dyn = _mat as dynamic;
+    final Map<String, dynamic> dataSnake = {
+      if (idCategoria != null) 'id_categoria': idCategoria,
+      if (ciclo != null) 'ciclo': ciclo,
+      if (fechaISO != null) 'fecha_matricula': fechaISO,
+    };
+    final Map<String, dynamic> dataCamel = {
+      if (idCategoria != null) 'idCategoria': idCategoria,
+      if (ciclo != null) 'ciclo': ciclo,
+      if (fechaISO != null) 'fechaMatricula': fechaISO,
+    };
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Registrar pago'),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextFormField(
-                controller: monto,
-                decoration: const InputDecoration(labelText: 'Monto'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (v) {
-                  final x = double.tryParse((v ?? '').replaceAll(',', '.'));
-                  return (x == null || x <= 0) ? 'Monto inválido' : null;
-                },
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: metodo,
-                items: const [
-                  DropdownMenuItem(value: 'efectivo', child: Text('Efectivo')),
-                  DropdownMenuItem(value: 'transferencia', child: Text('Transferencia')),
-                  DropdownMenuItem(value: 'tarjeta', child: Text('Tarjeta')),
-                ],
-                onChanged: (v) => metodo = v ?? 'efectivo',
-                decoration: const InputDecoration(labelText: 'Método de pago'),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: obs,
-                decoration: const InputDecoration(labelText: 'Observaciones (opcional)'),
-                maxLines: 2,
-              ),
-            ]),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                final v = double.parse(monto.text.replaceAll(',', '.'));
-                await _pagos.crear(
-                  idMensualidad: (mensualidad['id'] as num).toInt(),
-                  monto: v,
-                  metodo: metodo,
-                  observaciones: obs.text.trim().isEmpty ? null : obs.text.trim(),
-                );
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-              }
-            },
-            child: const Text('Registrar'),
-          ),
-        ],
-      ),
-    );
+    try { await dyn.update(idMatricula: idMatricula, idCategoria: idCategoria, ciclo: ciclo, fechaISO: fechaISO); return; } catch (_) {}
+    try { await dyn.actualizar(idMatricula, dataSnake); return; } catch (_) {}
+    try { await dyn.patch(idMatricula, dataSnake); return; } catch (_) {}
+    try { await dyn.update(idMatricula, dataSnake); return; } catch (_) {}
+    try { await dyn.actualizar({'id_matricula': idMatricula, ...dataSnake}); return; } catch (_) {}
+    try { await dyn.actualizar({'idMatricula': idMatricula, ...dataCamel}); return; } catch (_) {}
+    try {
+      final payload = Map<String, dynamic>.from(dataSnake);
+      payload['id_matricula'] = idMatricula;
+      await dyn.update(payload);
+      return;
+    } catch (_) {}
 
-    if (ok == true) _loadAll();
+    throw 'Tu MatriculasRepository no expone un método de actualización compatible.';
   }
 
+  Future<void> _createMatriculaFlexible({
+    required int idEstudiante,
+    required int idCategoria,
+    String? ciclo,
+    String? fechaISO, // yyyy-MM-dd
+  }) async {
+    final dyn = _mat as dynamic;
+    try {
+      await dyn.crear(
+        idEstudiante: idEstudiante,
+        idCategoria: idCategoria,
+        ciclo: ciclo,
+        fechaISO: fechaISO,
+      );
+      return;
+    } catch (_) {}
+    try {
+      await dyn.crear(
+        id_estudiante: idEstudiante,
+        id_categoria: idCategoria,
+        ciclo: ciclo,
+        fecha_matricula: fechaISO,
+      );
+      return;
+    } catch (_) {}
+    final bodySnake = {
+      'id_estudiante': idEstudiante,
+      'id_categoria': idCategoria,
+      if (ciclo != null && ciclo.isNotEmpty) 'ciclo': ciclo,
+      if (fechaISO != null) 'fecha_matricula': fechaISO,
+    };
+    final bodyCamel = {
+      'idEstudiante': idEstudiante,
+      'idCategoria': idCategoria,
+      if (ciclo != null && ciclo.isNotEmpty) 'ciclo': ciclo,
+      if (fechaISO != null) 'fechaMatricula': fechaISO,
+    };
+    try { await dyn.crear(bodySnake); return; } catch (_) {}
+    try { await dyn.crear(bodyCamel); return; } catch (_) {}
+
+    throw 'Tu MatriculasRepository no expone un método de creación compatible.';
+  }
+
+  // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
-    final title = _info == null ? 'Estudiante' : '${_info!['nombres']} ${_info!['apellidos']}';
+    final title = _info == null
+        ? 'Estudiante'
+        : '${_info!['nombres'] ?? ''} ${_info!['apellidos'] ?? ''}'.trim();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Text(title.isEmpty ? 'Estudiante' : title),
         bottom: TabBar(
           controller: _tab,
-          tabs: const [
-            Tab(text: 'Matrículas'),
-            Tab(text: 'Subcategorías'),
-            Tab(text: 'Pagos'),
-          ],
+          tabs: const [Tab(text: 'Información'), Tab(text: 'Pagos')],
         ),
       ),
-      floatingActionButton: switch (_tab.index) {
-        0 => FloatingActionButton.extended(onPressed: _nuevaMatricula, icon: const Icon(Icons.add), label: const Text('Nueva matrícula')),
-        1 => FloatingActionButton.extended(onPressed: _asignarSubcategoria, icon: const Icon(Icons.add), label: const Text('Asignar subcategoría')),
-        _ => null,
-      },
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null)
@@ -340,97 +228,525 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen> with Si
               : TabBarView(
                   controller: _tab,
                   children: [
-                    _tabMatriculas(),
-                    _tabSubcategorias(),
-                    _tabPagos(),
+                    _tabInformacion(),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: PagosMensualidadPanel(idEstudiante: widget.id),
+                    ),
                   ],
                 ),
     );
   }
 
-  Widget _tabMatriculas() {
-    if (_matriculas.isEmpty) return const Center(child: Text('Sin matrículas'));
-    return ListView.separated(
+  Widget _tabInformacion() {
+    final cs = Theme.of(context).colorScheme;
+    final txt = Theme.of(context).textTheme;
+
+    Widget _row(IconData ic, String label, Object? v) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(ic, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: txt.bodyMedium,
+                    children: [
+                      TextSpan(
+                        text: '$label: ',
+                        style:
+                            txt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      TextSpan(text: _fmt(v)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return ListView(
       padding: const EdgeInsets.all(12),
-      itemCount: _matriculas.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) {
-        final r = _matriculas[i];
-        final activo = r['activo'] == true;
-        return Card(
-          child: ListTile(
-            leading: Icon(activo ? Icons.check_circle : Icons.cancel),
-            title: Text(r['categoriaNombre'] ?? '—'),
-            subtitle: Text('Ciclo: ${r['ciclo'] ?? '—'}   •   Fecha: ${r['fecha'] ?? '—'}'),
-            trailing: Wrap(
-              spacing: 4,
+      children: [
+        // ===== Header =====
+        Card(
+          elevation: 0.5,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(icon: const Icon(Icons.edit), onPressed: () => _editarMatricula(r)),
-                IconButton(
-                  icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => _toggleMatricula(r),
+                CircleAvatar(
+                  radius: 28,
+                  child: Text(
+                    (_info?['nombres'] ?? 'E')[0].toString().toUpperCase(),
+                    style: const TextStyle(fontSize: 22),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}',
+                        style: txt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 8),
+                      _row(
+                        Icons.cake,
+                        'Nacimiento',
+                        _fmtDate(_info?['fechaNacimiento'] ?? _info?['fecha_nacimiento']),
+                      ),
+                      _row(Icons.phone, 'Teléfono',   _info?['telefono']),
+                      _row(Icons.home,  'Dirección',  _info?['direccion']),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
 
-  Widget _tabSubcategorias() {
-    if (_asignaciones.isEmpty) return const Center(child: Text('Sin asignaciones'));
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: _asignaciones.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) {
-        final r = _asignaciones[i];
-        return Card(
-          child: ListTile(
-            title: Text(r['subcategoria'] ?? '—'),
-            subtitle: Text('Categoría: ${r['categoria'] ?? '—'}   •   Unión: ${r['fechaUnion'] ?? '—'}'),
-            trailing: IconButton(icon: const Icon(Icons.delete), onPressed: () => _eliminarAsignacion(r)),
-          ),
-        );
-      },
-    );
-  }
+        const SizedBox(height: 12),
 
-  Widget _tabPagos() {
-    // Por ahora mostramos solo mensualidades; las compras/ventas las metemos luego.
-    if (_mensualidades.isEmpty) {
-      return const Center(child: Text('Sin mensualidades registradas para este estudiante'));
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: _mensualidades.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) {
-        final m = _mensualidades[i];
-        final estado = (m['estado'] ?? 'pendiente').toString();
-        final isPagado = estado.toLowerCase() == 'pagado';
-        final chipColor = isPagado ? Colors.green : (estado == 'anulado' ? Colors.grey : Colors.orange);
-        return Card(
-          child: ListTile(
-            title: Text('Mensualidad ${m['mes']}/${m['anio']}  •  \$${(m['valor'] ?? 0)}'),
-            subtitle: Wrap(
-              spacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
+        // ===== Inscripción =====
+        Card(
+          elevation: 0.5,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Chip(label: Text(estado.toUpperCase()), backgroundColor: chipColor.withOpacity(.15)),
+                Row(
+                  children: [
+                    const Icon(Icons.assignment_turned_in),
+                    const SizedBox(width: 8),
+                    Text('Inscripción',
+                        style: txt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    if (_matricula != null)
+                      FilledButton.tonalIcon(
+                        onPressed: _editarInscripcionDialog,
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Editar inscripción'),
+                      )
+                    else
+                      FilledButton.icon(
+                        onPressed: _crearInscripcionDialog,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Crear inscripción'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (_matricula == null)
+                  Row(
+                    children: const [
+                      Icon(Icons.info_outline),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('Sin inscripción registrada.')),
+                    ],
+                  )
+                else
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      Chip(
+                        avatar: const Icon(Icons.category, size: 18),
+                        label: Text(_categoriaLabel(_matricula)),
+                      ),
+                      Chip(
+                        avatar: const Icon(Icons.repeat, size: 18),
+                        label: Text('Ciclo: ${_fmt(_matricula?['ciclo'])}'),
+                      ),
+                      Chip(
+                        avatar: const Icon(Icons.event, size: 18),
+                        label: Text('Fecha: ${_fmtDate(_matricula?['fecha'] ?? _matricula?['fecha_matricula'])}'),
+                      ),
+                      Chip(
+                        avatar: Icon(
+                          _matricula?['activo'] == true ? Icons.check_circle : Icons.cancel,
+                          size: 18,
+                        ),
+                        label: Text(_matricula?['activo'] == true ? 'Activa' : 'Inactiva'),
+                        backgroundColor: _matricula?['activo'] == true
+                            ? cs.primaryContainer
+                            : cs.surfaceVariant,
+                      ),
+                    ],
+                  ),
               ],
             ),
-            trailing: isPagado
-                ? const Icon(Icons.check, color: Colors.green)
-                : TextButton.icon(
-                    onPressed: () => _registrarPago(m),
-                    icon: const Icon(Icons.attach_money),
-                    label: const Text('Pagar'),
-                  ),
           ),
-        );
-      },
+        ),
+
+        const SizedBox(height: 12),
+
+        // ===== Subcategorías =====
+        Card(
+          elevation: 0.5,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.legend_toggle_outlined),
+                    const SizedBox(width: 8),
+                    Text('Subcategorías asignadas',
+                        style: txt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // --- Form de asignación ---
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 260,
+                      child: DropdownButtonFormField<int>(
+                        value: _catForAssign,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Categoría',
+                          prefixIcon: Icon(Icons.category),
+                        ),
+                        items: _categorias.map((c) {
+                          final id = c['id_categoria'] ?? c['id'];
+                          final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
+                          return DropdownMenuItem<int>(
+                            value: (id is int) ? id : int.tryParse('$id'),
+                            child: Text('$nombre'),
+                          );
+                        }).toList(),
+                        onChanged: (v) {
+                          setState(() {
+                            _catForAssign = v;
+                            _subsDeCat = [];
+                            _subToAssign = null;
+                          });
+                          if (v != null) _loadSubsForCat(v);
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 260,
+                      child: DropdownButtonFormField<int>(
+                        value: _subToAssign,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Subcategoría',
+                          prefixIcon: Icon(Icons.label),
+                        ),
+                        items: _subsDeCat.map((s) {
+                          final id = s['id_subcategoria'] ?? s['id'];
+                          final nombre = s['nombre_subcategoria'] ?? s['nombre'] ?? '—';
+                          return DropdownMenuItem<int>(
+                            value: (id is int) ? id : int.tryParse('$id'),
+                            child: Text('$nombre'),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() => _subToAssign = v),
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: (_subToAssign == null)
+                          ? null
+                          : () async {
+                              try {
+                                await _asig.asignar(
+                                  idEstudiante: widget.id,
+                                  idSubcategoria: _subToAssign!,
+                                );
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Subcategoría asignada')),
+                                );
+                                await _loadAll();
+                              } catch (e) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Asignar'),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+                if (_asignaciones.isEmpty)
+                  Row(
+                    children: const [
+                      Icon(Icons.info_outline),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('Sin subcategorías asignadas.')),
+                    ],
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _asignaciones.length,
+                    separatorBuilder: (_, __) => const Divider(height: 8),
+                    itemBuilder: (_, i) {
+                      final r = _asignaciones[i];
+                      final idSub = (r['idSubcategoria'] as num?)?.toInt();
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.label_important_outline),
+                        title: Text(_fmt(r['subcategoria'])),
+                        subtitle: Text(
+                          'Categoría: ${_fmt(r['categoria'])}   •   Unión: ${_fmt(r['fechaUnion'])}',
+                        ),
+                        trailing: (idSub == null)
+                            ? null
+                            : IconButton(
+                                tooltip: 'Eliminar asignación',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () async {
+                                  try {
+                                    await _asig.eliminar(
+                                      idEstudiante: widget.id,
+                                      idSubcategoria: idSub,
+                                    );
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Asignación eliminada')),
+                                    );
+                                    await _loadAll();
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error: $e')),
+                                    );
+                                  }
+                                },
+                              ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  // ---------- Diálogos inscripción ----------
+  Future<void> _editarInscripcionDialog() async {
+    if (_matricula == null) return;
+
+    final formKey = GlobalKey<FormState>();
+    int? idCategoria = (_matricula?['idCategoria'] ?? _matricula?['id_categoria']) as int?;
+    final cicloCtl = TextEditingController(text: _matricula?['ciclo']?.toString() ?? '');
+    DateTime? fechaSel;
+
+    String? fechaStr = (_matricula?['fecha'] ?? _matricula?['fecha_matricula'])?.toString();
+    if (fechaStr != null && fechaStr.isNotEmpty) {
+      try { fechaSel = DateTime.parse(fechaStr); } catch (_) {}
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Editar inscripción'),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  value: idCategoria,
+                  decoration: const InputDecoration(labelText: 'Categoría'),
+                  items: _categorias.map((c) {
+                    final id = c['id_categoria'] ?? c['id'];
+                    final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
+                    return DropdownMenuItem<int>(
+                      value: (id is int) ? id : int.tryParse('$id'),
+                      child: Text('$nombre'),
+                    );
+                  }).toList(),
+                  validator: (v) => (v == null) ? 'Seleccione una categoría' : null,
+                  onChanged: (v) => idCategoria = v,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: cicloCtl,
+                  decoration: const InputDecoration(labelText: 'Ciclo'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('Fecha:'),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () async {
+                        final now = DateTime.now();
+                        final initial = fechaSel ?? now;
+                        final sel = await showDatePicker(
+                          context: context,
+                          initialDate: initial,
+                          firstDate: DateTime(now.year - 5, 1, 1),
+                          lastDate: DateTime(now.year + 1, 12, 31),
+                        );
+                        if (sel != null) setState(() => fechaSel = sel);
+                      },
+                      child: Text(
+                        (fechaSel != null)
+                            ? '${fechaSel!.year}-${fechaSel!.month.toString().padLeft(2, '0')}-${fechaSel!.day.toString().padLeft(2, '0')}'
+                            : (_fmtDate(fechaStr)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) Navigator.pop(context, true);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final fechaISO = (fechaSel != null)
+        ? '${fechaSel!.year}-${fechaSel!.month.toString().padLeft(2, '0')}-${fechaSel!.day.toString().padLeft(2, '0')}'
+        : null;
+
+    try {
+      await _updateMatriculaFlexible(
+        idMatricula: (_matricula!['id_matricula'] ?? _matricula!['id']) as int,
+        idCategoria: idCategoria,
+        ciclo: cicloCtl.text.trim().isEmpty ? null : cicloCtl.text.trim(),
+        fechaISO: fechaISO,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inscripción actualizada')));
+      await _loadAll();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> _crearInscripcionDialog() async {
+    final formKey = GlobalKey<FormState>();
+    int? idCategoria;
+    final cicloCtl = TextEditingController();
+    DateTime? fechaSel;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Crear inscripción'),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<int>(
+                  value: idCategoria,
+                  decoration: const InputDecoration(labelText: 'Categoría'),
+                  items: _categorias.map((c) {
+                    final id = c['id_categoria'] ?? c['id'];
+                    final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
+                    return DropdownMenuItem<int>(
+                      value: (id is int) ? id : int.tryParse('$id'),
+                      child: Text('$nombre'),
+                    );
+                  }).toList(),
+                  validator: (v) => (v == null) ? 'Seleccione una categoría' : null,
+                  onChanged: (v) => idCategoria = v,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: cicloCtl,
+                  decoration: const InputDecoration(labelText: 'Ciclo'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('Fecha:'),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () async {
+                        final now = DateTime.now();
+                        final sel = await showDatePicker(
+                          context: context,
+                          initialDate: fechaSel ?? now,
+                          firstDate: DateTime(now.year - 5, 1, 1),
+                          lastDate: DateTime(now.year + 1, 12, 31),
+                        );
+                        if (sel != null) setState(() => fechaSel = sel);
+                      },
+                      child: Text(
+                        (fechaSel != null)
+                            ? '${fechaSel!.year}-${fechaSel!.month.toString().padLeft(2, '0')}-${fechaSel!.day.toString().padLeft(2, '0')}'
+                            : 'Seleccionar',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false) Navigator.pop(context, true);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    final fechaISO = (fechaSel != null)
+        ? '${fechaSel!.year}-${fechaSel!.month.toString().padLeft(2, '0')}-${fechaSel!.day.toString().padLeft(2, '0')}'
+        : null;
+
+    try {
+      await _createMatriculaFlexible(
+        idEstudiante: widget.id,
+        idCategoria: idCategoria!,
+        ciclo: cicloCtl.text.trim().isEmpty ? null : cicloCtl.text.trim(),
+        fechaISO: fechaISO,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inscripción creada')));
+      await _loadAll();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
   }
 }

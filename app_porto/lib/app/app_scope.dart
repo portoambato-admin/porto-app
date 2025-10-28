@@ -1,4 +1,3 @@
-// lib/app/app_scope.dart
 import 'package:flutter/widgets.dart';
 
 import '../core/network/http_client.dart';
