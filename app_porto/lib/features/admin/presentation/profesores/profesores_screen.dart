@@ -1,10 +1,13 @@
+// lib/features/admin/presentation/profesores/profesores_screen.dart
+import 'package:app_porto/features/admin/presentation/widgets/admin_section_tabs.dart';
 import 'package:flutter/material.dart';
 import '../admin_shell.dart';
-import '../widgets/admin_section_tabs.dart';
 import 'profesores_tab.dart';
 
 class ProfesoresScreen extends StatefulWidget {
-  const ProfesoresScreen({super.key});
+  /// Cuando es true, NO dibuja AdminShell (se usa como child dentro de PersonasHubScreen)
+  final bool embedded;
+  const ProfesoresScreen({super.key, this.embedded = false});
 
   @override
   State<ProfesoresScreen> createState() => _ProfesoresScreenState();
@@ -12,13 +15,7 @@ class ProfesoresScreen extends StatefulWidget {
 
 class _ProfesoresScreenState extends State<ProfesoresScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab;
-
-  @override
-  void initState() {
-    super.initState();
-    _tab = TabController(length: 3, vsync: this);
-  }
+  late final TabController _tab = TabController(length: 3, vsync: this);
 
   @override
   void dispose() {
@@ -26,24 +23,66 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
     super.dispose();
   }
 
+  // ✅ TabBar implementa PreferredSizeWidget, así que sirve para AppBar.bottom
+  TabBar _tabs() {
+    return TabBar(
+      controller: _tab,
+      isScrollable: false,
+      tabs: const [
+        Tab(text: 'Profesores activos'),
+        Tab(text: 'Profesores inactivos'),
+        Tab(text: 'Todos'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AdminShell(
-      title: 'Panel • Profesores',
-      current: AdminSection.profesores,
-      // ↓ Sub-tabs en el AppBar, como en PanelScreen
-      bottomExtra: TabBar(
-        controller: _tab,
-        tabs: const [
-          Tab(text: 'Profesores activos'),
-          Tab(text: 'Profesores inactivos'),
-          Tab(text: 'Todos'),
+    // MODO EMBEBIDO: SIN AdminShell (evita “doble hub” cuando se usa dentro del hub Personas)
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(alignment: Alignment.center, child: _tabs()),
+          const SizedBox(height: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: ProfesoresTab(tab: _tab),
+            ),
+          ),
         ],
-      ),
-      // ↓ Contenido con el mismo look & feel que PanelScreen
+      );
+    }
+
+    // MODO PANTALLA DIRECTA: CON AdminShell (compat con rutas antiguas)
+    return AdminShell.legacy(
+      section: AdminSection.profesores,
+      title: 'Profesores',
+      bottomExtra: _tabs(), // ✅ ahora es PreferredSizeWidget
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: ProfesoresTab(tab: _tab),
+      ),
+      actions: [
+        IconButton(
+          tooltip: 'Refrescar',
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Refrescar (acción demo)')),
+            );
+          },
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+      fab: FloatingActionButton.extended(
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Crear profesor (pendiente PASO 4)')),
+          );
+        },
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Nuevo'),
       ),
     );
   }

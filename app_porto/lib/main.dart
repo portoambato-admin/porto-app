@@ -3,6 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
+import 'core/network/http_client.dart';
+import 'core/services/session_token_provider.dart';
+import 'core/rbac/permissions_store.dart';
+import 'core/rbac/permission_gate.dart';
+import 'core/rbac/permissions_warmup.dart';
+
 
 // ❗️IMPORTANTE: no importes flutter_web_plugins aquí.
 // Usa nuestro selector condicional:
@@ -74,10 +80,16 @@ class _PortoAmbatoAppState extends State<PortoAmbatoApp> {
     );
 
     // Conserva tu AuthScope y añade el AppScope para inyectar HttpClient/Repos
-    return AuthScope(
-      controller: _auth,
+   return AuthScope(
+  controller: _auth,
+  child: PermissionsHost(
+    store: PermissionsStore(HttpClient(tokenProvider: SessionTokenProvider())),
+    child: PermissionsWarmup(
       child: AppScope(child: app),
-    );
+    ),
+  ),
+);
+
   }
 }
 

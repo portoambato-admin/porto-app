@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 
-
-// 🔄 NUEVOS imports (quitamos api_service)
+// 🔄 NUEVOS imports (sin api_service)
 import '../../../../app/app_scope.dart';
 import '../../../../core/constants/route_names.dart';
 import '../../../../core/state/auth_state.dart'; // seguimos usando tu AuthScope
+import '../../../../core/rbac/permission_gate.dart' show Permissions;
 
 enum _AuthMode { login, register }
 
@@ -145,7 +145,12 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
         userJson: _safeJsonEncode(loginRes.user),
       );
 
-      // 4) Redirigir respetando redirectTo
+      // 4) ⛑️ RBAC: refrescar permisos (rol + permisos) ANTES de redirigir
+      try {
+        await Permissions.of(context).refresh();
+      } catch (_) {}
+
+      // 5) Redirigir respetando redirectTo
       if (!mounted) return;
       final target = widget.redirectTo.isEmpty ? RouteNames.root : widget.redirectTo;
       Navigator.pushNamedAndRemoveUntil(context, target, (r) => false);
@@ -157,13 +162,12 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
   }
 
   String _safeJsonEncode(Map<String, dynamic> map) {
-  try {
-    return const JsonEncoder().convert(map);
-  } catch (_) {
-    return '{}';
+    try {
+      return const JsonEncoder().convert(map);
+    } catch (_) {
+      return '{}';
+    }
   }
-}
-
 
   void _handleBack() {
     if (_loading) return;

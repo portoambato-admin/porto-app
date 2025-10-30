@@ -1,8 +1,10 @@
 // lib/app/app_router.dart
-import 'package:app_porto/features/admin/sections/evaluaciones_screen.dart';
 import 'package:flutter/material.dart';
 
-// Rutas
+import '../features/admin/sections/roles_screen.dart' show RolesScreen;
+
+
+// Rutas (constantes)
 import '../core/constants/route_names.dart';
 
 // Home (NO diferido)
@@ -22,23 +24,29 @@ import '../features/auth/presentation/screens/auth_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/admin/presentation/panel/panel_screen.dart';
 
-// Admin: secciones (NO lazy, protegidas)
+// ===== Admin: Hubs (NUEVO) =====
+import '../features/admin/presentation/hubs/personas_hub_screen.dart';
+import '../features/admin/presentation/hubs/academia_hub_screen.dart';
+import '../features/admin/presentation/hubs/finanzas_hub_screen.dart';
+import '../features/admin/presentation/hubs/sistema_hub_screen.dart';
+
+// ===== Admin: secciones (NO lazy, protegidas) =====
 import '../features/admin/sections/usuarios_screen.dart';
 import '../features/admin/sections/asistencias_screen.dart';
-import '../features/admin/sections/categorias_screen.dart';
-import '../features/admin/sections/config_screen.dart';
+import '../features/admin/sections/categorias_screen.dart' show AdminCategoriasScreen;
+import '../features/admin/sections/config_screen.dart' show AdminConfigScreen;
 import '../features/admin/sections/admin_pagos_screen.dart' show AdminPagosScreen;
 
 import '../features/admin/presentation/profesores/profesores_screen.dart';
-import '../features/admin/sections/estudiantes_screen.dart';
-import '../features/admin/sections/estudiante_detail_screen.dart';
+import '../features/admin/sections/estudiantes_screen.dart' show AdminEstudiantesScreen;
+import '../features/admin/sections/estudiante_detail_screen.dart' show EstudianteDetailScreen;
 
 // Subcategorías: listado y detalle
-
 import '../features/admin/sections/subcategorias_screen.dart'
   show SubcategoriaEstudiantesScreen;
+import '../features/admin/sections/admin_subcategorias_screen.dart'
+  show AdminSubcategoriasScreen;
 
-import '../features/admin/sections/admin_subcategorias_screen.dart' show AdminSubcategoriasScreen;
 // Sesión
 import '../core/services/session.dart';
 
@@ -47,7 +55,7 @@ class AppRouter {
     final name = s.name ?? RouteNames.root;
 
     switch (name) {
-      // ======= Públicas 
+      // ======= Públicas ======================================================
       case RouteNames.root:
         return MaterialPageRoute(builder: (_) => const HomeScreen());
 
@@ -86,46 +94,163 @@ class AppRouter {
           screenBuilder: () => about.AboutScreen(),
         );
 
-      // ======= Auth 
+      // ======= Auth ==========================================================
       case RouteNames.auth:
         return MaterialPageRoute(
           settings: s,
           builder: (_) => const AuthScreen(),
         );
 
-      // ======= Protegidas (no lazy) =======
+      // ======= Protegidas (no lazy) ==========================================
       case RouteNames.perfil:
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
 
+      // Panel centrado (alias /admin)
       case RouteNames.panel:
+      case RouteNames.adminRoot:
         return _guardedPlain(s, builder: (_) => const PanelScreen());
 
+      // ======= Hubs base (NUEVOS) ============================================
+      case RouteNames.adminPersonas:
+        return _guardedPlain(s, builder: (_) => const PersonasHubScreen());
+
+      case RouteNames.adminAcademia:
+        return _guardedPlain(s, builder: (_) => const AcademiaHubScreen());
+
+      case RouteNames.adminFinanzas:
+        return _guardedPlain(s, builder: (_) => const FinanzasHubScreen());
+
+      case RouteNames.adminSistema:
+        return _guardedPlain(s, builder: (_) => const SistemaHubScreen());
+
+      // ======= Subrutas anidadas (NUEVAS) ====================================
+      // Personas
+      case RouteNames.adminPersonasUsuarios:
+        return _guardedPlain(
+          s,
+          builder: (_) => const PersonasHubScreen(child: UsuariosScreen()),
+        );
+
+      case RouteNames.adminPersonasProfesores:
+        return _guardedPlain(
+          s,
+          builder: (_) => PersonasHubScreen(
+            child: ProfesoresScreen(embedded: true),
+          ),
+        );
+
+      // Academia
+      case RouteNames.adminAcademiaCategorias:
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminCategoriasScreen()),
+        );
+
+        
+
+      case RouteNames.adminAcademiaSubcategorias:
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
+        );
+
+      case RouteNames.adminAcademiaEstudiantes:
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminEstudiantesScreen()),
+        );
+
+      case RouteNames.adminAcademiaAsistencias:
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
+        );
+
+      case RouteNames.adminAcademiaEvaluaciones:
+        // ⛑️ Temporal: placeholder hasta alinear el nombre real del widget
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: _EvaluacionesPlaceholder()),
+        );
+
+      // Finanzas
+      case RouteNames.adminFinanzasPagos:
+        return _guardedPlain(
+          s,
+          builder: (_) => const FinanzasHubScreen(child: AdminPagosScreen()),
+        );
+
+      // Sistema
+      case RouteNames.adminSistemaConfig:
+        return _guardedPlain(
+          s,
+          builder: (_) => const SistemaHubScreen(child: AdminConfigScreen()),
+        );
+
+      // ======= Compatibilidad: rutas antiguas ================================
       case RouteNames.adminUsuarios:
-        return _guardedPlain(s, builder: (_) => const UsuariosScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const PersonasHubScreen(child: UsuariosScreen()),
+        );
 
       case RouteNames.adminProfesores:
-        return _guardedPlain(s, builder: (_) => const ProfesoresScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => PersonasHubScreen(
+            child: ProfesoresScreen(embedded: true),
+          ),
+        );
 
       case RouteNames.adminCategorias:
-        return _guardedPlain(s, builder: (_) => const AdminCategoriasScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminCategoriasScreen()),
+        );
 
       case RouteNames.adminSubcategorias:
-  return _guardedPlain(s, builder: (_) => const AdminSubcategoriasScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
+        );
 
       case RouteNames.adminAsistencias:
-        return _guardedPlain(s, builder: (_) => const AdminAsistenciasScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
+        );
 
       case RouteNames.adminEvaluaciones:
-        return _guardedPlain(s, builder: (_) => const AdminEvaluacionesScreen());
+        // ⛑️ Temporal: placeholder hasta alinear el nombre real del widget
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: _EvaluacionesPlaceholder()),
+        );
 
       case RouteNames.adminPagos:
-        return _guardedPlain(s, builder: (_) => const AdminPagosScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const FinanzasHubScreen(child: AdminPagosScreen()),
+        );
 
       case RouteNames.adminConfig:
-        return _guardedPlain(s, builder: (_) => const AdminConfigScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const SistemaHubScreen(child: AdminConfigScreen()),
+        );
+        case RouteNames.adminPersonasRoles:
+  return _guardedPlain(
+    s,
+    builder: (_) => PersonasHubScreen(
+      child: RolesScreen(embedded: true),
+    ),
+  );
 
       case RouteNames.adminEstudiantes:
-        return _guardedPlain(s, builder: (_) => const AdminEstudiantesScreen());
+        return _guardedPlain(
+          s,
+          builder: (_) => const AcademiaHubScreen(child: AdminEstudiantesScreen()),
+        );
 
       case RouteNames.adminEstudianteDetalle:
         return _guardedPlain(s, builder: (_) {
@@ -140,10 +265,10 @@ class AppRouter {
           if (id == null) {
             return const _ArgsErrorPage('Falta argumento: id (int)');
           }
-          return EstudianteDetailScreen(id: id);
+          return AcademiaHubScreen(child: EstudianteDetailScreen(id: id));
         });
 
-      // ======= Subcategoría → Estudiantes (detalle) =======
+      // Subcategoría → Estudiantes (detalle)
       case RouteNames.adminSubcatEstudiantes:
         return _guardedPlain(s, builder: (_) {
           final args = s.arguments is Map ? Map<String, dynamic>.from(s.arguments as Map) : <String, dynamic>{};
@@ -153,14 +278,16 @@ class AppRouter {
           if (idSubcat == null || nombre == null) {
             return const _ArgsErrorPage('Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)');
           }
-          return SubcategoriaEstudiantesScreen(
-            idSubcategoria: idSubcat,
-            nombreSubcategoria: nombre,
-            idCategoria: idCat,
+          return AcademiaHubScreen(
+            child: SubcategoriaEstudiantesScreen(
+              idSubcategoria: idSubcat,
+              nombreSubcategoria: nombre,
+              idCategoria: idCat,
+            ),
           );
         });
 
-      // ======= 404 =======
+      // ======= 404 ===========================================================
       default:
         return MaterialPageRoute(
           builder: (_) => const Scaffold(
@@ -258,6 +385,21 @@ class _ArgsErrorPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Text(message, textAlign: TextAlign.center),
         ),
+      ),
+    );
+  }
+}
+
+// ===== Placeholder temporal para Evaluaciones =====
+class _EvaluacionesPlaceholder extends StatelessWidget {
+  const _EvaluacionesPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text(
+        'Evaluaciones — pendiente de enlazar widget real',
+        style: TextStyle(fontSize: 16),
       ),
     );
   }

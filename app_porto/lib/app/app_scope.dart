@@ -1,6 +1,9 @@
 import 'package:flutter/widgets.dart';
 
 import '../core/network/http_client.dart';
+import '../core/rbac/permissions_store.dart';
+import '../core/rbac/permission_gate.dart';
+import '../core/rbac/rbac_repository.dart';
 import '../core/services/session_token_provider.dart';
 
 // Auth

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/state/auth_state.dart';
+import '../../core/rbac/permission_gate.dart' show Permissions; // ✅ usar permisos reales
 
 class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   const TopNavBar({super.key});
@@ -28,7 +29,22 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     final auth = AuthScope.of(context);
     final user = auth.user;
     final isLogged = auth.isLoggedIn;
-    final canSeePanel = auth.isAdmin || auth.isTeacher;
+
+    // ✅ canSeePanel ahora se basa en permisos RBAC (con fallback por rol antiguo)
+    bool canSeePanel = auth.isAdmin || auth.isTeacher;
+    try {
+      final perms = Permissions.of(context);
+      canSeePanel = perms.hasAnyRole(['admin', 'staff']) ||
+                    perms.hasAny([
+                      'usuarios.read',
+                      'roles.read',
+                      'categorias.read',
+                      'estudiantes.read',
+                      'reportes.read',
+                    ]);
+    } catch (_) {
+      // Si el PermissionsHost no está montado, usamos el fallback por rol
+    }
 
     return AppBar(
       surfaceTintColor: Colors.transparent,
