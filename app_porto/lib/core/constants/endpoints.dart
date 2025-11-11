@@ -39,6 +39,10 @@ abstract class Endpoints {
   static String subcatEstEliminar(int idEst, int idSubcat) =>
       '/subcategoria-estudiante/$idEst/$idSubcat';
 
+  // ✅ NUEVO: listado de alumnos por subcategoría (usado por AsistenciasRepository)
+  static String subcatEstPorSubcategoria(int idSubcat) =>
+      '/subcategoria-estudiante/subcategoria/$idSubcat/estudiantes';
+
   // ===== Matrículas
   static const matriculas = '/matriculas';
   static String matriculaId(int id) => '/matriculas/$id';
@@ -46,27 +50,36 @@ abstract class Endpoints {
   static const matriculasActivas = '/matriculas/activas';
   static const matriculasInactivas = '/matriculas/inactivas';
   static const matriculasTodas = '/matriculas/todas';
-  // Matriculas
-
   static String matriculasPorEstudiante(int id) => '/matriculas/estudiante/$id';
+
+  // Crear con estudiante
   static String get matriculasCrearConEstudiante => '/matriculas/crear-con-estudiante';
 
-  /// 🔴 NUEVO: usado por EstudiantesRepository.crearConMatricula()
-  /// Asegúrate que tu backend tenga esta ruta: POST /estudiantes/crear-con-matricula
+  // 🔴 NUEVO (ya lo tenías documentado)
   static const String estudiantesCrearConMatricula = '/estudiantes/crear-con-matricula';
+
   // ===== Estudiantes
   static const estudiantes = '/estudiantes';
   static String estudianteId(int id) => '/estudiantes/$id';
-  // ⚠️ Tu back: PATCH /estudiantes/activar/:ida
-  // (con nuestro HttpClient usaremos POST al mismo path)
   static String estudianteActivar(int id) => '/estudiantes/activar/$id';
+  static const estudiantesNoAsignados = '/estudiantes/no-asignados';
 
-  // Mensualidades
+  // ===== Mensualidades
   static const mensualidades = '/mensualidades';
   static String mensualidadesPorEstudiante(int id) =>
       '/mensualidades/estudiante/$id';
+  static const mensualidadesResumen = '/mensualidades/resumen';
 
   // ===== Pagos
   static const pagos = '/pagos';
   static String pagoId(int id) => '/pagos/$id';
+  static String get adminEstadoMensualidad => '/estado-mensualidad';
+
+  // ===== ✅ Asistencias (base + sesiones)
+  static const asistencias = '/asistencias';
+  // Sesiones: POST /asistencias/sesiones, GET /asistencias/sesiones?...
+  static String get asistenciasSesiones => '/asistencias/sesiones';
+  static String asistenciasSesionId(int idSesion) => '/asistencias/sesiones/$idSesion';
+  static String asistenciasSesionMarcar(int idSesion) =>
+      '/asistencias/sesiones/$idSesion/marcar';
 }

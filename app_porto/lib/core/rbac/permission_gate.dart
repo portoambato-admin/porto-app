@@ -4,7 +4,7 @@ import 'permissions_store.dart';
 
 class _PermissionsInherited extends InheritedWidget {
   final PermissionsStore store;
-  const _PermissionsInherited({required this.store, required super.child, super.key});
+  const _PermissionsInherited({required this.store, required super.child});
 
   static _PermissionsInherited of(BuildContext context) {
     final w = context.dependOnInheritedWidgetOfExactType<_PermissionsInherited>();
@@ -23,7 +23,7 @@ class PermissionsHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _PermissionsInherited(store: store, child: child);
+    return _PermissionsInherited(store: store,   child: child);
   }
 }
 

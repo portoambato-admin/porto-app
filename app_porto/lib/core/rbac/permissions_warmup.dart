@@ -1,7 +1,5 @@
-// lib/core/rbac/permissions_warmup.dart
 import 'package:flutter/widgets.dart';
 import 'permission_gate.dart'; // Permissions.of
-import 'permissions_store.dart';
 
 class PermissionsWarmup extends StatefulWidget {
   final Widget child;
@@ -17,11 +15,13 @@ class _PermissionsWarmupState extends State<PermissionsWarmup> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_done) {
-      _done = true;
-      final store = Permissions.of(context);
-      store.refresh(); // fire & forget
-    }
+    if (_done) return;
+    _done = true;
+    final store = Permissions.of(context);
+    // Evita que un 401 no manejado mate la app en Web
+    store.refresh().catchError((_) {
+      try { store.clear(); } catch (_) {}
+    });
   }
 
   @override

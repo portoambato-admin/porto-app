@@ -1,9 +1,9 @@
-import '../../../core/constants/endpoints.dart';
-import '../../../core/network/http_client.dart';
 import 'dart:convert';
 import 'dart:developer' as dev;
 
-/// Convierte dinámicos a double de forma tolerante (números con coma, strings, etc.)
+import '../../../core/constants/endpoints.dart';
+import '../../../core/network/http_client.dart';
+
 double? _toDoubleSafe(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
@@ -25,19 +25,25 @@ class MensualidadesRepository {
         'Content-Type': 'application/json',
       };
 
-  /// Normaliza el mapa de la API a un formato consistente para la app.
   Map<String, dynamic> _from(Map<String, dynamic> j) => {
         'id'              : j['id_mensualidad'] ?? j['id'],
+        'id_mensualidad'  : j['id_mensualidad'] ?? j['id'],
         'idMatricula'     : j['id_matricula'],
         'mes'             : j['mes'],
         'anio'            : j['anio'],
         'valor'           : _toDoubleSafe(j['valor']) ?? 0.0,
-        'estado'          : j['estado'], // 'pendiente' | 'pagado' | 'anulado'
-        'idEstudiante'    : j['id_estudiante'],
-        'idCategoria'     : j['id_categoria'],
-        'categoriaNombre' : j['nombre_categoria'],
+        'estado'          : j['estado'],
+        'id_estudiante'   : j['id_estudiante'],
+        'id_categoria'    : j['id_categoria'],
+        'nombre_categoria': j['nombre_categoria'],
+        'nombres'         : j['nombres'],
+        'apellidos'       : j['apellidos'],
+        'cedula'          : j['cedula'],
+        'id_subcategoria' : j['id_subcategoria'],
+        'subcategoria'    : j['subcategoria'],
         'pagado'          : _toDoubleSafe(j['pagado']) ?? 0.0,
-        'creadoEn'        : j['creado_en'] ?? j['creadoEn'],
+        'creado_en'       : j['creado_en'] ?? j['creadoEn'],
+        'vencido'         : j['vencido'],
       };
 
   String _q(Map<String, Object?> params) {
@@ -67,7 +73,6 @@ class MensualidadesRepository {
   // LISTADOS
   // ================================
 
-  /// Alias en inglés para compatibilidad
   Future<List<Map<String, dynamic>>> byEstudiante(int idEstudiante) =>
       porEstudiante(idEstudiante);
 
@@ -82,62 +87,30 @@ class MensualidadesRepository {
       if (l0.isNotEmpty) {
         final out0 = List<Map<String, dynamic>>.from(l0)
             .map(_from)
-            .where((e) => '${e['idEstudiante']}' == '$idEstudiante')
+            .where((e) => '${e['id_estudiante']}' == '$idEstudiante')
             .toList();
         dev.log('[MensRepo] mapped=${out0.length} est=$idEstudiante (ruta dedicada)');
         return out0;
       }
     } catch (_) {}
 
-    // 1) ?estudianteId=
-    try {
-      final url = '${Endpoints.mensualidades}${_q({'estudianteId': idEstudiante})}';
-      final r1 = await _http.get(url, headers: _h);
-      final l1 = _unwrapList(r1);
-      if (l1.isNotEmpty) {
-        final out1 = List<Map<String, dynamic>>.from(l1)
-            .map(_from)
-            .where((e) => '${e['idEstudiante']}' == '$idEstudiante')
-            .toList();
-        dev.log('[MensRepo] mapped=${out1.length} est=$idEstudiante (estudianteId)');
-        return out1;
+    // 1..3) Variantes de querystring
+    for (final key in const ['estudianteId', 'idEstudiante', 'id_estudiante']) {
+      try {
+        final url = '${Endpoints.mensualidades}${_q({key: idEstudiante})}';
+        final r = await _http.get(url, headers: _h);
+        final l = _unwrapList(r);
+        if (l.isNotEmpty) {
+          final out = List<Map<String, dynamic>>.from(l)
+              .map(_from)
+              .where((e) => '${e['id_estudiante']}' == '$idEstudiante')
+              .toList();
+          dev.log('[MensRepo] mapped=${out.length} est=$idEstudiante ($key)');
+          return out;
+        }
+      } catch (e) {
+        dev.log('[MensRepo] $key error: $e');
       }
-    } catch (e) {
-      dev.log('[MensRepo] r1 error: $e');
-    }
-
-    // 2) ?idEstudiante=
-    try {
-      final url = '${Endpoints.mensualidades}${_q({'idEstudiante': idEstudiante})}';
-      final r2 = await _http.get(url, headers: _h);
-      final l2 = _unwrapList(r2);
-      if (l2.isNotEmpty) {
-        final out2 = List<Map<String, dynamic>>.from(l2)
-            .map(_from)
-            .where((e) => '${e['idEstudiante']}' == '$idEstudiante')
-            .toList();
-        dev.log('[MensRepo] mapped=${out2.length} est=$idEstudiante (idEstudiante)');
-        return out2;
-      }
-    } catch (e) {
-      dev.log('[MensRepo] r2 error: $e');
-    }
-
-    // 3) ?id_estudiante=
-    try {
-      final url = '${Endpoints.mensualidades}${_q({'id_estudiante': idEstudiante})}';
-      final r3 = await _http.get(url, headers: _h);
-      final l3 = _unwrapList(r3);
-      if (l3.isNotEmpty) {
-        final out3 = List<Map<String, dynamic>>.from(l3)
-            .map(_from)
-            .where((e) => '${e['idEstudiante']}' == '$idEstudiante')
-            .toList();
-        dev.log('[MensRepo] mapped=${out3.length} est=$idEstudiante (id_estudiante)');
-        return out3;
-      }
-    } catch (e) {
-      dev.log('[MensRepo] r3 error: $e');
     }
 
     // 4) fallback: all
@@ -146,7 +119,7 @@ class MensualidadesRepository {
       final la = _unwrapList(all);
       final outA = List<Map<String, dynamic>>.from(la)
           .map(_from)
-          .where((e) => '${e['idEstudiante']}' == '$idEstudiante')
+          .where((e) => '${e['id_estudiante']}' == '$idEstudiante')
           .toList();
       dev.log('[MensRepo] mapped=${outA.length} est=$idEstudiante (fallback ALL)');
       return outA;
@@ -158,7 +131,6 @@ class MensualidadesRepository {
     return const <Map<String, dynamic>>[];
   }
 
-  /// Alias en inglés
   Future<List<Map<String, dynamic>>> byMatricula(int idMatricula) =>
       porMatricula(idMatricula);
 
@@ -277,23 +249,57 @@ class MensualidadesRepository {
     return null;
   }
 
+  /// Resumen paginado desde el backend para la vista "Explorar".
+  /// Retorna: { rows, total, page, pageSize, agg }
+  Future<Map<String, dynamic>> resumen({
+    int page = 1,
+    int pageSize = 20,
+    int? subcategoriaId,
+    String? estado, // pendiente|pagado|anulado|vencido
+    String? q,
+    int? anio,
+  }) async {
+    final query = <String,String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (subcategoriaId != null) 'subcategoriaId': '$subcategoriaId',
+      if (estado != null && estado.isNotEmpty) 'estado': estado,
+      if (q != null && q.trim().isNotEmpty) 'q': q.trim(),
+      if (anio != null) 'anio': '$anio',
+    };
+
+    final res = await _http.get(
+      Endpoints.mensualidadesResumen,
+      headers: _h,
+      query: query,
+    );
+
+    Map<String, dynamic> map;
+    if (res is Map) {
+      map = Map<String, dynamic>.from(res);
+    } else {
+      map = {'rows': <Map<String,dynamic>>[], 'total': 0, 'page': page, 'pageSize': pageSize, 'agg': {}};
+    }
+
+    final rows = (map['rows'] is List)
+        ? List<Map<String, dynamic>>.from(map['rows']).map(_from).toList()
+        : <Map<String,dynamic>>[];
+    final total = (map['total'] as num?)?.toInt() ?? rows.length;
+    final agg = (map['agg'] is Map) ? Map<String, dynamic>.from(map['agg']) : <String,dynamic>{};
+
+    return {'rows': rows, 'total': total, 'page': page, 'pageSize': pageSize, 'agg': agg};
+  }
+
   Future<Map<String, dynamic>?> anular(int idMensualidad) =>
       cambiarEstado(idMensualidad: idMensualidad, estado: 'anulado');
 
   Future<bool> eliminar(int idMensualidad) async {
     try {
-      // Tu HttpClient.delete devuelve Future<void>, no hay valor que usar.
-      await _http.delete(
-        '${Endpoints.mensualidades}/$idMensualidad',
-        headers: _h,
-      );
-      // Si no lanzó excepción, lo damos por correcto.
+      await _http.delete('${Endpoints.mensualidades}/$idMensualidad', headers: _h,);
       return true;
     } catch (e) {
-      // Si falla el DELETE, intentamos anular como fallback.
       dev.log('[MensRepo] eliminar error: $e');
     }
-
     try {
       final m = await anular(idMensualidad);
       return m != null && (m['estado']?.toString().toLowerCase() == 'anulado');

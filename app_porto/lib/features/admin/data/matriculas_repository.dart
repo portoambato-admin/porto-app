@@ -22,9 +22,7 @@ class MatriculasRepository {
         'activo': j['activo'] ?? true,
       };
 
-  /// ✅ por estudiante - intenta con varios nombres de parámetro
   Future<List<Map<String, dynamic>>> porEstudiante(int idEstudiante) async {
-    // 0) Preferir ruta dedicada si tu back la tiene
     try {
       final r0 = await _http.get(
         Endpoints.matriculasPorEstudiante(idEstudiante),
@@ -33,9 +31,8 @@ class MatriculasRepository {
       if (r0 is List && r0.isNotEmpty) {
         return List<Map<String, dynamic>>.from(r0).map(_from).toList();
       }
-    } catch (_) {/* ignorar y probar otras formas */}
+    } catch (_) {}
 
-    // 1) estudianteId
     final r1 = await _http.get(
       Endpoints.matriculas,
       headers: _h,
@@ -45,7 +42,6 @@ class MatriculasRepository {
       return List<Map<String, dynamic>>.from(r1).map(_from).toList();
     }
 
-    // 2) idEstudiante
     final r2 = await _http.get(
       Endpoints.matriculas,
       headers: _h,
@@ -55,7 +51,6 @@ class MatriculasRepository {
       return List<Map<String, dynamic>>.from(r2).map(_from).toList();
     }
 
-    // 3) id_estudiante
     final r3 = await _http.get(
       Endpoints.matriculas,
       headers: _h,
@@ -65,7 +60,6 @@ class MatriculasRepository {
       return List<Map<String, dynamic>>.from(r3).map(_from).toList();
     }
 
-    // 4) Fallback: trae todo y filtra en cliente
     final all = await _http.get(Endpoints.matriculas, headers: _h);
     if (all is List && all.isNotEmpty) {
       final filtered = List<Map<String, dynamic>>.from(all)
@@ -85,7 +79,7 @@ class MatriculasRepository {
     required int idEstudiante,
     required int idCategoria,
     String? ciclo,
-    String? fechaISO, // YYYY-MM-DD
+    String? fechaISO,
   }) async {
     final body = <String, dynamic>{
       'id_estudiante': idEstudiante,
@@ -106,7 +100,7 @@ class MatriculasRepository {
     required int idMatricula,
     int? idCategoria,
     String? ciclo,
-    String? fechaISO, // YYYY-MM-DD
+    String? fechaISO,
     bool? activo,
   }) async {
     final body = <String, dynamic>{};

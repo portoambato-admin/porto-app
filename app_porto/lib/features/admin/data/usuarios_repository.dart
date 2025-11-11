@@ -5,7 +5,6 @@ class UsuariosRepository {
   final HttpClient _http;
   const UsuariosRepository(this._http);
 
-  // ---- Listas rápidas (sin paginación) ----
   Future<List<Map<String, dynamic>>> todos() async {
     final res = await _http.get(Endpoints.usuarios, headers: {});
     if (res is List) {
@@ -30,14 +29,13 @@ class UsuariosRepository {
     return const [];
   }
 
-  // ---- Paginado ----
   Future<Map<String, dynamic>> paged({
     required int page,
     required int pageSize,
     String? q,
-    String sort = 'creado_en', // id_usuario|nombre|correo|creado_en
-    String order = 'desc',     // asc|desc
-    String path = '',          // "", "/activos", "/inactivos"
+    String sort = 'creado_en',
+    String order = 'desc',
+    String path = '',
   }) async {
     final qp = <String, String>{
       'page': '$page',
@@ -88,7 +86,6 @@ class UsuariosRepository {
   }) =>
       paged(page: page, pageSize: pageSize, q: q, sort: sort, order: order, path: '/inactivos');
 
-  // ---- Mutaciones ----
   Future<Map<String, dynamic>> update({
     required int idUsuario,
     String? nombre,
@@ -120,11 +117,10 @@ class UsuariosRepository {
     await _http.post(Endpoints.usuarioActivar(idUsuario), body: const {}, headers: {});
   }
 
-  // ---- Búsquedas ----
   Future<List<Map<String, dynamic>>> search({
     required String q,
     bool activosOnly = true,
-    int? rol, // 1=admin,2=profesor,3=padre,4=usuario
+    int? rol,
     int limit = 10,
   }) async {
     final qp = <String, String>{

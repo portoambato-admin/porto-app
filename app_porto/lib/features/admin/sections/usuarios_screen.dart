@@ -17,8 +17,6 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   bool _loading = false;
   String? _error;
 
-  // ======== Estado por pestaña ========
-  // Activos
   List<Map<String, dynamic>> _activos = [];
   int _activosTotal = 0;
   int _activosPage = 1;
@@ -26,7 +24,6 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   String _activosSort = 'creado_en';
   bool _activosAsc = false;
 
-  // Inactivos
   List<Map<String, dynamic>> _inactivos = [];
   int _inactivosTotal = 0;
   int _inactivosPage = 1;
@@ -34,7 +31,6 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   String _inactivosSort = 'creado_en';
   bool _inactivosAsc = false;
 
-  // Todos
   List<Map<String, dynamic>> _todos = [];
   int _todosTotal = 0;
   int _todosPage = 1;
@@ -42,7 +38,6 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   String _todosSort = 'creado_en';
   bool _todosAsc = false;
 
-  // búsqueda
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
@@ -80,7 +75,10 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   }
 
   Future<void> _loadActivos() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await _repo.pagedActivos(
         page: _activosPage,
@@ -100,8 +98,29 @@ class _UsuariosScreenState extends State<UsuariosScreen>
     }
   }
 
+  void _submitSearch() {
+    // Reinicia a página 1 en la pestaña actual y recarga
+    setState(() {
+      switch (_tab.index) {
+        case 0:
+          _activosPage = 1;
+          break;
+        case 1:
+          _inactivosPage = 1;
+          break;
+        case 2:
+          _todosPage = 1;
+          break;
+      }
+    });
+    _loadCurrentTab();
+  }
+
   Future<void> _loadInactivos() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await _repo.pagedInactivos(
         page: _inactivosPage,
@@ -122,7 +141,10 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   }
 
   Future<void> _loadTodos() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final res = await _repo.pagedTodos(
         page: _todosPage,
@@ -142,14 +164,18 @@ class _UsuariosScreenState extends State<UsuariosScreen>
     }
   }
 
-  /// 1=Admin, 2=Profesor, 3=Padre, 4=Usuario
   String _rolLabel(dynamic idRol) {
     switch ((idRol as num?)?.toInt()) {
-      case 1: return 'Admin';
-      case 2: return 'Profesor';
-      case 3: return 'Padre';
-      case 4: return 'Usuario';
-      default: return '—';
+      case 1:
+        return 'Admin';
+      case 2:
+        return 'Profesor';
+      case 3:
+        return 'Padre';
+      case 4:
+        return 'Usuario';
+      default:
+        return '—';
     }
   }
 
@@ -181,7 +207,8 @@ class _UsuariosScreenState extends State<UsuariosScreen>
             onPressed: _loading ? null : _loadCurrentTab,
             icon: _loading
                 ? const SizedBox(
-                    width: 20, height: 20,
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
@@ -197,46 +224,89 @@ class _UsuariosScreenState extends State<UsuariosScreen>
               builder: (ctx, c) {
                 final narrow = c.maxWidth < 600;
 
+                Widget perPageDropdown(
+                  int value,
+                  void Function(int) onChange,
+                ) {
+                  return DropdownButtonFormField<int>(
+                    value: value,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.format_list_numbered),
+                      labelText: 'Por página',
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 10, child: Text('10')),
+                      DropdownMenuItem(value: 20, child: Text('20')),
+                      DropdownMenuItem(value: 50, child: Text('50')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      onChange(v);
+                      _loadCurrentTab();
+                    },
+                  );
+                }
+
+                // ====== TextField con búsqueda por nombre/correo/cédula y botones Buscar/Limpiar ======
+                Widget searchField() {
+                  return TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Buscar por nombre/correo/cédula…', // ✅ incluye cédula
+                      suffixIcon: SizedBox(
+                        width: _searchCtrl.text.isNotEmpty ? 96 : 48,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              tooltip: 'Buscar',
+                              icon: const Icon(Icons.arrow_forward),
+                              onPressed: _submitSearch,
+                            ),
+                            if (_searchCtrl.text.isNotEmpty)
+                              IconButton(
+                                tooltip: 'Limpiar',
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  _submitSearch(); // recarga sin filtro
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    onChanged: (_) => setState(() {}), // para refrescar el ícono de limpiar
+                    onSubmitted: (_) => _submitSearch(), // Enter dispara búsqueda
+                  );
+                }
+
                 if (narrow) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextField(
-                        controller: _searchCtrl,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Buscar por nombre/correo…',
-                        ),
-                        onSubmitted: (_) => _loadCurrentTab(),
-                      ),
+                      searchField(),
                       const SizedBox(height: 8),
-                      DropdownButtonFormField<int>(
-                        value: switch (_tab.index) {
+                      perPageDropdown(
+                        switch (_tab.index) {
                           0 => _activosPageSize,
                           1 => _inactivosPageSize,
                           _ => _todosPageSize,
                         },
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.format_list_numbered),
-                          labelText: 'Por página',
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 10, child: Text('10')),
-                          DropdownMenuItem(value: 20, child: Text('20')),
-                          DropdownMenuItem(value: 50, child: Text('50')),
-                        ],
-                        onChanged: (v) {
-                          if (v == null) return;
+                        (v) {
                           setState(() {
                             if (_tab.index == 0) {
-                              _activosPageSize = v; _activosPage = 1;
+                              _activosPageSize = v;
+                              _activosPage = 1;
                             } else if (_tab.index == 1) {
-                              _inactivosPageSize = v; _inactivosPage = 1;
+                              _inactivosPageSize = v;
+                              _inactivosPage = 1;
                             } else {
-                              _todosPageSize = v; _todosPage = 1;
+                              _todosPageSize = v;
+                              _todosPage = 1;
                             }
                           });
-                          _loadCurrentTab();
                         },
                       ),
                     ],
@@ -245,46 +315,29 @@ class _UsuariosScreenState extends State<UsuariosScreen>
 
                 return Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Buscar por nombre/correo…',
-                        ),
-                        onSubmitted: (_) => _loadCurrentTab(),
-                      ),
-                    ),
+                    Expanded(child: searchField()),
                     const SizedBox(width: 8),
                     SizedBox(
-                      width: 140,
-                      child: DropdownButtonFormField<int>(
-                        value: switch (_tab.index) {
+                      width: 160,
+                      child: perPageDropdown(
+                        switch (_tab.index) {
                           0 => _activosPageSize,
                           1 => _inactivosPageSize,
                           _ => _todosPageSize,
                         },
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.format_list_numbered),
-                          labelText: 'Por página',
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 10, child: Text('10')),
-                          DropdownMenuItem(value: 20, child: Text('20')),
-                          DropdownMenuItem(value: 50, child: Text('50')),
-                        ],
-                        onChanged: (v) {
-                          if (v == null) return;
+                        (v) {
                           setState(() {
                             if (_tab.index == 0) {
-                              _activosPageSize = v; _activosPage = 1;
+                              _activosPageSize = v;
+                              _activosPage = 1;
                             } else if (_tab.index == 1) {
-                              _inactivosPageSize = v; _inactivosPage = 1;
+                              _inactivosPageSize = v;
+                              _inactivosPage = 1;
                             } else {
-                              _todosPageSize = v; _todosPage = 1;
+                              _todosPageSize = v;
+                              _todosPage = 1;
                             }
                           });
-                          _loadCurrentTab();
                         },
                       ),
                     ),
@@ -314,10 +367,17 @@ class _UsuariosScreenState extends State<UsuariosScreen>
                   page: _activosPage,
                   pageSize: _activosPageSize,
                   onSort: (field, asc) {
-                    setState(() { _activosSort = field; _activosAsc = asc; _activosPage = 1; });
+                    setState(() {
+                      _activosSort = field;
+                      _activosAsc = asc;
+                      _activosPage = 1;
+                    });
                     _loadActivos();
                   },
-                  onPageChange: (p) { setState(() => _activosPage = p); _loadActivos(); },
+                  onPageChange: (p) {
+                    setState(() => _activosPage = p);
+                    _loadActivos();
+                  },
                   onEdit: _openEditUserDialog,
                   onDelete: _confirmDesactivar,
                   onActivate: _activateUser,
@@ -332,10 +392,17 @@ class _UsuariosScreenState extends State<UsuariosScreen>
                   page: _inactivosPage,
                   pageSize: _inactivosPageSize,
                   onSort: (field, asc) {
-                    setState(() { _inactivosSort = field; _inactivosAsc = asc; _inactivosPage = 1; });
+                    setState(() {
+                      _inactivosSort = field;
+                      _inactivosAsc = asc;
+                      _inactivosPage = 1;
+                    });
                     _loadInactivos();
                   },
-                  onPageChange: (p) { setState(() => _inactivosPage = p); _loadInactivos(); },
+                  onPageChange: (p) {
+                    setState(() => _inactivosPage = p);
+                    _loadInactivos();
+                  },
                   onEdit: _openEditUserDialog,
                   onDelete: _confirmDesactivar,
                   onActivate: _activateUser,
@@ -350,10 +417,17 @@ class _UsuariosScreenState extends State<UsuariosScreen>
                   page: _todosPage,
                   pageSize: _todosPageSize,
                   onSort: (field, asc) {
-                    setState(() { _todosSort = field; _todosAsc = asc; _todosPage = 1; });
+                    setState(() {
+                      _todosSort = field;
+                      _todosAsc = asc;
+                      _todosPage = 1;
+                    });
                     _loadTodos();
                   },
-                  onPageChange: (p) { setState(() => _todosPage = p); _loadTodos(); },
+                  onPageChange: (p) {
+                    setState(() => _todosPage = p);
+                    _loadTodos();
+                  },
                   onEdit: _openEditUserDialog,
                   onDelete: _confirmDesactivar,
                   onActivate: _activateUser,
@@ -367,7 +441,6 @@ class _UsuariosScreenState extends State<UsuariosScreen>
     );
   }
 
-  // ===== acciones: editar / desactivar / activar =====
   Future<void> _openEditUserDialog(Map<String, dynamic> u) async {
     final formKey = GlobalKey<FormState>();
     final nombre = TextEditingController(text: u['nombre']?.toString() ?? '');
@@ -425,7 +498,9 @@ class _UsuariosScreenState extends State<UsuariosScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
           FilledButton(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
@@ -465,8 +540,12 @@ class _UsuariosScreenState extends State<UsuariosScreen>
         title: const Text('Desactivar usuario'),
         content: Text('¿Seguro que deseas desactivar a "${u['nombre']}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sí, desactivar')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sí, desactivar')),
         ],
       ),
     );
@@ -539,10 +618,16 @@ class _UsersTable extends StatelessWidget {
 
   int get _sortColumnIndex {
     switch (sortField) {
-      case 'id_usuario': return 0;
-      case 'nombre': return 1;
-      case 'correo': return 2;
-      default: return 3; // creado_en
+      case 'cedula':
+        return 0; // ✅ ahora la 1ra columna ordena por cédula
+      case 'id_usuario':
+        return 0; // (por compat)
+      case 'nombre':
+        return 1;
+      case 'correo':
+        return 2;
+      default:
+        return 3; // creado_en
     }
   }
 
@@ -568,9 +653,13 @@ class _UsersTable extends StatelessWidget {
               final u = rows[i];
               final name = (u['nombre'] ?? '').toString();
               final email = (u['correo'] ?? '').toString();
-              final rol = rolLabel(u['id_rol']);
               final created = (u['creado_en'] ?? '').toString();
               final avatar = (u['avatar_url'] ?? '').toString();
+              final doc = u['cedula'] ?? u['dni'] ?? u['numero_cedula'];
+
+              // ✅ Mostrar “Cédula: <num>” o “Sin identificar”
+              final docText =
+                  (doc != null && '$doc'.isNotEmpty) ? 'Cédula: $doc' : 'Sin identificar';
 
               return Card(
                 child: Padding(
@@ -592,8 +681,10 @@ class _UsersTable extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(email, style: const TextStyle(fontSize: 12)),
                             const SizedBox(height: 2),
-                            Text('Rol: $rol  •  $created',
-                                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Text(
+                              '$docText  •  $created',
+                              style: const TextStyle(fontSize: 12, color: Colors.black54),
+                            ),
                           ],
                         ),
                       ),
@@ -652,8 +743,8 @@ class _UsersTable extends StatelessWidget {
             sortAscending: sortAscending,
             columns: [
               DataColumn(
-                label: const Text('ID'),
-                onSort: (_, asc) => onSort('id_usuario', asc),
+                label: const Text('Cédula'), // ✅ título más claro
+                onSort: (_, asc) => onSort('cedula', asc), // ✅ ordenar por cédula
               ),
               DataColumn(
                 label: const Text('Nombre'),
@@ -671,8 +762,12 @@ class _UsersTable extends StatelessWidget {
               const DataColumn(label: Text('Acciones')),
             ],
             rows: rows.map((u) {
+              final doc = u['cedula'] ?? u['dni'] ?? u['numero_cedula'];
+              // ✅ “<cédula>” o “Sin identificar”
+              final docText = (doc != null && '$doc'.isNotEmpty) ? '$doc' : 'Sin identificar';
+
               return DataRow(cells: [
-                DataCell(Text('${u['id_usuario']}')),
+                DataCell(Text(docText)), // ✅
                 DataCell(Text(u['nombre'] ?? '')),
                 DataCell(Text(u['correo'] ?? '')),
                 DataCell(Text('${u['creado_en'] ?? ''}')),

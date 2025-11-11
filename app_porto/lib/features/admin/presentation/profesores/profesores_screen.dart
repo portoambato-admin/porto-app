@@ -1,11 +1,9 @@
-// lib/features/admin/presentation/profesores/profesores_screen.dart
 import 'package:app_porto/features/admin/presentation/widgets/admin_section_tabs.dart';
 import 'package:flutter/material.dart';
 import '../admin_shell.dart';
 import 'profesores_tab.dart';
 
 class ProfesoresScreen extends StatefulWidget {
-  /// Cuando es true, NO dibuja AdminShell (se usa como child dentro de PersonasHubScreen)
   final bool embedded;
   const ProfesoresScreen({super.key, this.embedded = false});
 
@@ -23,7 +21,6 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
     super.dispose();
   }
 
-  // ✅ TabBar implementa PreferredSizeWidget, así que sirve para AppBar.bottom
   TabBar _tabs() {
     return TabBar(
       controller: _tab,
@@ -38,7 +35,6 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
 
   @override
   Widget build(BuildContext context) {
-    // MODO EMBEBIDO: SIN AdminShell (evita “doble hub” cuando se usa dentro del hub Personas)
     if (widget.embedded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,11 +51,10 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
       );
     }
 
-    // MODO PANTALLA DIRECTA: CON AdminShell (compat con rutas antiguas)
     return AdminShell.legacy(
       section: AdminSection.profesores,
       title: 'Profesores',
-      bottomExtra: _tabs(), // ✅ ahora es PreferredSizeWidget
+      bottomExtra: _tabs(),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: ProfesoresTab(tab: _tab),
@@ -78,7 +73,7 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
       fab: FloatingActionButton.extended(
         onPressed: () {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Crear profesor (pendiente PASO 4)')),
+            const SnackBar(content: Text('Crear profesor (pendiente)')),
           );
         },
         icon: const Icon(Icons.person_add_alt_1),

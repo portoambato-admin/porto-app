@@ -42,7 +42,7 @@ class PanelScreen extends StatelessWidget {
       );
     }
 
-    // Academia: Categorías, Subcategorías, Estudiantes, Asistencias, Evaluaciones
+    // Academia: Categorías, Subcategorías, Estudiantes, Asistencias,
     cards.add(
       PanelHubCard(
         icon: Icons.school_outlined,
@@ -69,11 +69,7 @@ class PanelScreen extends StatelessWidget {
             label: 'Asistencias',
             onTap: () => Navigator.pushNamed(context, RouteNames.adminAsistencias),
           ),
-          HubOption(
-            icon: Icons.checklist_rtl_outlined,
-            label: 'Evaluaciones',
-            onTap: () => Navigator.pushNamed(context, RouteNames.adminEvaluaciones),
-          ),
+         
         ],
       ),
     );

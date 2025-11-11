@@ -42,7 +42,7 @@ import '../features/admin/sections/estudiantes_screen.dart' show AdminEstudiante
 import '../features/admin/sections/estudiante_detail_screen.dart' show EstudianteDetailScreen;
 
 // Subcategorías: listado y detalle
-import '../features/admin/sections/subcategorias_screen.dart'
+import '../features/admin/sections/detalle_subcategorias_screen.dart'
   show SubcategoriaEstudiantesScreen;
 import '../features/admin/sections/admin_subcategorias_screen.dart'
   show AdminSubcategoriasScreen;
@@ -166,12 +166,7 @@ class AppRouter {
           builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
         );
 
-      case RouteNames.adminAcademiaEvaluaciones:
-        // ⛑️ Temporal: placeholder hasta alinear el nombre real del widget
-        return _guardedPlain(
-          s,
-          builder: (_) => const AcademiaHubScreen(child: _EvaluacionesPlaceholder()),
-        );
+     
 
       // Finanzas
       case RouteNames.adminFinanzasPagos:
@@ -220,12 +215,7 @@ class AppRouter {
           builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
         );
 
-      case RouteNames.adminEvaluaciones:
-        // ⛑️ Temporal: placeholder hasta alinear el nombre real del widget
-        return _guardedPlain(
-          s,
-          builder: (_) => const AcademiaHubScreen(child: _EvaluacionesPlaceholder()),
-        );
+      
 
       case RouteNames.adminPagos:
         return _guardedPlain(
@@ -385,21 +375,6 @@ class _ArgsErrorPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Text(message, textAlign: TextAlign.center),
         ),
-      ),
-    );
-  }
-}
-
-// ===== Placeholder temporal para Evaluaciones =====
-class _EvaluacionesPlaceholder extends StatelessWidget {
-  const _EvaluacionesPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Evaluaciones — pendiente de enlazar widget real',
-        style: TextStyle(fontSize: 16),
       ),
     );
   }

@@ -1,11 +1,12 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-
-import '../../../../core/state/auth_state.dart';            // seguimos usando tu AuthScope
+import 'package:flutter/services.dart';
 import 'package:http_parser/http_parser.dart' show MediaType;
-import '../../../../app/app_scope.dart';                    // NUEVO: repos/cliente
-import '../../../../core/constants/endpoints.dart';         // NUEVO: rutas relativas
+
+import '../../../../core/state/auth_state.dart';
+import '../../../../app/app_scope.dart';
+import '../../../../core/constants/endpoints.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,13 +21,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _form = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _dniCtrl = TextEditingController(); // ✅ NUEVO: cédula
 
-  // Imagen local seleccionada (pre-visualización)
   Uint8List? _pickedBytes;
   String? _pickedName;
 
   bool _loading = false;
-  String? _avatarUrl; // url persistida o de preview
+  String? _avatarUrl;
+
+  // ✅ Helper para desenvolver { usuario: {...} }
+  Map<String, dynamic> _unwrapUser(dynamic payload) {
+    if (payload is Map && payload['usuario'] is Map) {
+      return Map<String, dynamic>.from(payload['usuario'] as Map);
+    }
+    if (payload is Map) return Map<String, dynamic>.from(payload);
+    return <String, dynamic>{};
+  }
 
   @override
   void initState() {
@@ -38,33 +48,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
+    _dniCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadMe() async {
     try {
-      final me = await AppScope.of(context).auth.me();
+      final raw = await AppScope.of(context).auth.me();
+      final me = _unwrapUser(raw); // ✅ desenvolver
+
       _nameCtrl.text = (me['nombre'] ?? '') as String;
       _emailCtrl.text = (me['correo'] ?? '') as String;
-      setState(() => _avatarUrl = (me['avatar_url'] as String?) ?? '');
-      // sincroniza estado global
-      await AuthScope.of(context).setUser(me);
-    } catch (_) {
-      // opcional: mostrar error/snackbar
-    }
-  }
-
-  Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    setState(() {
-      _pickedBytes = result.files.single.bytes!;
-      _pickedName = result.files.single.name;
-    });
+      _dniCtrl.text = (me['cedula'] ?? me['dni'] ?? me['numero_cedula'] ?? '') as String; // ✅
+      if (mounted) {
+        setState(() => _avatarUrl = (me['avatar_url'] as String?) ?? '');
+      }
+      await AuthScope.of(context).setUser(me); // ✅ guarda el user real
+    } catch (_) {/* opcional: log */}
   }
 
   MediaType? _typeFor(String name) {
@@ -82,6 +82,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+      withData: true,
+    );
+    if (result == null || result.files.single.bytes == null) return;
+    setState(() {
+      _pickedBytes = result.files.single.bytes!;
+      _pickedName = result.files.single.name;
+    });
+  }
+
+  // ============== Validación cédula Ecuador ==============
+  bool _validarCedulaEcu(String? s) {
+    final ci = (s ?? '').trim();
+    if (!RegExp(r'^\d{10}$').hasMatch(ci)) return false;
+    final prov = int.tryParse(ci.substring(0, 2)) ?? -1;
+    if (!((prov >= 1 && prov <= 24) || prov == 30)) return false;
+    final tercero = int.parse(ci[2]);
+    if (tercero >= 6) return false;
+
+    int suma = 0;
+    for (int i = 0; i < 9; i++) {
+      final d = int.parse(ci[i]);
+      if (i % 2 == 0) {
+        int k = d * 2;
+        if (k >= 10) k -= 9;
+        suma += k;
+      } else {
+        suma += d;
+      }
+    }
+    final verif = (10 - (suma % 10)) % 10;
+    return verif == int.parse(ci[9]);
+  }
+
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
 
@@ -89,8 +126,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final http = AppScope.of(context).http;
 
-      // 1) Subir avatar si el usuario eligió uno nuevo
+      // 1) Subir avatar si corresponde
       String? url = _avatarUrl;
+      String? publicId; // ✅ capturar public_id (para avatar_public_id)
       if (_pickedBytes != null && _pickedName != null) {
         final res = await http.uploadBytes(
           Endpoints.meAvatar,
@@ -99,35 +137,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
           field: 'file',
           contentType: _typeFor(_pickedName!),
         );
-        url = (res is Map ? (res['avatar_url'] ?? res['url'] ?? res['avatar']) : null) as String?;
-        if (url == null) {
-          throw Exception('Respuesta inválida al subir avatar');
+        if (res is Map) {
+          url = (res['avatar_url'] ?? res['url'] ?? res['avatar']) as String?;
+          publicId = res['public_id'] as String?;
         }
+        if (url == null) throw Exception('Respuesta inválida al subir avatar');
       }
 
-      // 2) Guardar perfil
+      // 2) Guardar perfil (incluyendo cédula si válida)
+      final body = <String, dynamic>{
+        'nombre': _nameCtrl.text.trim(),
+        if (url != null) 'avatar_url': url,
+        if (publicId != null) 'avatar_public_id': publicId, // ✅ opcional para limpieza en Cloudinary
+      };
+      final dni = _dniCtrl.text.trim();
+      if (dni.isNotEmpty) body['cedula'] = dni; // ✅ el back valida y persiste
+
       final updated = await http.patch(
         Endpoints.me,
-        body: {
-          'nombre': _nameCtrl.text.trim(),
-          if (url != null) 'avatar_url': url,
-        }, headers: {},
+        body: body,
+        headers: {},
       ) as Map<String, dynamic>;
 
-      await AuthScope.of(context).setUser(updated);
+      // ✅ desenvolver { usuario } y actualizar sesión/estado
+      final u = _unwrapUser(updated);
+      await AuthScope.of(context).setUser(u);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Perfil actualizado')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perfil actualizado')));
       setState(() {
-        _avatarUrl = updated['avatar_url'] as String?;
+        _avatarUrl = u['avatar_url'] as String?;
         _pickedBytes = null;
         _pickedName = null;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+      // Nota: tu HttpClient probablemente propaga el message del back (409/400 de cédula)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -215,7 +263,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     body: {
                       'contrasena_actual': actualCtrl.text,
                       'nueva_contrasena': nuevaCtrl.text,
-                    }, headers: {},
+                    },
+                    headers: {},
                   );
                   if (!mounted) return;
                   Navigator.pop(ctx);
@@ -224,9 +273,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 } catch (e) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(e.toString())));
                 }
               },
               icon: const Icon(Icons.save),
@@ -346,6 +394,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               labelText: 'Correo',
                               prefixIcon: Icon(Icons.alternate_email),
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _dniCtrl,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(10),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Cédula (Ecuador)',
+                              prefixIcon: const Icon(Icons.badge_outlined),
+                              suffixIcon: IconButton(
+                                tooltip: 'Verificar cédula',
+                                onPressed: () {
+                                  final ok = _validarCedulaEcu(_dniCtrl.text);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(ok
+                                          ? 'Cédula válida'
+                                          : 'Cédula inválida'),
+                                      backgroundColor:
+                                          ok ? Colors.green : Colors.red,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.verified_outlined),
+                              ),
+                            ),
+                            validator: (v) {
+                              final s = (v ?? '').trim();
+                              if (s.isEmpty) return null; // opcional
+                              return _validarCedulaEcu(s)
+                                  ? null
+                                  : 'Cédula inválida';
+                            },
                           ),
                           const SizedBox(height: 20),
                           Align(

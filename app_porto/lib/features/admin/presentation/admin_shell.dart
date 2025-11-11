@@ -310,7 +310,7 @@ AdminHub _hubFromSection(AdminSection s) {
     case AdminSection.categorias:
     case AdminSection.subcategorias:
     case AdminSection.asistencias:
-    case AdminSection.evaluaciones:
+    
     return AdminHub.academia;
   }
 }

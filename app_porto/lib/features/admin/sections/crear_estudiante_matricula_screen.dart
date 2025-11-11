@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:app_porto/app/app_scope.dart';
 import '../../../core/utils/input_formatters.dart';
 
@@ -12,7 +13,6 @@ class CrearEstudianteMatriculaScreen extends StatefulWidget {
 
 class _CrearEstudianteMatriculaScreenState
     extends State<CrearEstudianteMatriculaScreen> {
-  // repos
   late dynamic _est;
   late dynamic _cats;
   late dynamic _subs;
@@ -22,6 +22,7 @@ class _CrearEstudianteMatriculaScreenState
   final _formKey = GlobalKey<FormState>();
   final _nombresCtl = TextEditingController();
   final _apellidosCtl = TextEditingController();
+  final _cedulaCtl = TextEditingController();     // ✅ NUEVO
   final _direccionCtl = TextEditingController();
   final _telefonoCtl = TextEditingController();
   final _cicloCtl = TextEditingController();
@@ -51,7 +52,6 @@ class _CrearEstudianteMatriculaScreenState
 
   Future<void> _loadInit() async {
     try {
-      // lista simple: [{id, nombre}]
       final cats = await _cats.simpleList();
       if (!mounted) return;
       setState(() => _catsList = cats);
@@ -60,7 +60,7 @@ class _CrearEstudianteMatriculaScreenState
 
   Future<void> _loadSubs(int idCategoria) async {
     try {
-      final subs = await _subs.porCategoria(idCategoria); // [{id, nombre, ...}]
+      final subs = await _subs.porCategoria(idCategoria);
       if (!mounted) return;
       setState(() {
         _subsList = subs;
@@ -106,6 +106,30 @@ class _CrearEstudianteMatriculaScreenState
     return null;
   }
 
+  bool _validarCedulaEcu(String? s) {
+    final ci = (s ?? '').trim();
+    if (ci.isEmpty) return true;            // opcional
+    if (!RegExp(r'^\d{10}$').hasMatch(ci)) return false;
+    final prov = int.tryParse(ci.substring(0, 2)) ?? -1;
+    if (!((prov >= 1 && prov <= 24) || prov == 30)) return false;
+    final tercero = int.parse(ci[2]);
+    if (tercero >= 6) return false;
+
+    int suma = 0;
+    for (int i = 0; i < 9; i++) {
+      final d = int.parse(ci[i]);
+      if (i % 2 == 0) {
+        int k = d * 2;
+        if (k >= 10) k -= 9;
+        suma += k;
+      } else {
+        suma += d;
+      }
+    }
+    final verif = (10 - (suma % 10)) % 10;
+    return verif == int.parse(ci[9]);
+  }
+
   String _fmt(DateTime? d) {
     if (d == null) return 'Seleccionar';
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -120,25 +144,23 @@ class _CrearEstudianteMatriculaScreenState
       return;
     }
 
-    final nacISO = _nacimiento == null
-        ? null
-        : _fmt(_nacimiento);
-    final matISO = _fechaMatricula == null
-        ? null
-        : _fmt(_fechaMatricula);
+    final nacISO = _nacimiento == null ? null : _fmt(_nacimiento);
+    final matISO = _fechaMatricula == null ? null : _fmt(_fechaMatricula);
+    final ced = _cedulaCtl.text.trim().isEmpty ? null : _cedulaCtl.text.trim();
 
     setState(() => _saving = true);
     try {
       await _est.crearConMatricula(
         nombres: _nombresCtl.text.trim(),
         apellidos: _apellidosCtl.text.trim(),
+        cedula: ced, // ✅
         fechaNacimientoISO: nacISO,
         direccion: _direccionCtl.text.trim().isEmpty ? null : _direccionCtl.text.trim(),
         telefono: _telefonoCtl.text.trim().isEmpty ? null : _telefonoCtl.text.trim(),
-        idCategoria: _catSel!, // requerido
+        idCategoria: _catSel!,
         ciclo: _cicloCtl.text.trim().isEmpty ? null : _cicloCtl.text.trim(),
         fechaMatriculaISO: matISO,
-        idSubcategoria: _subSel, // opcional
+        idSubcategoria: _subSel,
       );
 
       if (!mounted) return;
@@ -193,6 +215,34 @@ class _CrearEstudianteMatriculaScreenState
                                 inputFormatters: [LettersOnlyFormatter()],
                                 decoration: const InputDecoration(labelText: 'Apellidos'),
                                 validator: _onlyLettersValidator,
+                              ),
+                              const SizedBox(height: 10),
+                              // ✅ Cédula
+                              TextFormField(
+                                controller: _cedulaCtl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters:  [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(10),
+                                ],
+                                decoration: InputDecoration(
+                                  labelText: 'Cédula (Ecuador)',
+                                  prefixIcon: const Icon(Icons.badge_outlined),
+                                  suffixIcon: IconButton(
+                                    tooltip: 'Verificar cédula',
+                                    onPressed: () {
+                                      final ok = _validarCedulaEcu(_cedulaCtl.text);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(ok ? 'Cédula válida' : 'Cédula inválida'),
+                                          backgroundColor: ok ? Colors.green : Colors.red,
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.verified_outlined),
+                                  ),
+                                ),
+                                validator: (v) => _validarCedulaEcu(v) ? null : 'Cédula inválida',
                               ),
                               const SizedBox(height: 10),
                               InputDecorator(
@@ -298,7 +348,7 @@ class _CrearEstudianteMatriculaScreenState
                           icon: const Icon(Icons.save),
                           label: const Text('Guardar'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(height: 12),
                         TextButton(
                           onPressed: () => Navigator.pop(context),
                           child: const Text('Cancelar'),

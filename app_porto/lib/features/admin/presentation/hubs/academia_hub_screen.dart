@@ -50,12 +50,7 @@ class _AcademiaLanding extends StatelessWidget {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => Navigator.pushNamed(context, RouteNames.adminAcademiaAsistencias),
         ),
-        ListTile(
-          leading: const Icon(Icons.checklist_rtl_outlined),
-          title: const Text('Evaluaciones'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.pushNamed(context, RouteNames.adminAcademiaEvaluaciones),
-        ),
+        
       ],
     );
   }

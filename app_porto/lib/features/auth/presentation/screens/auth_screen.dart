@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 
-// 🔄 NUEVOS imports (sin api_service)
+// 🔄 Imports de tu app (sin api_service)
 import '../../../../app/app_scope.dart';
 import '../../../../core/constants/route_names.dart';
 import '../../../../core/state/auth_state.dart'; // seguimos usando tu AuthScope
 import '../../../../core/rbac/permission_gate.dart' show Permissions;
+
+// ✅ Import para limpiar el cache del token tras login
+import '../../../../core/services/session_token_provider.dart';
 
 enum _AuthMode { login, register }
 
@@ -124,36 +127,37 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
     try {
       final scope = AppScope.of(context);
 
-      // 1) Registro (si aplica) — crea la cuenta y luego hace login
+      // 1) Registro (si aplica)
       if (widget.mode == _AuthMode.register) {
         await scope.http.post('/auth/register', body: {
           'nombre': _nombre.text.trim(),
           'correo': _correo.text.trim(),
           'contrasena': _pass.text,
-        }, headers: {});
+        }, headers: const {});
       }
 
-      // 2) Login con el AuthRepository (nuevo)
+      // 2) Login con el AuthRepository injectado en AppScope
       final loginRes = await scope.auth.login(
         correo: _correo.text.trim(),
         contrasena: _pass.text,
       );
 
-      // 3) Persistir sesión con tu AuthScope de siempre
+      // 3) Persistir sesión con tu AuthScope
       await AuthScope.of(context).signIn(
         token: loginRes.token,
         userJson: _safeJsonEncode(loginRes.user),
       );
 
-      // 4) ⛑️ RBAC: refrescar permisos (rol + permisos) ANTES de redirigir
-      try {
-        await Permissions.of(context).refresh();
-      } catch (_) {}
+      // ✅ Limpia cache del token provider (singleton)
+      SessionTokenProvider.instance.clearCache();
+
+      // 4) Refrescar permisos RBAC antes de redirigir (best-effort)
+      try { await Permissions.of(context).refresh(); } catch (_) {}
 
       // 5) Redirigir respetando redirectTo
       if (!mounted) return;
       final target = widget.redirectTo.isEmpty ? RouteNames.root : widget.redirectTo;
-      Navigator.pushNamedAndRemoveUntil(context, target, (r) => false);
+      Navigator.pushNamedAndRemoveUntil(context, target, (_) => false);
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception:', '').trim());
     } finally {

@@ -1,6 +1,6 @@
+import 'dart:async'; // Para el Debouncer
 import 'dart:convert';
-// NOTE: si compilarás a iOS/Android nativos, elimina esta importación y
-// usa únicamente el diálogo de "Copiar CSV". Para web funciona perfecto.
+// NOTE: La importación de dart:html está bien si se usa con kIsWeb
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:html' as html;
 
@@ -25,6 +25,13 @@ class AdminSubcategoriasScreen extends StatefulWidget {
   State<AdminSubcategoriasScreen> createState() => _AdminSubcategoriasScreenState();
 }
 
+// ==== Intents propios para atajos (Ctrl+F / Ctrl+N / Ctrl+R) ====
+class FocusSearchIntent extends Intent { const FocusSearchIntent(); } // Ctrl+F
+class NewSubcatIntent extends Intent { const NewSubcatIntent(); }     // Ctrl+N
+class ReloadIntent extends Intent { const ReloadIntent(); }           // Ctrl+R
+
+enum _ViewMode { table, cards }
+
 class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     with SingleTickerProviderStateMixin {
   // Repos
@@ -35,6 +42,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   // Estado
   late final TabController _tab;
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  Timer? _searchDebounce;
   int? _idCategoria;
 
   List<Map<String, dynamic>> _catOptions = [];
@@ -52,11 +61,11 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   List<Map<String, dynamic>> _inaItems = [];
   List<Map<String, dynamic>> _allItems = [];
 
-  // Edición en línea
-  final Map<int, _RowEdit> _editing = {};
-
   bool _reposListos = false;
-  bool _arrancado = false;
+
+  // Preferencias visuales (solo UI)
+  _ViewMode _viewMode = _ViewMode.table;
+  bool _dense = false;
 
   @override
   void initState() {
@@ -64,8 +73,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     _tab = TabController(length: 3, vsync: this);
     _tab.addListener(() {
       if (_tab.indexIsChanging) return;
-      _loadCurrent();
+      if (_itemsForTab(_tab.index).isEmpty) _loadCurrent();
     });
+    _search.addListener(_onSearchChanged);
   }
 
   @override
@@ -77,9 +87,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       _catRepo = scope.categorias;
       try { _alumnosRepo = scope.estudiantes; } catch (_) {}
       _reposListos = true;
-    }
-    if (_reposListos && !_arrancado) {
-      _arrancado = true;
+      // 🔧 Dispara la primera carga aquí
       _init();
     }
   }
@@ -87,93 +95,95 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   @override
   void dispose() {
     _tab.dispose();
+    _search.removeListener(_onSearchChanged);
+    _searchDebounce?.cancel();
     _search.dispose();
-    _editing.forEach((_, e) => e.dispose());
+    _searchFocus.dispose();
     super.dispose();
   }
 
+  // ======== Debouncer búsqueda ========
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      _resetPages();
+      _loadCurrent();
+    });
+  }
+
+  void _resetPages() {
+    _actPage = 1;
+    _inaPage = 1;
+    _allPage = 1;
+  }
+
   Future<void> _init() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() { _error = null; });
     try {
       _catOptions = List<Map<String, dynamic>>.from(await _catRepo.simpleList());
       _catById = {
         for (final c in _catOptions)
-          (c['id'] as num).toInt() : (c['nombre']?.toString() ?? '')
+          (c['id'] as num).toInt(): (c['nombre']?.toString() ?? '')
       };
-      await _loadCurrent();
+      // ⚠️ Llama directo al loader real (pone _loading y trae datos)
+      await _loadData(_tab.index);
     } catch (e) {
-      _error = e.toString();
-    } finally {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted) setState(() { _error = e.toString(); });
     }
   }
 
   Future<void> _loadCurrent() async {
-    switch (_tab.index) {
-      case 0: return _loadActivas();
-      case 1: return _loadInactivas();
-      case 2: return _loadTodas();
+    if (_loading) return; // evita solapar cargas
+    await _loadData(_tab.index);
+  }
+
+  Future<void> _loadData(int tabIndex) async {
+    setState(() { _loading = true; _error = null; });
+
+    bool? onlyActive;
+    int page, pageSize;
+    switch (tabIndex) {
+      case 1:
+        onlyActive = false;
+        page = _inaPage; pageSize = _inaPageSize;
+        break;
+      case 2:
+        onlyActive = null;
+        page = _allPage; pageSize = _allPageSize;
+        break;
+      case 0:
+      default:
+        onlyActive = true;
+        page = _actPage; pageSize = _actPageSize;
+        break;
     }
-  }
 
-  Future<void> _loadActivas() async {
-    setState(() { _loading = true; _error = null; });
     try {
       final res = await _subRepo.paged(
-        page: _actPage,
-        pageSize: _actPageSize,
+        page: page,
+        pageSize: pageSize,
         q: _q,
         idCategoria: _idCategoria,
-        onlyActive: true,
+        onlyActive: onlyActive,
         sort: 'nombre_subcategoria',
         order: 'asc',
       );
-      setState(() {
-        _actItems = List<Map<String, dynamic>>.from(res['items']);
-        _actTotal = (res['total'] as num).toInt();
-      });
-    } catch (e) { setState(() => _error = e.toString()); }
-    finally { if (mounted) setState(() => _loading = false); }
-  }
+      final items = List<Map<String, dynamic>>.from(res['items']);
+      final total = (res['total'] as num).toInt();
 
-  Future<void> _loadInactivas() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final res = await _subRepo.paged(
-        page: _inaPage,
-        pageSize: _inaPageSize,
-        q: _q,
-        idCategoria: _idCategoria,
-        onlyActive: false,
-        sort: 'nombre_subcategoria',
-        order: 'asc',
-      );
       setState(() {
-        _inaItems = List<Map<String, dynamic>>.from(res['items']);
-        _inaTotal = (res['total'] as num).toInt();
+        switch (tabIndex) {
+          case 1: _inaItems = items; _inaTotal = total; break;
+          case 2: _allItems = items; _allTotal = total; break;
+          case 0:
+          default: _actItems = items; _actTotal = total; break;
+        }
       });
-    } catch (e) { setState(() => _error = e.toString()); }
-    finally { if (mounted) setState(() => _loading = false); }
-  }
-
-  Future<void> _loadTodas() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final res = await _subRepo.paged(
-        page: _allPage,
-        pageSize: _allPageSize,
-        q: _q,
-        idCategoria: _idCategoria,
-        onlyActive: null,
-        sort: 'nombre_subcategoria',
-        order: 'asc',
-      );
-      setState(() {
-        _allItems = List<Map<String, dynamic>>.from(res['items']);
-        _allTotal = (res['total'] as num).toInt();
-      });
-    } catch (e) { setState(() => _error = e.toString()); }
-    finally { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   String? get _q {
@@ -196,7 +206,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return '—';
   }
 
-  // ====== Acciones ======
+  // ===== Acciones de fila / globales =====
   Future<void> _onNew() async {
     final ok = await _openForm();
     if (ok == true) await _loadCurrent();
@@ -207,65 +217,12 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     if (ok == true) await _loadCurrent();
   }
 
-  void _startInlineEdit(Map<String, dynamic> r) {
-    final id = (r['id'] as num).toInt();
-    if (_editing.containsKey(id)) return;
-    _editing[id] = _RowEdit(
-      TextEditingController(text: r['nombre']?.toString() ?? ''),
-      TextEditingController(text: r['codigo']?.toString() ?? ''),
-    );
-    setState(() {});
-  }
-
-  void _cancelInlineEdit(int id) {
-    _editing.remove(id)?.dispose();
-    setState(() {});
-  }
-
-  Future<void> _saveInlineEdit(int id, Map<String, dynamic> r) async {
-    final edit = _editing[id]; if (edit == null) return;
-    final nuevoNombre = edit.nombre.text.trim();
-    final nuevoCodigo = edit.codigo.text.trim();
-    if (nuevoNombre.isEmpty || nuevoCodigo.isEmpty) {
-      _showSnack('Nombre y código son requeridos');
-      return;
-    }
-    try {
-      await _subRepo.update(
-        idSubcategoria: id,
-        nombre: nuevoNombre,
-        codigo: nuevoCodigo,
-      );
-      _showSnack('Guardado');
-      _editing.remove(id)?.dispose();
-      await _loadCurrent();
-    } catch (e) {
-      _showSnack('Error: $e');
-    }
-  }
-
   Future<void> _onToggle(Map<String, dynamic> row) async {
     final bool actual = row['activo'] == true;
     setState(() => _loading = true);
     try {
       await _subRepo.update(idSubcategoria: (row['id'] as num).toInt(), activo: !actual);
       _showSnack('Actualizado');
-      await _loadCurrent();
-    } catch (e) {
-      _showSnack('Error: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _onDelete(Map<String, dynamic> row) async {
-    final id = (row['id'] as num).toInt();
-    final ok = await _confirm('¿Eliminar subcategoría ${row['nombre']}?');
-    if (ok != true) return;
-    setState(() => _loading = true);
-    try {
-      await _subRepo.remove(id);
-      _showSnack('Eliminada');
       await _loadCurrent();
     } catch (e) {
       _showSnack('Error: $e');
@@ -376,7 +333,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   void _exportCsvCurrent() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
-    final name = tab == 0 ? 'subcategorias_activas' : (tab == 1 ? 'subcategorias_inactivas' : 'subcategorias_todas');
+    final name = tab == 0
+        ? 'subcategorias_activas'
+        : (tab == 1 ? 'subcategorias_inactivas' : 'subcategorias_todas');
 
     final csv = StringBuffer()..writeln('ID,Subcategoria,Codigo,Categoria,Activo,Creado');
     for (final r in data) {
@@ -391,8 +350,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     final content = csv.toString();
 
     if (kIsWeb) {
-      final bytes = utf8.encode(content);
-      final blob = html.Blob([bytes], 'text/csv');
+      // BOM para Excel
+      final bytes = <int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content));
+      final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
       final url = html.Url.createObjectUrlFromBlob(blob);
       final a = html.AnchorElement(href: url)..download = '$name.csv';
       a.click();
@@ -431,92 +391,275 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Asignación masiva =====
-  Future<void> _openBulkAssignDialog(Map<String, dynamic> row) async {
-    final idSub = (row['id'] as num).toInt();
-    final nombreSub = row['nombre']?.toString() ?? '';
-    final ctrl = TextEditingController();
-    String? helpError;
-    bool busy = false;
+  // ===== Asignación masiva (selector SOLO no asignados, con timeouts y error visible) =====
+  Future<void> _openBulkPickerDialog(Map<String, dynamic> row) async {
+    if (_alumnosRepo == null) {
+      _showSnack('No está inyectado AppScope.estudiantes (repo de estudiantes).');
+      return;
+    }
 
-    Future<void> doAssign() async {
-      final ids = _parseIds(ctrl.text);
-      if (ids.isEmpty) {
-        helpError = 'Ingresa al menos un ID numérico (separados por coma, espacio o nueva línea).';
-        (context as Element).markNeedsBuild();
+    final int idSub = (row['id'] as num).toInt();
+    final String nombreSub = row['nombre']?.toString() ?? '';
+
+    // Estado local del diálogo
+    final qCtrl = TextEditingController();
+    Timer? debounce;
+    bool loading = true;
+    String? error;
+
+    int page = 1;
+    int pageSize = 10;
+    int total = 0;
+
+    List<Map<String, dynamic>> items = [];
+    final selected = <int>{};
+
+    Future<void> load() async {
+      loading = true;
+      error = null;
+      try {
+        final res = await _fetchNoAsignadosGlobal(
+          q: qCtrl.text.trim().isEmpty ? null : qCtrl.text.trim(),
+          page: page,
+          pageSize: pageSize,
+        );
+        items = List<Map<String, dynamic>>.from(res['items'] as List);
+        total = (res['total'] as num).toInt();
+      } catch (e) {
+        error = e.toString();
+      } finally {
+        loading = false;
+      }
+    }
+
+    Future<void> doAssign(BuildContext ctx, StateSetter setLocal) async {
+      if (selected.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecciona al menos un estudiante.')),
+        );
         return;
       }
-      setState(() => _loading = true);
+      setLocal(() => loading = true);
       try {
-        if (_alumnosRepo != null) {
-          await _alumnosRepo.asignarASubcategoria(ids: ids, idSubcategoria: idSub);
-        } else if (_subRepo.asignarEstudiantesMasivo != null) {
-          await _subRepo.asignarEstudiantesMasivo(idSubcategoria: idSub, ids: ids);
-        } else {
-          throw 'No se encontró método para asignación masiva en AppScope.estudiantes o subcategorias.';
-        }
-        _showSnack('Asignados ${ids.length} estudiante(s) a "$nombreSub"');
-        Navigator.pop(context);
+        final result = await _asignarMasivoNormalizado(idSub: idSub, ids: selected.toList());
+        final asignados = (result['asignados'] as List).length;
+        final ya = (result['yaEstaban'] as List).length;
+        final no = (result['noEncontrados'] as List).length;
+        final errs = (result['errores'] as Map).length;
+
+        await showDialog(
+          context: ctx,
+          builder: (_) => AlertDialog(
+            title: Text('Resultado — $nombreSub'),
+            content: Wrap(
+              spacing: 8, runSpacing: 8,
+              children: [
+                _chipCount(Icons.check_circle, 'Asignados', asignados, Colors.green),
+                _chipCount(Icons.info_outline, 'Ya estaban', ya, Colors.blueGrey),
+                _chipCount(Icons.report_gmailerrorred, 'No encontrados', no, Colors.orange),
+                _chipCount(Icons.error_outline, 'Errores', errs, Colors.red),
+              ],
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+          ),
+        );
+
+        if (mounted) Navigator.of(ctx).pop(); // cerrar selector
+        await _loadCurrent();                 // refrescar tabla
+        _showSnack('Asignación completada');
       } catch (e) {
-        helpError = 'Error: $e';
-      } finally {
-        if (mounted) setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al asignar: $e')));
+        setLocal(() => loading = false);
       }
     }
 
     await showDialog(
       context: context,
-      barrierDismissible: !busy,
-      builder: (_) => StatefulBuilder(
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
-          Future<void> onAssign() async {
-            if (busy) return;
-            setLocal(() => busy = true);
-            await doAssign();
-            setLocal(() => busy = false);
-          }
+          // ⚡️ Carga inicial con microtask + timeout dentro del fetch
+          Future.microtask(() async {
+            if (!loading && items.isNotEmpty) return;
+            await load();
+            if (mounted) setLocal(() {});
+          });
+
+          int totalPages = ((total + pageSize - 1) ~/ pageSize);
+          if (totalPages < 1) totalPages = 1;
+          final bool canBack = page > 1;
+          final bool canFwd = page < totalPages;
+
+          // Cálculo “Mostrando”
+          final int showingFrom = total == 0 ? 0 : ((page - 1) * pageSize + 1);
+          final int rawTo = page * pageSize;
+          final int showingTo = rawTo > total ? total : rawTo;
 
           return AlertDialog(
-            title: Text('Asignación masiva → $nombreSub'),
+            title: Text('Asignar estudiantes → $nombreSub'),
             content: SizedBox(
-              width: 560,
+              width: 720,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Búsqueda con debouncer
                   TextField(
-                    controller: ctrl,
-                    minLines: 6,
-                    maxLines: 8,
+                    controller: qCtrl,
                     decoration: InputDecoration(
-                      labelText: 'IDs de estudiantes',
-                      helperText: 'Pega IDs (números) separados por comas, espacios o saltos de línea.',
-                      errorText: helpError,
-                      prefixIcon: const Icon(Icons.paste),
-                    ),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,\s]+'))],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.info_outline, size: 18),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Ejemplo: 12, 45, 98 · o bien: 12 45 98 · o en líneas: 12\\n45\\n98',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                      hintText: 'Buscar estudiante (nombre, cédula, código)…',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        tooltip: 'Limpiar',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          qCtrl.clear();
+                          debounce?.cancel();
+                          page = 1;
+                          setLocal(() => loading = true);
+                          load().then((_) => setLocal(() {}));
+                        },
                       ),
-                    ],
+                    ),
+                    onChanged: (_) {
+                      debounce?.cancel();
+                      debounce = Timer(const Duration(milliseconds: 350), () {
+                        page = 1;
+                        setLocal(() => loading = true);
+                        load().then((_) => setLocal(() {}));
+                      });
+                    },
                   ),
+                  const SizedBox(height: 10),
+
+                  if (error != null)
+                    _ErrorView(
+                      error: error!,
+                      onRetry: () {
+                        setLocal(() => loading = true);
+                        load().then((_) => setLocal(() {}));
+                      },
+                    )
+                  else if (loading)
+                    const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()))
+                  else if (items.isEmpty)
+                    const SizedBox(
+                      height: 180,
+                      child: Center(child: Text('No hay estudiantes sin subcategoría con ese filtro.')),
+                    )
+                  else
+                    SizedBox(
+                      height: 360,
+                      child: Column(
+                        children: [
+                          // Seleccionar toda la página + pageSize
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: items.every((r) {
+                                  final id = _studentIdOf(r);
+                                  return id != null && selected.contains(id);
+                                }),
+                                onChanged: (v) {
+                                  if (v == true) {
+                                    for (final r in items) {
+                                      final id = _studentIdOf(r);
+                                      if (id != null) selected.add(id);
+                                    }
+                                  } else {
+                                    for (final r in items) {
+                                      final id = _studentIdOf(r);
+                                      if (id != null) selected.remove(id);
+                                    }
+                                  }
+                                  setLocal(() {});
+                                },
+                              ),
+                              const SizedBox(width: 4),
+                              const Text('Seleccionar página'),
+                              const Spacer(),
+                              DropdownButton<int>(
+                                value: pageSize,
+                                underline: const SizedBox(),
+                                items: const [
+                                  DropdownMenuItem(value: 10, child: Text('10 / pág.')),
+                                  DropdownMenuItem(value: 20, child: Text('20 / pág.')),
+                                  DropdownMenuItem(value: 50, child: Text('50 / pág.')),
+                                ],
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  pageSize = v;
+                                  page = 1;
+                                  setLocal(() => loading = true);
+                                  load().then((_) => setLocal(() {}));
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Lista con checkboxes
+                          Expanded(
+                            child: ScrollConfiguration(
+                              behavior: const ScrollBehavior().copyWith(scrollbars: true),
+                              child: ListView.separated(
+                                itemCount: items.length,
+                                separatorBuilder: (_, __) => const Divider(height: 1),
+                                itemBuilder: (_, i) {
+                                  final r = items[i];
+                                  final id = _studentIdOf(r);
+                                  final checked = id != null && selected.contains(id);
+                                  final title = _studentDisplayName(r);
+                                  final subtitle = _studentSecondaryInfo(r);
+
+                                  return CheckboxListTile(
+                                    value: checked,
+                                    onChanged: (v) {
+                                      if (id == null) return;
+                                      if (v == true) {
+                                        selected.add(id);
+                                      } else {
+                                        selected.remove(id);
+                                      }
+                                      setLocal(() {});
+                                    },
+                                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    subtitle: subtitle == null ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    secondary: id == null ? null : CircleAvatar(
+                                      radius: 14,
+                                      child: Text('$id', style: const TextStyle(fontSize: 12)),
+                                    ),
+                                    controlAffinity: ListTileControlAffinity.leading,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+
+                          // Paginación
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('Mostrando $showingFrom–$showingTo de $total'),
+                              const SizedBox(width: 12),
+                              IconButton(icon: const Icon(Icons.first_page), onPressed: canBack ? () { page = 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
+                              IconButton(icon: const Icon(Icons.chevron_left), onPressed: canBack ? () { page -= 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
+                              Text('$page / $totalPages'),
+                              IconButton(icon: const Icon(Icons.chevron_right), onPressed: canFwd ? () { page += 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
+                              IconButton(icon: const Icon(Icons.last_page), onPressed: canFwd ? () { page = totalPages; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
               FilledButton.icon(
-                onPressed: busy ? null : onAssign,
                 icon: const Icon(Icons.group_add),
-                label: busy ? const Text('Asignando...') : const Text('Asignar'),
+                label: Text('Asignar (${selected.length})'),
+                onPressed: loading || selected.isEmpty ? null : () => doAssign(ctx, setLocal),
               ),
             ],
           );
@@ -525,14 +668,262 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  static List<int> _parseIds(String raw) {
-    final matches = RegExp(r'\d+').allMatches(raw);
-    final ids = <int>{};
-    for (final m in matches) {
-      final v = int.tryParse(m.group(0)!);
-      if (v != null) ids.add(v);
+  // ===== Helpers: obtener "no asignados globales" con timeout y normalización =====
+  Future<Map<String, dynamic>> _fetchNoAsignadosGlobal({
+    String? q,
+    required int page,
+    required int pageSize,
+  }) async {
+    if (_alumnosRepo == null) {
+      throw 'Repo de estudiantes no disponible (AppScope.estudiantes).';
     }
-    return ids.toList()..sort();
+
+    // Utilidad con timeout
+    Future<dynamic> _tryCall(Future<dynamic> Function() fn) async {
+      try {
+        return await fn().timeout(const Duration(seconds: 6));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    dynamic res;
+
+    // 🎯 Prioriza TU método real si existe:
+    // 1) noAsignadosGlobal(q, page, pageSize)
+    try {
+      res ??= await _tryCall(() => _alumnosRepo.noAsignadosGlobal(q: q, page: page, pageSize: pageSize));
+    } catch (_) {}
+
+    // 2) noAsignados(q, page, pageSize)  (sin idSubcategoria)
+    try {
+      res ??= await _tryCall(() => _alumnosRepo.noAsignados(q: q, page: page, pageSize: pageSize));
+    } catch (_) {}
+
+    // 3) sinSubcategoria(q, page, pageSize)
+    try {
+      res ??= await _tryCall(() => _alumnosRepo.sinSubcategoria(q: q, page: page, pageSize: pageSize));
+    } catch (_) {}
+
+    // 4) paged(q, page, pageSize, asignado: false)
+    try {
+      res ??= await _tryCall(() => _alumnosRepo.paged(q: q, page: page, pageSize: pageSize, asignado: false));
+    } catch (_) {}
+
+    if (res == null) {
+      throw 'No hay endpoint/método para listar estudiantes sin subcategoría. Implementa uno en EstudiantesRepository (p.ej. noAsignadosGlobal).';
+    }
+
+    // ---- Normalización de respuesta ----
+    List<Map<String, dynamic>> items = const [];
+    int total = 0;
+    final offset = (page - 1) * pageSize;
+
+    Map<String, dynamic> _unwrapMap(Map m) {
+      dynamic list = m['items'] ?? m['rows'] ??
+          (m['data'] is Map ? (m['data']['items'] ?? m['data']['rows']) : null);
+      if (list is List) {
+        items = List<Map<String, dynamic>>.from(list.map((e) => Map<String, dynamic>.from(e as Map)));
+      } else if (m['data'] is List) {
+        items = List<Map<String, dynamic>>.from((m['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
+      }
+      final t = m['total'] ?? m['count'] ??
+          (m['data'] is Map ? m['data']['total'] ?? m['data']['count'] : null);
+      total = (t is num) ? t.toInt() : (page == 1 ? items.length : (offset + items.length));
+      return {'items': items, 'total': total};
+    }
+
+    if (res is Map) {
+      final r = _unwrapMap(res);
+      items = List<Map<String, dynamic>>.from(r['items']);
+      total = (r['total'] as num).toInt();
+    } else if (res is List) {
+      items = List<Map<String, dynamic>>.from(res.map((e) => Map<String, dynamic>.from(e as Map)));
+      total = (page == 1 ? items.length : (offset + items.length));
+    } else {
+      throw 'Respuesta de no asignados no reconocida.';
+    }
+
+    // ---- Filtro de seguridad: dejar SOLO 100% no asignados ----
+    bool _isUnassigned(Map<String, dynamic> r) {
+      if (r['asignado'] == true || r['tieneSubcategoria'] == true) return false;
+      if (r['subcategoriaId'] != null || r['idSubcategoria'] != null) return false;
+      final subcats = r['subcategorias'] ?? r['asignaciones'] ?? r['subs'] ?? r['grupos'];
+      if (subcats is List && subcats.isNotEmpty) return false;
+      return true;
+    }
+
+    items = items.where(_isUnassigned).toList();
+    total = items.length < total ? total : items.length;
+
+    return {'items': items, 'total': total};
+  }
+
+  // ===== Helpers de UI para cada estudiante =====
+  int? _studentIdOf(Map<String, dynamic> r) {
+    final v = r['id'] ?? r['id_estudiante'] ?? r['idEstudiante'] ?? r['estudianteId'];
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  String _studentDisplayName(Map<String, dynamic> r) {
+    final full = (r['nombreCompleto'] ?? r['full_name'] ?? r['fullName'])?.toString();
+    if (full != null && full.trim().isNotEmpty) return full;
+
+    final n = (r['nombres'] ?? r['nombre'] ?? r['first_name'] ?? r['firstName'] ?? '').toString();
+    final a = (r['apellidos'] ?? r['apellido'] ?? r['last_name'] ?? r['lastName'] ?? '').toString();
+    final combined = ('$n $a').trim();
+    if (combined.isNotEmpty) return combined;
+
+    return r['alias']?.toString() ?? r['codigo']?.toString() ?? 'Sin nombre';
+  }
+
+  String? _studentSecondaryInfo(Map<String, dynamic> r) {
+    final ced = r['cedula'] ?? r['dni'] ?? r['documento'] ?? r['identificacion'];
+    final cod = r['codigo'] ?? r['code'] ?? r['studentCode'];
+    final tel = r['telefono'] ?? r['phone'];
+    final parts = <String>[];
+    if ('$ced'.trim().isNotEmpty && ced != null) parts.add('Cédula: $ced');
+    if ('$cod'.trim().isNotEmpty && cod != null) parts.add('Código: $cod');
+    if ('$tel'.trim().isNotEmpty && tel != null) parts.add('Tel: $tel');
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  // ===== Normalizador de asignación masiva =====
+  Future<Map<String, dynamic>> _asignarMasivoNormalizado({
+    required int idSub,
+    required List<int> ids,
+  }) async {
+    dynamic res;
+
+    // a) Intentar estudiantesRepo.asignarASubcategoria
+    try {
+      if (_alumnosRepo != null) {
+        res = await _alumnosRepo.asignarASubcategoria(
+          ids: ids,
+          idSubcategoria: idSub,
+        );
+        return _normalizeAssignResponse(res, ids);
+      }
+    } catch (_) {}
+
+    // b) Intentar subcategoriasRepo.asignarEstudiantesMasivo
+    try {
+      final fn = _subRepo.asignarEstudiantesMasivo;
+      if (fn != null) {
+        res = await fn(idSubcategoria: idSub, ids: ids);
+        return _normalizeAssignResponse(res, ids);
+      }
+    } catch (_) {}
+
+    throw 'No se encontró método para asignación masiva en AppScope.estudiantes o subcategorias.';
+  }
+
+  Map<String, dynamic> _normalizeAssignResponse(dynamic res, List<int> sent) {
+    final asignados = <int>[];
+    final ya = <int>[];
+    final no = <int>[];
+    final errs = <int, String>{};
+
+    List<int> _toIntList(dynamic v) {
+      if (v is List) {
+        return v
+            .map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? -1)
+            .where((e) => e >= 0)
+            .toList();
+      }
+      return const <int>[];
+    }
+
+    Map<int, String> _toErrMap(dynamic v) {
+      if (v is Map) {
+        final out = <int, String>{};
+        v.forEach((k, val) {
+          final id = (k is num) ? k.toInt() : int.tryParse('$k');
+          if (id != null) out[id] = val?.toString() ?? 'Error';
+        });
+        return out;
+      }
+      return const <int, String>{};
+    }
+
+    if (res is Map) {
+      asignados.addAll(_toIntList(res['asignados'] ?? res['insertados'] ?? res['ok']));
+      ya.addAll(_toIntList(res['yaEstaban'] ?? res['existentes'] ?? res['duplicados']));
+      no.addAll(_toIntList(res['noEncontrados'] ?? res['no_existentes'] ?? res['faltantes']));
+      errs.addAll(_toErrMap(res['errores']));
+
+      // Si vino 200 OK pero sin detalle, asumir éxito total
+      if (asignados.isEmpty && ya.isEmpty && no.isEmpty && errs.isEmpty) {
+        asignados.addAll(sent);
+      }
+    } else if (res is List) {
+      for (final e in res) {
+        final v = (e is num) ? e.toInt() : int.tryParse('$e');
+        if (v != null) asignados.add(v);
+      }
+    } else if (res == true) {
+      asignados.addAll(sent);
+    } else {
+      // Respuesta no reconocida
+      for (final id in sent) {
+        errs[id] = 'Respuesta no reconocida del servidor.';
+      }
+    }
+
+    List<int> _clean(List<int> l) => l.toSet().toList()..sort();
+
+    return {
+      'asignados': _clean(asignados),
+      'yaEstaban': _clean(ya),
+      'noEncontrados': _clean(no),
+      'errores': errs,
+    };
+  }
+
+  // Chip contador reutilizable (sin necesidad de BuildContext)
+  Widget _chipCount(IconData icon, String label, int count, Color? color) {
+    return Chip(
+      avatar: Icon(icon, size: 18, color: color),
+      label: Text('$label: $count'),
+    );
+  }
+
+  // ===== Paginación =====
+  void _onPageChange(int tabIndex, int newPage) {
+    if (newPage < 1) return;
+    int totalItems, pageSize;
+    switch (tabIndex) {
+      case 1: totalItems = _inaTotal; pageSize = _inaPageSize; break;
+      case 2: totalItems = _allTotal; pageSize = _allPageSize; break;
+      case 0:
+      default: totalItems = _actTotal; pageSize = _actPageSize; break;
+    }
+    int lastPage = (totalItems + pageSize - 1) ~/ pageSize;
+    if (lastPage == 0) lastPage = 1;
+    if (newPage > lastPage) return;
+
+    setState(() {
+      switch (tabIndex) {
+        case 0: _actPage = newPage; break;
+        case 1: _inaPage = newPage; break;
+        case 2: _allPage = newPage; break;
+      }
+    });
+    _loadCurrent();
+  }
+
+  void _onPageSizeChange(int tabIndex, int newSize) {
+    if (newSize <= 0) return;
+    setState(() {
+      switch (tabIndex) {
+        case 0: _actPageSize = newSize; _actPage = 1; break;
+        case 1: _inaPageSize = newSize; _inaPage = 1; break;
+        case 2: _allPageSize = newSize; _allPage = 1; break;
+      }
+    });
+    _loadCurrent();
   }
 
   // ===== Helpers UI =====
@@ -541,168 +932,48 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<bool?> _confirm(String msg) async {
-    return showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Confirmar'),
-        content: Text(msg),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sí')),
-        ],
-      ),
-    );
-  }
-
+  // ====================================================================
+  // ============================ BUILD =================================
+  // ====================================================================
   @override
   Widget build(BuildContext context) {
-    final core = _ResponsiveContent(
-      tab: _tab,
-      search: _search,
-      idCategoria: _idCategoria,
-      catOptions: _catOptions,
-      loading: _loading,
-      error: _error,
-      actItems: _actItems, inaItems: _inaItems, allItems: _allItems,
-      actTotal: _actTotal, inaTotal: _inaTotal, allTotal: _allTotal,
-      onSearch: _loadCurrent,
-      onNew: _onNew,
-      onEditDialog: _onEditDialog,
-      onInlineStart: _startInlineEdit,
-      onInlineCancel: _cancelInlineEdit,
-      onInlineSave: _saveInlineEdit,
-      onToggle: _onToggle,
-      onDelete: _onDelete,
-      onCatChanged: (v) { setState(() => _idCategoria = v); _loadCurrent(); },
-      onOpenEstudiantes: (row) {
-        if (widget.embedded && widget.onOpenEstudiantes != null) {
-          widget.onOpenEstudiantes!(row);
-          return;
-        }
-        Navigator.pushNamed(
-          context,
-          RouteNames.adminSubcatEstudiantes,
-          arguments: {
-            'idSubcategoria': (row['id'] as num).toInt(),
-            'nombreSubcategoria': row['nombre'],
-            'idCategoria': row['idCategoria'],
-          },
-        );
-      },
-      onExportCsv: _exportCsvCurrent,
-      editing: _editing,
-      onBulkAssign: _openBulkAssignDialog,
-      catNameOf: _catNameOf,
-    );
+    final isFirstLoad = _loading &&
+        _actItems.isEmpty &&
+        _inaItems.isEmpty &&
+        _allItems.isEmpty;
 
-    if (!widget.embedded) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Subcategorías')),
-        body: Padding(padding: const EdgeInsets.all(12), child: core),
-      );
-    }
-    return Padding(padding: const EdgeInsets.all(12), child: core);
-  }
-}
-
-// ====================== UI/LAYOUT RESPONSIVO ======================
-
-class _ResponsiveContent extends StatelessWidget {
-  const _ResponsiveContent({
-    required this.tab,
-    required this.search,
-    required this.idCategoria,
-    required this.catOptions,
-    required this.loading,
-    required this.error,
-    required this.actItems,
-    required this.inaItems,
-    required this.allItems,
-    required this.actTotal,
-    required this.inaTotal,
-    required this.allTotal,
-    required this.onSearch,
-    required this.onNew,
-    required this.onEditDialog,
-    required this.onInlineStart,
-    required this.onInlineCancel,
-    required this.onInlineSave,
-    required this.onToggle,
-    required this.onDelete,
-    required this.onCatChanged,
-    required this.onOpenEstudiantes,
-    required this.onExportCsv,
-    required this.editing,
-    required this.onBulkAssign,
-    required this.catNameOf,
-  });
-
-  final TabController tab;
-  final TextEditingController search;
-  final int? idCategoria;
-  final List<Map<String, dynamic>> catOptions;
-
-  final bool loading;
-  final String? error;
-
-  final List<Map<String, dynamic>> actItems;
-  final List<Map<String, dynamic>> inaItems;
-  final List<Map<String, dynamic>> allItems;
-
-  final int actTotal, inaTotal, allTotal;
-
-  final VoidCallback onSearch;
-  final VoidCallback onNew;
-  final void Function(Map<String, dynamic>) onEditDialog;
-  final void Function(Map<String, dynamic>) onInlineStart;
-  final void Function(int) onInlineCancel;
-  final void Function(int, Map<String, dynamic>) onInlineSave;
-  final void Function(Map<String, dynamic>) onToggle;
-  final void Function(Map<String, dynamic>) onDelete;
-  final void Function(int?) onCatChanged;
-  final void Function(Map<String, dynamic>) onOpenEstudiantes;
-  final VoidCallback onExportCsv;
-  final Map<int, _RowEdit> editing;
-  final Future<void> Function(Map<String, dynamic>) onBulkAssign;
-
-  final String Function(Map<String, dynamic>) catNameOf;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
+    final core = LayoutBuilder(
       builder: (ctx, c) {
-        final isNarrow = c.maxWidth < 720;
-
-        // ✨ Centrado y ancho máximo en web ancha
+        final isNarrow = c.maxWidth < 820;
         const double maxContentWidth = 1200;
         final double width = c.maxWidth > maxContentWidth ? maxContentWidth : c.maxWidth;
 
         final header = _buildHeader(context, isNarrow);
+
         final tabs = TabBar(
-          controller: tab,
-          isScrollable: isNarrow, // por si el padding fuese muy justo
+          controller: _tab,
+          isScrollable: isNarrow,
           tabs: [
-            Tab(text: 'Activas ($actTotal)'),
-            Tab(text: 'Inactivas ($inaTotal)'),
-            Tab(text: 'Todas ($allTotal)'),
+            Tab(text: 'Activas ($_actTotal)'),
+            Tab(text: 'Inactivas ($_inaTotal)'),
+            Tab(text: 'Todas ($_allTotal)'),
           ],
         );
 
-        final content = loading
-            ? const Center(child: CircularProgressIndicator())
-            : error != null
-                ? Center(child: Text(error!))
+        final content = isFirstLoad
+            ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
+            : _error != null
+                ? _ErrorView(error: _error!, onRetry: _loadCurrent)
                 : TabBarView(
-                    controller: tab,
+                    controller: _tab,
                     children: [
-                      _buildBody(context, isNarrow, actItems),
-                      _buildBody(context, isNarrow, inaItems),
-                      _buildBody(context, isNarrow, allItems),
+                      _buildTabContent(context, isNarrow, 0),
+                      _buildTabContent(context, isNarrow, 1),
+                      _buildTabContent(context, isNarrow, 2),
                     ],
                   );
 
-        return Align(
+        final body = Align(
           alignment: Alignment.topCenter,
           child: SizedBox(
             width: width,
@@ -713,58 +984,141 @@ class _ResponsiveContent extends StatelessWidget {
                 const SizedBox(height: 12),
                 tabs,
                 const SizedBox(height: 8),
-                Expanded(child: content),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: content,
+                      ),
+                      if (_loading && !isFirstLoad)
+                        const Positioned(
+                          right: 12,
+                          top: 8,
+                          child: _LoadingChip(),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         );
+
+        return _withShortcuts(body);
       },
     );
+
+    if (!widget.embedded) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Subcategorías')),
+        body: Padding(padding: const EdgeInsets.all(12), child: core),
+      );
+    }
+    return Padding(padding: const EdgeInsets.all(12), child: core);
   }
 
-  // Header responsive (FIX: sin Expanded dentro de Column en modo angosto)
+  // ===== Header mejorado =====
   Widget _buildHeader(BuildContext context, bool isNarrow) {
-    final searchField = TextField(
-      controller: search,
-      decoration: InputDecoration(
-        hintText: 'Buscar por nombre o código...',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: IconButton(
-          tooltip: 'Limpiar',
-          icon: const Icon(Icons.clear),
-          onPressed: () { search.clear(); onSearch(); },
+    final activeFilters = Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        if (_q != null)
+          InputChip(
+            label: Text('Búsqueda: "${_q!}"'),
+            onDeleted: () { _search.clear(); _loadCurrent(); },
+            avatar: const Icon(Icons.search, size: 18),
+          ),
+        if (_idCategoria != null)
+          InputChip(
+            label: Text('Categoría: ${_catById[_idCategoria!] ?? '-'}'),
+            onDeleted: () {
+              setState(() => _idCategoria = null);
+              _resetPages();
+              _loadCurrent();
+            },
+            avatar: const Icon(Icons.category, size: 18),
+          ),
+        InputChip(
+          label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
+          avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
+          onPressed: () => setState(() {
+            _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
+          }),
         ),
-      ),
-      onSubmitted: (_) => onSearch(),
+        InputChip(
+          label: Text(_dense ? 'Denso' : 'Cómodo'),
+          avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
+          onPressed: () => setState(() => _dense = !_dense),
+        ),
+      ],
     );
 
-    final searchWide = Expanded(child: searchField);
-    final searchNarrow = SizedBox(width: double.infinity, child: searchField);
+    final searchField = TextField(
+      controller: _search,
+      focusNode: _searchFocus,
+      decoration: InputDecoration(
+        hintText: 'Buscar por nombre o código…',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: 'Limpiar',
+              child: IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () { _search.clear(); _loadCurrent(); },
+              ),
+            ),
+            Tooltip(
+              message: 'Recargar (Ctrl+R)',
+              child: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCurrent),
+            ),
+          ],
+        ),
+      ),
+      onSubmitted: (_) => _loadCurrent(),
+      textInputAction: TextInputAction.search,
+    );
+
+    final viewSelector = SegmentedButton<_ViewMode>(
+      segments: const [
+        ButtonSegment<_ViewMode>(value: _ViewMode.table, icon: Icon(Icons.table_chart), label: Text('Tabla')),
+        ButtonSegment<_ViewMode>(value: _ViewMode.cards,  icon: Icon(Icons.view_agenda), label: Text('Tarjetas')),
+      ],
+      selected: {_viewMode},
+      onSelectionChanged: (s) => setState(() => _viewMode = s.first),
+    );
 
     final cat = SizedBox(
       width: isNarrow ? double.infinity : 260,
       child: DropdownButtonFormField<int?>(
-        value: idCategoria,
+        value: _idCategoria,
         decoration: const InputDecoration(prefixIcon: Icon(Icons.category), labelText: 'Categoría'),
         items: <DropdownMenuItem<int?>>[
           const DropdownMenuItem<int?>(value: null, child: Text('Todas')),
-          ...catOptions.map((e) => DropdownMenuItem<int?>(
+          ..._catOptions.map((e) => DropdownMenuItem<int?>(
                 value: (e['id'] as num).toInt(),
                 child: Text(e['nombre']?.toString() ?? '—'),
               )),
         ],
-        onChanged: onCatChanged,
+        onChanged: (v) {
+          _resetPages();
+          setState(() => _idCategoria = v);
+          _loadCurrent();
+        },
       ),
     );
 
     final exportBtn = OutlinedButton.icon(
-      onPressed: onExportCsv,
+      onPressed: _exportCsvCurrent,
       icon: const Icon(Icons.download),
       label: const Text('Exportar'),
     );
 
     final add = FilledButton.icon(
-      onPressed: onNew,
+      onPressed: _onNew,
       icon: const Icon(Icons.add),
       label: const Text('Nueva'),
     );
@@ -773,107 +1127,215 @@ class _ResponsiveContent extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          searchNarrow,
+          searchField,
+          const SizedBox(height: 8),
+          viewSelector,
           const SizedBox(height: 8),
           cat,
           const SizedBox(height: 8),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [exportBtn, const SizedBox(width: 8), add]),
+          const SizedBox(height: 8),
+          activeFilters,
         ],
       );
     }
-    return Row(children: [searchWide, const SizedBox(width: 8), cat, const Spacer(), exportBtn, const SizedBox(width: 8), add]);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: searchField),
+            const SizedBox(width: 8),
+            SizedBox(width: 240, child: viewSelector),
+            const SizedBox(width: 8),
+            SizedBox(width: 260, child: cat),
+            const Spacer(),
+            exportBtn,
+            const SizedBox(width: 8),
+            add,
+          ],
+        ),
+        const SizedBox(height: 8),
+        activeFilters,
+      ],
+    );
   }
 
-  // Decide tabla (wide) o tarjetas (narrow)
-  Widget _buildBody(BuildContext context, bool isNarrow, List<Map<String, dynamic>> rows) {
-    if (rows.isEmpty) return const Center(child: Text('Sin datos'));
-    return isNarrow ? _cards(context, rows) : _table(context, rows);
+  List<Map<String, dynamic>> _itemsForTab(int index) {
+    switch (index) {
+      case 1: return _inaItems;
+      case 2: return _allItems;
+      case 0:
+      default: return _actItems;
+    }
   }
 
-  // Tabla (desktop)
-  Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const [
-          DataColumn(label: Text('ID')),
-          DataColumn(label: Text('Subcategoría')),
-          DataColumn(label: Text('Código')),
-          DataColumn(label: Text('Categoría')),
-          DataColumn(label: Text('Estado')),
-          DataColumn(label: Text('Creado')),
-          DataColumn(label: Text('Acciones')),
+  Widget _buildTabContent(BuildContext context, bool isNarrow, int tabIndex) {
+    final items = _itemsForTab(tabIndex);
+
+    int currentPage, totalItems, pageSize;
+    switch (tabIndex) {
+      case 1: currentPage = _inaPage; totalItems = _inaTotal; pageSize = _inaPageSize; break;
+      case 2: currentPage = _allPage; totalItems = _allTotal; pageSize = _allPageSize; break;
+      case 0:
+      default: currentPage = _actPage; totalItems = _actTotal; pageSize = _actPageSize; break;
+    }
+
+    final paginator = _PaginationControls(
+      currentPage: currentPage,
+      totalItems: totalItems,
+      pageSize: pageSize,
+      onPageChange: (newPage) => _onPageChange(tabIndex, newPage),
+      onPageSizeChange: (newSize) => _onPageSizeChange(tabIndex, newSize),
+    );
+
+    if (items.isEmpty && !_loading) {
+      return Column(
+        children: [
+          Expanded(
+            child: _EmptyState(
+              title: 'Sin subcategorías',
+              subtitle: 'Crea tu primera subcategoría o ajusta los filtros/búsqueda.',
+              primary: ('Crear nueva', _onNew),
+              secondary: ('Quitar filtros', () {
+                setState(() { _idCategoria = null; _search.clear(); });
+                _resetPages();
+                _loadCurrent();
+              }),
+            ),
+          ),
+          const SizedBox(height: 8),
+          paginator,
         ],
-        rows: rows.map((r) {
-          final id = (r['id'] as num).toInt();
-          final bool activo = r['activo'] == true;
-          final edit = editing[id];
+      );
+    }
 
-          final nombreCell = edit == null
-              ? Text(r['nombre']?.toString() ?? '')
-              : SizedBox(width: 220, child: TextField(controller: edit.nombre, decoration: const InputDecoration(isDense: true)));
+    final content = _viewMode == _ViewMode.cards
+        ? _cards(context, items)
+        : _table(context, items);
 
-          final codigoCell = edit == null
-              ? Text(r['codigo']?.toString() ?? '')
-              : SizedBox(width: 160, child: TextField(controller: edit.codigo, decoration: const InputDecoration(isDense: true)));
+    return Column(
+      children: [
+        Expanded(child: content),
+        if (totalItems > pageSize) paginator,
+      ],
+    );
+  }
 
-          return DataRow(cells: [
-            DataCell(Text('$id')),
-            DataCell(nombreCell),
-            DataCell(codigoCell),
-            DataCell(Text(catNameOf(r))),
-            DataCell(Icon(activo ? Icons.check_circle : Icons.cancel)),
-            DataCell(Text(r['creadoEn']?.toString().split('T').first ?? '')),
-            DataCell(_rowActions(r, isEditing: edit != null, activo: activo)),
-          ]);
-        }).toList(),
+  // ===== Tabla (desktop) =====
+  Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
+    final textStyle = _dense
+        ? Theme.of(context).textTheme.bodySmall
+        : Theme.of(context).textTheme.bodyMedium;
+
+    return ScrollConfiguration(
+      behavior: const ScrollBehavior().copyWith(scrollbars: true),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: _dense ? 36 : 48,
+          dataRowMinHeight: _dense ? 32 : 44,
+          dataRowMaxHeight: _dense ? 40 : null,
+          columns: const [
+            DataColumn(label: Text('ID')),
+            DataColumn(label: Text('Subcategoría')),
+            DataColumn(label: Text('Código')),
+            DataColumn(label: Text('Categoría')),
+            DataColumn(label: Text('Estado')),
+            DataColumn(label: Text('Creado')),
+            DataColumn(label: Text('Acciones')),
+          ],
+          rows: rows.map((r) {
+            final bool activo = r['activo'] == true;
+            final estadoIcon = Icon(
+              activo ? Icons.check_circle : Icons.cancel,
+              color: activo ? Colors.green : Colors.grey,
+              size: _dense ? 18 : 20,
+              semanticLabel: activo ? 'Activa' : 'Inactiva',
+            );
+            return DataRow(cells: [
+              DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
+              DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
+              DataCell(SelectableText(r['codigo']?.toString() ?? '', style: textStyle)),
+              DataCell(SelectableText(_catNameOf(r), style: textStyle)),
+              DataCell(estadoIcon),
+              DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
+              DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
+            ]);
+          }).toList(),
+        ),
       ),
     );
   }
 
-  // Tarjetas (móvil)
+  // ===== Tarjetas (móvil) =====
   Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
+    final spacing = _dense ? 6.0 : 8.0;
+    final padding = EdgeInsets.all(_dense ? 10 : 12);
+
     return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 16),
       itemCount: rows.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, __) => SizedBox(height: spacing),
       itemBuilder: (ctx, i) {
         final r = rows[i];
-        final id = (r['id'] as num).toInt();
         final bool activo = r['activo'] == true;
-        final edit = editing[id];
-
-        final nombre = edit == null
-            ? Text(r['nombre']?.toString() ?? '', style: Theme.of(context).textTheme.titleMedium)
-            : TextField(controller: edit.nombre, decoration: const InputDecoration(labelText: 'Nombre'));
-
-        final codigo = edit == null
-            ? Text('Código: ${r['codigo'] ?? ''}')
-            : TextField(controller: edit.codigo, decoration: const InputDecoration(labelText: 'Código'));
-
         return Card(
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Theme.of(context).dividerColor)),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: nombre),
-                    const SizedBox(width: 8),
-                    Icon(activo ? Icons.check_circle : Icons.cancel, size: 18),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                codigo,
-                const SizedBox(height: 4),
-                Text('Categoría: ${catNameOf(r)}'),
-                const SizedBox(height: 4),
-                Text('Creado: ${r['creadoEn']?.toString().split('T').first ?? ''}'),
-                const SizedBox(height: 8),
-                _rowActions(r, isEditing: edit != null, activo: activo, dense: true),
-              ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              if (widget.embedded && widget.onOpenEstudiantes != null) {
+                widget.onOpenEstudiantes!(r);
+                return;
+              }
+              Navigator.pushNamed(
+                context,
+                RouteNames.adminSubcatEstudiantes,
+                arguments: {
+                  'idSubcategoria': (r['id'] as num).toInt(),
+                  'nombreSubcategoria': r['nombre'],
+                  'idCategoria': r['idCategoria'],
+                },
+              );
+            },
+            child: Padding(
+              padding: padding,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          r['nombre']?.toString() ?? '',
+                          style: Theme.of(context).textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        activo ? Icons.check_circle : Icons.cancel,
+                        size: 18,
+                        color: activo ? Colors.green : Colors.grey,
+                        semanticLabel: activo ? 'Activa' : 'Inactiva',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  _KV('Código', r['codigo'] ?? ''),
+                  _KV('Categoría', _catNameOf(r)),
+                  _KV('Creado', r['creadoEn']?.toString().split('T').first ?? ''),
+                  const SizedBox(height: 8),
+                  _rowActions(r: r, activo: activo, dense: true),
+                ],
+              ),
             ),
           ),
         );
@@ -881,43 +1343,326 @@ class _ResponsiveContent extends StatelessWidget {
     );
   }
 
-  // Botonera por fila (común)
-  Widget _rowActions(
-    Map<String, dynamic> r, {
-    required bool isEditing,
-    required bool activo,
-    bool dense = false,
-  }) {
-    final id = (r['id'] as num).toInt();
-
-    if (isEditing) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget _KV(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
         children: [
-          IconButton(tooltip: 'Guardar', icon: const Icon(Icons.check), onPressed: () => onInlineSave(id, r)),
-          IconButton(tooltip: 'Cancelar', icon: const Icon(Icons.close), onPressed: () => onInlineCancel(id)),
+          SizedBox(width: 96, child: Text(label, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+            child: Text(value, style: Theme.of(context).textTheme.bodyMedium, overflow: TextOverflow.ellipsis),
+          ),
         ],
+      ),
+    );
+  }
+
+  // ===== Botonera por fila =====
+  Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
+    final double iconSize = dense ? 20 : 24;
+    final EdgeInsets padding = EdgeInsets.all(dense ? 6 : 8);
+
+    return OverflowBar(
+      spacing: dense ? 4 : 8,
+      overflowSpacing: dense ? 4 : 8,
+      children: [
+        Tooltip(
+          message: 'Estudiantes',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            icon: const Icon(Icons.people),
+            onPressed: () {
+              if (widget.embedded && widget.onOpenEstudiantes != null) {
+                widget.onOpenEstudiantes!(r);
+                return;
+              }
+              Navigator.pushNamed(
+                context,
+                RouteNames.adminSubcatEstudiantes,
+                arguments: {
+                  'idSubcategoria': (r['id'] as num).toInt(),
+                  'nombreSubcategoria': r['nombre'],
+                  'idCategoria': r['idCategoria'],
+                },
+              );
+            },
+          ),
+        ),
+
+        // ✅ Solo selector visual de NO asignados
+        Tooltip(
+          message: 'Asignar estudiantes (solo no asignados)',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            icon: const Icon(Icons.group_add),
+            onPressed: () => _openBulkPickerDialog(r),
+          ),
+        ),
+
+        Tooltip(
+          message: 'Editar',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            icon: const Icon(Icons.edit),
+            onPressed: () => _onEditDialog(r),
+          ),
+        ),
+        Tooltip(
+          message: activo ? 'Desactivar' : 'Activar',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => _onToggle(r),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ===== Atajos de teclado (corregido) =====
+  Widget _withShortcuts(Widget child) {
+    return FocusTraversalGroup(
+      child: Shortcuts(
+        shortcuts: <LogicalKeySet, Intent>{
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): const FocusSearchIntent(),
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyN): const NewSubcatIntent(),
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyR): const ReloadIntent(),
+        },
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            FocusSearchIntent: CallbackAction<FocusSearchIntent>(
+              onInvoke: (_) { _searchFocus.requestFocus(); return null; },
+            ),
+            NewSubcatIntent: CallbackAction<NewSubcatIntent>(
+              onInvoke: (_) { _onNew(); return null; },
+            ),
+            ReloadIntent: CallbackAction<ReloadIntent>(
+              onInvoke: (_) { _loadCurrent(); return null; },
+            ),
+          },
+          child: Focus(autofocus: true, child: child),
+        ),
+      ),
+    );
+  }
+}
+
+// ======================= Widgets de apoyo UI =======================
+
+class _PaginationControls extends StatelessWidget {
+  final int currentPage;
+  final int totalItems;
+  final int pageSize;
+  final void Function(int) onPageChange;
+  final void Function(int) onPageSizeChange;
+
+  const _PaginationControls({
+    super.key,
+    required this.currentPage,
+    required this.totalItems,
+    required this.pageSize,
+    required this.onPageChange,
+    required this.onPageSizeChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    int totalPages = (totalItems + pageSize - 1) ~/ pageSize;
+    if (totalPages < 1) totalPages = 1;
+    final bool canGoBack = currentPage > 1;
+    final bool canGoFwd = currentPage < totalPages;
+    final int from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    final int rawTo = currentPage * pageSize;
+    final int to = rawTo > totalItems ? totalItems : rawTo;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Row(
+          children: [
+            Text('Mostrando $from–$to de $totalItems'),
+            const Spacer(),
+            DropdownButton<int>(
+              value: pageSize,
+              underline: const SizedBox(),
+              items: const [
+                DropdownMenuItem(value: 10, child: Text('10 / pág.')),
+                DropdownMenuItem(value: 20, child: Text('20 / pág.')),
+                DropdownMenuItem(value: 50, child: Text('50 / pág.')),
+              ],
+              onChanged: (v) { if (v != null) onPageSizeChange(v); },
+            ),
+            IconButton(
+              icon: const Icon(Icons.first_page),
+              tooltip: 'Primera página',
+              onPressed: canGoBack ? () => onPageChange(1) : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              tooltip: 'Página anterior',
+              onPressed: canGoBack ? () => onPageChange(currentPage - 1) : null,
+            ),
+            Text('$currentPage / $totalPages'),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              tooltip: 'Página siguiente',
+              onPressed: canGoFwd ? () => onPageChange(currentPage + 1) : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.last_page),
+              tooltip: 'Última página',
+              onPressed: canGoFwd ? () => onPageChange(totalPages) : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final (String, VoidCallback) primary;
+  final (String, VoidCallback)? secondary;
+
+  const _EmptyState({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.primary,
+    this.secondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox_outlined, size: 64, color: Theme.of(context).hintColor),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              children: [
+                FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
+                if (secondary != null)
+                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _ErrorView({super.key, required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
+            const SizedBox(height: 12),
+            Text('Error al cargar datos', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text(error, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingChip extends StatelessWidget {
+  const _LoadingChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      label: const Text('Cargando…'),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _LoadingPlaceholder extends StatelessWidget {
+  final bool isNarrow;
+  final _ViewMode viewMode;
+  final bool dense;
+
+  const _LoadingPlaceholder({super.key, required this.isNarrow, required this.viewMode, required this.dense});
+
+  @override
+  Widget build(BuildContext context) {
+    if (viewMode == _ViewMode.cards || isNarrow) {
+      return ListView.builder(
+        itemCount: 6,
+        itemBuilder: (_, i) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: _Skeleton(height: dense ? 84 : 104),
+        ),
       );
     }
-
-    return Wrap(
-      spacing: dense ? 4 : 8,
+    return Column(
       children: [
-        IconButton(tooltip: 'Estudiantes', icon: const Icon(Icons.people), onPressed: () => onOpenEstudiantes(r)),
-        IconButton(tooltip: 'Asignación masiva', icon: const Icon(Icons.group_add), onPressed: () => onBulkAssign(r)),
-        IconButton(tooltip: 'Editar en línea', icon: const Icon(Icons.edit), onPressed: () => onInlineStart(r)),
-        IconButton(tooltip: activo ? 'Desactivar' : 'Activar', icon: Icon(activo ? Icons.visibility_off : Icons.visibility), onPressed: () => onToggle(r)),
-        IconButton(tooltip: 'Eliminar', icon: const Icon(Icons.delete_forever), onPressed: () => onDelete(r)),
-        IconButton(tooltip: 'Editar (diálogo)', icon: const Icon(Icons.border_color), onPressed: () => onEditDialog(r)),
+        _Skeleton(height: dense ? 44 : 52),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.builder(
+            itemCount: 8,
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: _Skeleton(height: dense ? 36 : 44),
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-// ===== Modelitos UI =====
-class _RowEdit {
-  final TextEditingController nombre;
-  final TextEditingController codigo;
-  _RowEdit(this.nombre, this.codigo);
-  void dispose() { nombre.dispose(); codigo.dispose(); }
+class _Skeleton extends StatelessWidget {
+  final double height;
+  const _Skeleton({super.key, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+    );
+  }
 }

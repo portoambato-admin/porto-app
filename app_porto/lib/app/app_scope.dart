@@ -1,27 +1,23 @@
 import 'package:flutter/widgets.dart';
-
 import '../core/network/http_client.dart';
-import '../core/rbac/permissions_store.dart';
-import '../core/rbac/permission_gate.dart';
-import '../core/rbac/rbac_repository.dart';
 import '../core/services/session_token_provider.dart';
 
 // Auth
 import '../features/auth/data/auth_repository.dart';
 
-// Dominios existentes
+// Repos
 import '../features/admin/data/usuarios_repository.dart';
 import '../features/admin/data/categorias_repository.dart';
 import '../features/admin/data/subcategorias_repository.dart';
 import '../features/admin/data/estudiantes_repository.dart';
 import '../features/admin/data/matriculas_repository.dart';
-
-// NUEVOS
 import '../features/admin/data/mensualidades_repository.dart';
 import '../features/admin/data/pagos_repository.dart';
-
-// Asignaciones Subcat–Estudiante
+import '../features/admin/data/estado_mensualidad_repository.dart';
 import '../features/admin/data/subcat_est_repository.dart';
+
+// ✅ NUEVO
+import '../features/admin/data/asistencias_repository.dart';
 
 class AppScope extends InheritedWidget {
   final HttpClient http;
@@ -32,12 +28,13 @@ class AppScope extends InheritedWidget {
   final SubcategoriasRepository subcategorias;
   final EstudiantesRepository estudiantes;
   final MatriculasRepository matriculas;
-
-  // Nuevos
   final MensualidadesRepository mensualidades;
   final PagosRepository pagos;
-
+  final EstadoMensualidadRepository estadoMensualidad;
   final SubcatEstRepository subcatEst;
+
+  // ✅ NUEVO
+  final AsistenciasRepository asistencias;
 
   AppScope._({
     required this.http,
@@ -49,24 +46,29 @@ class AppScope extends InheritedWidget {
     required this.matriculas,
     required this.mensualidades,
     required this.pagos,
+    required this.estadoMensualidad,
     required this.subcatEst,
+    required this.asistencias, // ✅
     required super.child,
   });
 
   factory AppScope({required Widget child}) {
-    final http = HttpClient(tokenProvider: SessionTokenProvider());
+    final tp   = SessionTokenProvider.instance;
+    final http = HttpClient(tokenProvider: tp);
     final auth = AuthRepository(http);
 
-    final usuarios      = UsuariosRepository(http);
-    final categorias    = CategoriasRepository(http);
-    final subcategorias = SubcategoriasRepository(http);
-    final estudiantes   = EstudiantesRepository(http);
-    final matriculas    = MatriculasRepository(http);
+    final usuarios          = UsuariosRepository(http);
+    final categorias        = CategoriasRepository(http);
+    final subcategorias     = SubcategoriasRepository(http);
+    final estudiantes       = EstudiantesRepository(http);
+    final matriculas        = MatriculasRepository(http);
+    final mensualidades     = MensualidadesRepository(http);
+    final pagos             = PagosRepository(http);
+    final estadoMensualidad = EstadoMensualidadRepository(http);
+    final subcatEst         = SubcatEstRepository(http);
 
-    final mensualidades = MensualidadesRepository(http);
-    final pagos         = PagosRepository(http);
-
-    final subcatEst     = SubcatEstRepository(http);
+    // ✅ NUEVO
+    final asistencias       = AsistenciasRepository(http);
 
     return AppScope._(
       http: http,
@@ -78,7 +80,9 @@ class AppScope extends InheritedWidget {
       matriculas: matriculas,
       mensualidades: mensualidades,
       pagos: pagos,
+      estadoMensualidad: estadoMensualidad,
       subcatEst: subcatEst,
+      asistencias: asistencias, // ✅
       child: child,
     );
   }

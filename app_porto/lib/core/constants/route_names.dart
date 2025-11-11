@@ -29,7 +29,6 @@ abstract class RouteNames {
   static const adminAcademiaSubcategorias  = '/admin/academia/subcategorias';
   static const adminAcademiaEstudiantes    = '/admin/academia/estudiantes';
   static const adminAcademiaAsistencias    = '/admin/academia/asistencias';
-  static const adminAcademiaEvaluaciones   = '/admin/academia/evaluaciones';
 
   // ===== Admin: subrutas de Finanzas
   static const adminFinanzasPagos = '/admin/finanzas/pagos';
@@ -44,7 +43,6 @@ abstract class RouteNames {
   static const adminCategorias     = '/admin/categorias';
   static const adminSubcategorias  = '/admin/subcategorias';
   static const adminAsistencias    = '/admin/asistencias';
-  static const adminEvaluaciones   = '/admin/evaluaciones';
   static const adminPagos          = '/admin/pagos';
   static const adminConfig         = '/admin/config';
 
@@ -62,10 +60,10 @@ abstract class RouteNames {
     adminPersonas, adminAcademia, adminFinanzas, adminSistema,
     adminPersonasUsuarios, adminPersonasProfesores, adminPersonasRoles,
     adminAcademiaCategorias, adminAcademiaSubcategorias,
-    adminAcademiaEstudiantes, adminAcademiaAsistencias, adminAcademiaEvaluaciones,
+    adminAcademiaEstudiantes, adminAcademiaAsistencias, 
     adminFinanzasPagos, adminSistemaConfig,
     adminUsuarios, adminProfesores, adminRoles, adminCategorias, adminSubcategorias,
-    adminAsistencias, adminEvaluaciones, adminPagos, adminConfig,
+    adminAsistencias, adminPagos, adminConfig,
     adminEstudiantes, adminEstudianteDetalle, adminSubcatEstudiantes,
   };
 }

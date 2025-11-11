@@ -6,7 +6,6 @@ enum AdminSection {
   categorias,
   subcategorias,
   asistencias,
-  evaluaciones,
   pagos,
   config,
 }
@@ -23,7 +22,7 @@ class AdminSectionTabs extends StatelessWidget implements PreferredSizeWidget {
       case AdminSection.categorias:     return '/admin/categorias';
       case AdminSection.subcategorias:  return '/admin/subcategororias'; // <- ojo: si tu ruta real es /admin/subcategorias, cambia aquí
       case AdminSection.asistencias:    return '/admin/asistencias';
-      case AdminSection.evaluaciones:   return '/admin/evaluaciones';
+
       case AdminSection.pagos:          return '/admin/pagos';
       case AdminSection.config:         return '/admin/config';
     }
@@ -53,7 +52,7 @@ class AdminSectionTabs extends StatelessWidget implements PreferredSizeWidget {
       _SectionItem(AdminSection.categorias,    Icons.category_rounded,               'Categorías'),
       _SectionItem(AdminSection.subcategorias, Icons.account_tree_rounded,           'Subcategorías'),
       _SectionItem(AdminSection.asistencias,   Icons.fact_check_rounded,             'Asistencias'),
-      _SectionItem(AdminSection.evaluaciones,  Icons.assignment_turned_in_rounded,   'Evaluaciones'),
+  
       _SectionItem(AdminSection.pagos,         Icons.account_balance_wallet_rounded, 'Pagos'),
       _SectionItem(AdminSection.config,        Icons.settings_rounded,               'Config'),
     ];
