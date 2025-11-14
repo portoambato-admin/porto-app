@@ -6,7 +6,13 @@ import 'package:app_porto/app/app_scope.dart';
 /// Panel completo de gestión de pagos por mensualidad
 class PagosMensualidadPanel extends StatefulWidget {
   final int idEstudiante;
-  const PagosMensualidadPanel({super.key, required this.idEstudiante});
+  final ValueChanged<Set<int>>? onYearsExpandedChanged;
+
+  const PagosMensualidadPanel({
+    super.key,
+    required this.idEstudiante,
+    this.onYearsExpandedChanged,
+  });
 
   @override
   State<PagosMensualidadPanel> createState() => _PagosMensualidadPanelState();
@@ -18,7 +24,10 @@ class _PagosMensualidadPanelState extends State<PagosMensualidadPanel> {
 
   bool _loading = true;
   List<Map<String, dynamic>> _mensualidades = [];
-  
+  final Set<int> _expandedYears = <int>{};
+
+  static const int _unknownYear = 0;
+
   final _fmtMoney = NumberFormat.currency(locale: 'es_EC', symbol: '\$');
 
   @override
@@ -35,7 +44,11 @@ class _PagosMensualidadPanelState extends State<PagosMensualidadPanel> {
     try {
       final list = await _mensRepo.porEstudiante(widget.idEstudiante);
       if (mounted) {
-        setState(() => _mensualidades = List<Map<String, dynamic>>.from(list));
+        setState(() {
+          _mensualidades = List<Map<String, dynamic>>.from(list);
+          _pruneExpandedYears();
+        });
+        _notifyYearsChanged();
       }
     } catch (e) {
       if (mounted) {
@@ -84,6 +97,81 @@ class _PagosMensualidadPanelState extends State<PagosMensualidadPanel> {
         );
       }
     }
+  }
+
+  void _pruneExpandedYears() {
+    final validYears = _mensualidades.map(_yearFromMensualidad).toSet();
+    _expandedYears.removeWhere((year) => !validYears.contains(year));
+  }
+
+  void _handleYearExpansion(int year, bool expanded) {
+    setState(() {
+      if (expanded) {
+        _expandedYears.add(year);
+      } else {
+        _expandedYears.remove(year);
+      }
+    });
+    _notifyYearsChanged();
+  }
+
+  void _notifyYearsChanged() {
+    widget.onYearsExpandedChanged?.call(Set<int>.unmodifiable(_expandedYears));
+  }
+
+  Map<int, List<Map<String, dynamic>>> _groupByYear() {
+    final grouped = <int, List<Map<String, dynamic>>>{};
+    for (final mensualidad in _mensualidades) {
+      final year = _yearFromMensualidad(mensualidad);
+      grouped.putIfAbsent(year, () => []).add(mensualidad);
+    }
+    for (final entry in grouped.entries) {
+      entry.value.sort(
+        (a, b) => _monthNumber(a).compareTo(_monthNumber(b)),
+      );
+    }
+    return grouped;
+  }
+
+  int _yearFromMensualidad(Map<String, dynamic> mensualidad) {
+    return _parseYear(mensualidad['anio']) ??
+        _parseYear(mensualidad['anio_pago']) ??
+        _parseYear(mensualidad['ano']) ??
+        _parseYear(mensualidad['año']) ??
+        _parseYear(mensualidad['year']) ??
+        _tryParseDate(mensualidad['fecha'])?.year ??
+        _tryParseDate(mensualidad['fecha_mensualidad'])?.year ??
+        _unknownYear;
+  }
+
+  int _monthNumber(Map<String, dynamic> mensualidad) {
+    final value = mensualidad['mes'] ?? mensualidad['month'];
+    final parsed = _parseYear(value);
+    if (parsed != null && parsed > 0) return parsed;
+    return 13;
+  }
+
+  int? _parseYear(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  DateTime? _tryParseDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    final s = value.toString();
+    if (s.isEmpty) return null;
+    try {
+      return DateTime.parse(s);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _yearLabel(int year) {
+    return year == _unknownYear ? 'Sin año' : 'Año $year';
   }
 
   Future<void> _anularPago(int idPago) async {
@@ -171,20 +259,45 @@ class _PagosMensualidadPanelState extends State<PagosMensualidadPanel> {
       );
     }
 
+    final grouped = _groupByYear();
+    final years = grouped.keys.toList()
+      ..sort((a, b) => b.compareTo(a));
+
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: _mensualidades.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: years.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, idx) {
-          final m = _mensualidades[idx];
-          return _MensualidadCard(
-            mensualidad: m,
-            pagosRepo: _pagosRepo,
-            fmtMoney: _fmtMoney,
-            onRegistrarPago: () => _registrarPago(m),
-            onAnularPago: _anularPago,
+          final year = years[idx];
+          final mensualidades = grouped[year]!;
+          return Card(
+            child: ExpansionTile(
+              key: PageStorageKey('pagos-year-$year'),
+              initiallyExpanded: _expandedYears.contains(year),
+              onExpansionChanged: (expanded) => _handleYearExpansion(year, expanded),
+              title: Text(_yearLabel(year)),
+              subtitle: Text(
+                '${mensualidades.length} mensualidades',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              children: [
+                for (final mensualidad in mensualidades)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: _MensualidadCard(
+                      mensualidad: mensualidad,
+                      pagosRepo: _pagosRepo,
+                      fmtMoney: _fmtMoney,
+                      onRegistrarPago: () => _registrarPago(mensualidad),
+                      onAnularPago: _anularPago,
+                    ),
+                  ),
+              ],
+            ),
           );
         },
       ),

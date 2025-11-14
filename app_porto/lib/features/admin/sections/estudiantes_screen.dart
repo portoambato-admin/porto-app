@@ -1,12 +1,20 @@
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:characters/characters.dart'; // para .characters
+
 import '../../../app/app_scope.dart';
 import 'crear_estudiante_matricula_screen.dart';
+
+// === Export helpers (multiplataforma) ===
+import 'package:cross_file/cross_file.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class AdminEstudiantesScreen extends StatefulWidget {
   const AdminEstudiantesScreen({super.key});
@@ -34,7 +42,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   int? _catId;
   bool? _onlyActive;
 
-  // Datos + paginación
+  // Datos + paginación (server-side)
   List<Map<String, dynamic>> _rows = [];
   int _total = 0, _page = 1, _pageSize = 20;
 
@@ -187,59 +195,179 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     }
   }
 
-  // ===== Export CSV =====
-  void _exportCsv() {
-    final csv = StringBuffer()..writeln('ID,Nombres,Apellidos,Categoría,Teléfono,Activo,Creado');
-    for (final r in _rows) {
-      final id = r['id'] ?? '';
-      final nom = _csv(r['nombres']);
-      final ape = _csv(r['apellidos']);
-      final cat = _csv(r['categoriaNombre']);
-      final tel = _csv(r['telefono']);
-      final act = (r['activo'] == true) ? '1' : '0';
-      final cre = r['creadoEn']?.toString().split('T').first ?? '';
-      csv.writeln('$id,$nom,$ape,$cat,$tel,$act,$cre');
-    }
-    final content = csv.toString();
-    if (kIsWeb) {
-      final bytes = <int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content)); // BOM
-      final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: url)..download = 'estudiantes_page$_page.csv';
-      a.click();
-      html.Url.revokeObjectUrl(url);
-    } else {
-      _showCsvDialog(content, 'estudiantes_page$_page.csv');
-    }
-  }
-
-  static String _csv(Object? v) {
+  // ======== EXPORT (página actual) ========
+  // CSV helpers
+  static String _csvEsc(Object? v) {
     final s = v?.toString() ?? '';
-    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-      return '"${s.replaceAll('"', '""')}"';
-    }
-    return s;
+    return (s.contains(',') || s.contains('"') || s.contains('\n'))
+        ? '"${s.replaceAll('"', '""')}"'
+        : s;
   }
 
-  Future<void> _showCsvDialog(String data, String filename) async {
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('CSV: $filename'),
-        content: SizedBox(width: 600, height: 360, child: SelectableText(data)),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: data));
-              if (mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado al portapapeles')));
-            },
-            child: const Text('Copiar'),
+  String _csvFrom(List<Map<String, dynamic>> rows) {
+    final buf = StringBuffer()..writeln('ID,Estudiante,Categoría,Teléfono,Estado,Creado');
+    for (final r in rows) {
+      final id  = r['id'] ?? '';
+      final est = _csvEsc('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}'.trim());
+      final cat = _csvEsc(r['categoriaNombre']);
+      final tel = _csvEsc(r['telefono']);
+      final estd = (r['activo'] == true) ? 'Activo' : 'Inactivo';
+      final cre = r['creadoEn']?.toString().split('T').first ?? '';
+      buf.writeln('$id,$est,$cat,$tel,$estd,$cre');
+    }
+    return buf.toString();
+  }
+
+  // file_selector
+  Future<String?> _pickSavePath({
+    required String suggestedName,
+    required List<String> extensions,
+    String? label,
+    List<String>? mimeTypes,
+  }) async {
+    final location = await getSaveLocation(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: label ?? 'Archivo',
+          extensions: extensions,
+          mimeTypes: mimeTypes,
+        ),
+      ],
+      suggestedName: suggestedName,
+    );
+    return location?.path;
+  }
+
+  Future<void> _saveBytes(
+    Uint8List bytes, {
+    required String defaultFileName,
+    required List<String> extensions,
+    String? mimeType,
+  }) async {
+    try {
+      final path = await _pickSavePath(
+        suggestedName: defaultFileName,
+        extensions: extensions,
+        mimeTypes: mimeType == null ? null : [mimeType],
+      );
+      if (path == null) return; // cancelado
+      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+      await xf.saveTo(path);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Archivo guardado en: $path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
+    }
+  }
+
+  Future<void> _exportCsv() async {
+    final content = _csvFrom(_rows); // 👉 página actual
+    await _saveBytes(
+      Uint8List.fromList(utf8.encode(content)),
+      defaultFileName: 'estudiantes_page$_page.csv',
+      extensions: ['csv'],
+      mimeType: 'text/csv',
+    );
+  }
+
+  // Excel
+  xls.CellValue _cv(dynamic v) {
+    if (v == null) return  xls.TextCellValue('');
+    if (v is bool) return xls.BoolCellValue(v);
+    if (v is int)  return xls.IntCellValue(v);
+    if (v is double) return xls.DoubleCellValue(v);
+    return xls.TextCellValue('$v');
+  }
+
+  Uint8List _excelBytes(List<Map<String, dynamic>> rows) {
+    final book = xls.Excel.createExcel();
+    final sheet = book['Estudiantes'];
+    sheet.appendRow([
+      xls.TextCellValue('ID'),
+      xls.TextCellValue('Estudiante'),
+      xls.TextCellValue('Categoría'),
+      xls.TextCellValue('Teléfono'),
+      xls.TextCellValue('Estado'),
+      xls.TextCellValue('Creado'),
+    ]);
+    for (final r in rows) {
+      final nombre = ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}').trim();
+      sheet.appendRow([
+        _cv(r['id']),
+        _cv(nombre),
+        _cv(r['categoriaNombre'] ?? '—'),
+        _cv(r['telefono'] ?? '—'),
+        _cv(r['activo'] == true ? 'Activo' : 'Inactivo'),
+        _cv(r['creadoEn']?.toString().split('T').first ?? ''),
+      ]);
+    }
+    return Uint8List.fromList(book.encode()!);
+  }
+
+  Future<void> _exportExcel() async {
+    await _saveBytes(
+      _excelBytes(_rows), // 👉 página actual
+      defaultFileName: 'estudiantes_page$_page.xlsx',
+      extensions: ['xlsx'],
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  // PDF
+  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> rows) async {
+    final doc = pw.Document();
+    final headers = ['ID','Estudiante','Categoría','Teléfono','Estado','Creado'];
+    final data = [
+      for (final r in rows)
+        [
+          '${r['id'] ?? ''}',
+          ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}').trim(),
+          '${r['categoriaNombre'] ?? '—'}',
+          '${r['telefono'] ?? '—'}',
+          (r['activo']==true) ? 'Activo' : 'Inactivo',
+          r['creadoEn']?.toString().split('T').first ?? '',
+        ]
+    ];
+
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: const pw.PageTheme(margin: pw.EdgeInsets.all(24)),
+        header: (ctx) => pw.Text(
+          'Estudiantes — Página $_page',
+          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+        ),
+        build: (ctx) => [
+          pw.SizedBox(height: 8),
+          pw.Table.fromTextArray(
+            headers: headers,
+            data: data,
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            cellStyle: const pw.TextStyle(fontSize: 10),
+            cellAlignment: pw.Alignment.centerLeft,
+            border: pw.TableBorder.all(width: 0.2),
           ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
         ],
       ),
     );
+    return doc.save();
+  }
+
+  Future<void> _exportPdf() async {
+    final bytes = await _pdfBytes(_rows); // 👉 página actual
+    await _saveBytes(
+      bytes,
+      defaultFileName: 'estudiantes_page$_page.pdf',
+      extensions: ['pdf'],
+      mimeType: 'application/pdf',
+    );
+  }
+
+  Future<void> _previewPdf() async {
+    final bytes = await _pdfBytes(_rows); // 👉 página actual
+    await Printing.layoutPdf(onLayout: (_) async => bytes);
   }
 
   // ======= BUILD =======
@@ -302,11 +430,35 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: _rows.isEmpty ? null : _exportCsv,
-                    icon: const Icon(Icons.download),
-                    label: const Text('Exportar CSV'),
-                  ),
+                  // === Menú Exportar (página actual) ===
+                  PopupMenuButton<String>(
+  tooltip: 'Exportar',
+  onSelected: (v) async {
+    switch (v) {
+      case 'csv':  await _exportCsv(); break;
+      case 'xlsx': await _exportExcel(); break;
+      case 'pdf':  await _exportPdf(); break;
+      case 'preview': await _previewPdf(); break;
+    }
+  },
+  itemBuilder: (ctx) => const [
+    PopupMenuItem(value: 'csv',    child: ListTile(leading: Icon(Icons.file_download), title: Text('CSV (página)'))),
+    PopupMenuItem(value: 'xlsx',   child: ListTile(leading: Icon(Icons.grid_on),       title: Text('Excel (página)'))),
+    PopupMenuItem(value: 'pdf',    child: ListTile(leading: Icon(Icons.picture_as_pdf),title: Text('PDF (página)'))),
+    PopupMenuItem(value: 'preview',child: ListTile(leading: Icon(Icons.print),         title: Text('Vista previa PDF'))),
+  ],
+  // 👇 Este wrapper evita que el hijo consuma el tap,
+  //    pero mantiene el look "habilitado"
+  child: IgnorePointer(
+    ignoring: true,
+    child: OutlinedButton.icon(
+      onPressed: () {}, // solo para que se vea habilitado
+      icon: const Icon(Icons.download),
+      label: const Text('Exportar'),
+    ),
+  ),
+)
+,
                   FilledButton.icon(
                     onPressed: () async {
                       final created = await Navigator.push(
@@ -371,15 +523,10 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                 ],
               ),
             ),
+            // --- Solo info de página, sin paginador ---
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: _PaginationControls(
-                currentPage: _page,
-                totalItems: _total,
-                pageSize: _pageSize,
-                onPageChange: (p) { setState(() => _page = p); _load(); },
-                onPageSizeChange: (s) { setState(() { _pageSize = s; _page = 1; }); _load(); },
-              ),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Align(alignment: Alignment.centerLeft, child: _pageInfoText()),
             ),
           ],
         );
@@ -405,180 +552,201 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     );
   }
 
-  // ====== Vista TABLA ======
-  Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-    final textStyle = _dense
-        ? Theme.of(context).textTheme.bodySmall
-        : Theme.of(context).textTheme.bodyMedium;
-
-    String fullName(Map r) =>
-        ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}').replaceAll(RegExp(r'\s+'), ' ').trim();
-
-    return ScrollConfiguration(
-      behavior: const ScrollBehavior().copyWith(scrollbars: true),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: _dense ? 36 : 48,
-          dataRowMinHeight: _dense ? 32 : 44,
-          dataRowMaxHeight: _dense ? 40 : null,
-          columns: const [
-            DataColumn(label: Text('ID')),
-            DataColumn(label: Text('Estudiante')),
-            DataColumn(label: Text('Categoría')),
-            DataColumn(label: Text('Teléfono')),
-            DataColumn(label: Text('Estado')),
-            DataColumn(label: Text('Creado')),
-            DataColumn(label: Text('Acciones')),
-          ],
-          rows: rows.map((r) {
-            final bool activo = r['activo'] == true;
-            final estadoIcon = Icon(
-              activo ? Icons.check_circle : Icons.cancel,
-              color: activo ? Colors.green : Colors.grey,
-              size: _dense ? 18 : 20,
-              semanticLabel: activo ? 'Activo' : 'Inactivo',
-            );
-            return DataRow(cells: [
-              DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(fullName(r), style: textStyle)),
-              DataCell(SelectableText(r['categoriaNombre']?.toString() ?? '—', style: textStyle)),
-              DataCell(SelectableText(r['telefono']?.toString() ?? '—', style: textStyle)),
-              DataCell(estadoIcon),
-              DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
-              DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
-            ]);
-          }).toList(),
-        ),
-      ),
-    );
+  // ====== Info “Mostrando X–Y de Z” ======
+  Widget _pageInfoText() {
+    final from = _total == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
+    final to = _total == 0 ? 0 : ((_page - 1) * _pageSize) + _rows.length;
+    return Text('Mostrando $from–$to de $_total');
   }
 
-  // ====== Vista TARJETAS (más estética) ======
-  // ====== Vista TARJETAS (compacta y estética) ======
-Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
-  final compactPad = EdgeInsets.symmetric(horizontal: 12, vertical: _dense ? 4 : 6);
+  // ====== Vista TABLA ======
+  Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
+  final textStyle = _dense
+      ? Theme.of(context).textTheme.bodySmall
+      : Theme.of(context).textTheme.bodyMedium;
 
   String fullName(Map r) =>
       ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}')
           .replaceAll(RegExp(r'\s+'), ' ')
           .trim();
 
-  Widget miniChip(BuildContext ctx, String text, IconData icon) {
-    final theme = Theme.of(ctx);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: theme.dividerColor),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14),
-          const SizedBox(width: 4),
-          Text(text, style: theme.textTheme.labelSmall),
-        ],
-      ),
-    );
-  }
-
-  return ListView.separated(
-    padding: const EdgeInsets.only(bottom: 16),
-    itemCount: rows.length,
-    separatorBuilder: (_, __) => const SizedBox(height: 6),
-    itemBuilder: (_, i) {
-      final r = rows[i];
-      final activo = r['activo'] == true;
-      final nombre = fullName(r);
-      final cat = r['categoriaNombre']?.toString() ?? '—';
-      final tel = r['telefono']?.toString() ?? '—';
-      final creado = r['creadoEn']?.toString().split('T').first ?? '—';
-      final initials = _initials(r['nombres'], r['apellidos']);
-      final avatarColor = _avatarColor('$nombre$cat');
-
-      return Card(
-        elevation: 0,
-        margin: const EdgeInsets.symmetric(horizontal: 0),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Theme.of(context).dividerColor),
-        ),
-        child: ListTile(
-          dense: true,
-          contentPadding: compactPad,
-          onTap: () => Navigator.pushNamed(
-            context,
-            '/admin/estudiantes/detalle',
-            arguments: {'id': (r['id'] as num).toInt()},
-          ),
-          leading: CircleAvatar(
-            radius: _dense ? 14 : 16,
-            backgroundColor: avatarColor.withOpacity(0.15),
-            child: Text(
-              initials,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: avatarColor,
-                  ),
+  return ScrollConfiguration(
+    behavior: const ScrollBehavior().copyWith(scrollbars: true),
+    child: LayoutBuilder(
+      builder: (ctx, constraints) {
+        // Scroll vertical exterior + scroll horizontal interior
+        return SingleChildScrollView(
+          // deja espacio para que no se solape con el footer
+          padding: const EdgeInsets.only(bottom: 80),
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              // asegura que como mínimo ocupe el ancho disponible
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                headingRowHeight: _dense ? 36 : 48,
+                dataRowMinHeight: _dense ? 32 : 44,
+                dataRowMaxHeight: _dense ? 40 : null,
+                columns: const [
+                  DataColumn(label: Text('ID')),
+                  DataColumn(label: Text('Estudiante')),
+                  DataColumn(label: Text('Categoría')),
+                  DataColumn(label: Text('Teléfono')),
+                  DataColumn(label: Text('Estado')),
+                  DataColumn(label: Text('Creado')),
+                  DataColumn(label: Text('Acciones')),
+                ],
+                rows: rows.map((r) {
+                  final bool activo = r['activo'] == true;
+                  final estadoIcon = Icon(
+                    activo ? Icons.check_circle : Icons.cancel,
+                    color: activo ? Colors.green : Colors.grey,
+                    size: _dense ? 18 : 20,
+                    semanticLabel: activo ? 'Activo' : 'Inactivo',
+                  );
+                  return DataRow(cells: [
+                    DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
+                    DataCell(SelectableText(fullName(r), style: textStyle)),
+                    DataCell(SelectableText(r['categoriaNombre']?.toString() ?? '—', style: textStyle)),
+                    DataCell(SelectableText(r['telefono']?.toString() ?? '—', style: textStyle)),
+                    DataCell(estadoIcon),
+                    DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
+                    DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
+                  ]);
+                }).toList(),
+              ),
             ),
           ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  nombre.isEmpty ? 'Sin nombre' : nombre,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                activo ? Icons.check_circle : Icons.cancel,
-                size: 16,
-                color: activo ? Colors.green : Colors.grey,
-                semanticLabel: activo ? 'Activo' : 'Inactivo',
-              ),
-            ],
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                miniChip(context, cat, Icons.category),
-                if (tel.trim().isNotEmpty && tel != '—')
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.call, size: 14),
-                      const SizedBox(width: 3),
-                      Text(tel, style: Theme.of(context).textTheme.labelSmall),
-                    ],
-                  ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.event, size: 14),
-                    const SizedBox(width: 3),
-                    Text(creado, style: Theme.of(context).textTheme.labelSmall),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // acciones compactas a la derecha
-          trailing: _rowActions(r: r, activo: activo, dense: true),
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
+  // ====== Vista TARJETAS (compacta y estética) ======
+  Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
+    final compactPad = EdgeInsets.symmetric(horizontal: 12, vertical: _dense ? 4 : 6);
+
+    String fullName(Map r) =>
+        ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+
+    Widget miniChip(BuildContext ctx, String text, IconData icon) {
+      final theme = Theme.of(ctx);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: theme.dividerColor),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14),
+            const SizedBox(width: 4),
+            Text(text, style: theme.textTheme.labelSmall),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 16),
+      itemCount: rows.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 6),
+      itemBuilder: (_, i) {
+        final r = rows[i];
+        final activo = r['activo'] == true;
+        final nombre = fullName(r);
+        final cat = r['categoriaNombre']?.toString() ?? '—';
+        final tel = r['telefono']?.toString() ?? '—';
+        final creado = r['creadoEn']?.toString().split('T').first ?? '—';
+        final initials = _initials(r['nombres'], r['apellidos']);
+        final avatarColor = _avatarColor('$nombre$cat');
+
+        return Card(
+          elevation: 0,
+          margin: const EdgeInsets.symmetric(horizontal: 0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+          child: ListTile(
+            dense: true,
+            contentPadding: compactPad,
+            onTap: () => Navigator.pushNamed(
+              context,
+              '/admin/estudiantes/detalle',
+              arguments: {'id': (r['id'] as num).toInt()},
+            ),
+            leading: CircleAvatar(
+              radius: _dense ? 14 : 16,
+              backgroundColor: avatarColor.withOpacity(0.15),
+              child: Text(
+                initials,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: avatarColor,
+                    ),
+              ),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    nombre.isEmpty ? 'Sin nombre' : nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  activo ? Icons.check_circle : Icons.cancel,
+                  size: 16,
+                  color: activo ? Colors.green : Colors.grey,
+                  semanticLabel: activo ? 'Activo' : 'Inactivo',
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  miniChip(context, cat, Icons.category),
+                  if (tel.trim().isNotEmpty && tel != '—')
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.call, size: 14),
+                        const SizedBox(width: 3),
+                        Text(tel, style: Theme.of(context).textTheme.labelSmall),
+                      ],
+                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.event, size: 14),
+                      const SizedBox(width: 3),
+                      Text(creado, style: Theme.of(context).textTheme.labelSmall),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // acciones compactas a la derecha
+            trailing: _rowActions(r: r, activo: activo, dense: true),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _kv(BuildContext ctx, String label, String value, {IconData? icon}) {
     final styleLabel = Theme.of(ctx).textTheme.bodySmall;
@@ -601,40 +769,39 @@ Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
 
   // ===== Acciones por fila =====
   Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
-  final double iconSize = dense ? 18 : 24;
-  final EdgeInsets padding = EdgeInsets.all(dense ? 4 : 8);
-  final BoxConstraints? k = dense ? const BoxConstraints(minWidth: 36, minHeight: 36) : null;
-  final VisualDensity vd = dense ? VisualDensity.compact : VisualDensity.standard;
+    final double iconSize = dense ? 18 : 24;
+    final EdgeInsets padding = EdgeInsets.all(dense ? 4 : 8);
+    final BoxConstraints? k = dense ? const BoxConstraints(minWidth: 36, minHeight: 36) : null;
+    final VisualDensity vd = dense ? VisualDensity.compact : VisualDensity.standard;
 
-  return Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Tooltip(
-        message: 'Editar',
-        child: IconButton(
-          iconSize: iconSize,
-          padding: padding,
-          constraints: k,
-          visualDensity: vd,
-          icon: const Icon(Icons.edit),
-          onPressed: () => _edit(row: r),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: 'Editar',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            constraints: k,
+            visualDensity: vd,
+            icon: const Icon(Icons.edit),
+            onPressed: () => _edit(row: r),
+          ),
         ),
-      ),
-      Tooltip(
-        message: activo ? 'Desactivar' : 'Activar',
-        child: IconButton(
-          iconSize: iconSize,
-          padding: padding,
-          constraints: k,
-          visualDensity: vd,
-          icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-          onPressed: () => _toggleEstado(r),
+        Tooltip(
+          message: activo ? 'Desactivar' : 'Activar',
+          child: IconButton(
+            iconSize: iconSize,
+            padding: padding,
+            constraints: k,
+            visualDensity: vd,
+            icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => _toggleEstado(r),
+          ),
         ),
-      ),
-    ],
-  );
-}
-
+      ],
+    );
+  }
 
   // ====== Filtros (intactos, sin cambios) ======
   Widget _toolbar() {
@@ -765,82 +932,6 @@ Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
 
 // ======================= Widgets de apoyo UI =======================
 
-class _PaginationControls extends StatelessWidget {
-  final int currentPage;
-  final int totalItems;
-  final int pageSize;
-  final void Function(int) onPageChange;
-  final void Function(int) onPageSizeChange;
-
-  const _PaginationControls({
-    super.key,
-    required this.currentPage,
-    required this.totalItems,
-    required this.pageSize,
-    required this.onPageChange,
-    required this.onPageSizeChange,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    int totalPages = (totalItems + pageSize - 1) ~/ pageSize;
-    if (totalPages < 1) totalPages = 1;
-    final bool canGoBack = currentPage > 1;
-    final bool canGoFwd = currentPage < totalPages;
-    final int from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-    final int rawTo = currentPage * pageSize;
-    final int to = rawTo > totalItems ? totalItems : rawTo;
-
-    // 👉 paginador plano, fijo y sin card
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-        ),
-        child: Row(
-          children: [
-            Text('Mostrando $from–$to de $totalItems'),
-            const Spacer(),
-            DropdownButton<int>(
-              value: pageSize,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 10, child: Text('10 / pág.')),
-                DropdownMenuItem(value: 20, child: Text('20 / pág.')),
-                DropdownMenuItem(value: 50, child: Text('50 / pág.')),
-              ],
-              onChanged: (v) { if (v != null) onPageSizeChange(v); },
-            ),
-            IconButton(
-              icon: const Icon(Icons.first_page),
-              tooltip: 'Primera página',
-              onPressed: canGoBack ? () => onPageChange(1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Página anterior',
-              onPressed: canGoBack ? () => onPageChange(currentPage - 1) : null,
-            ),
-            Text('$currentPage / $totalPages'),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Página siguiente',
-              onPressed: canGoFwd ? () => onPageChange(currentPage + 1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.last_page),
-              tooltip: 'Última página',
-              onPressed: canGoFwd ? () => onPageChange(totalPages) : null,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -848,10 +939,10 @@ class _EmptyState extends StatelessWidget {
   final (String, VoidCallback)? secondary;
 
   const _EmptyState({
-    super.key,
     required this.title,
     required this.subtitle,
     required this.primary,
+    // ignore: unused_element_parameter
     this.secondary,
   });
 
@@ -888,7 +979,7 @@ class _ErrorView extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
 
-  const _ErrorView({super.key, required this.error, required this.onRetry});
+  const _ErrorView({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -896,7 +987,7 @@ class _ErrorView extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
             const SizedBox(height: 12),

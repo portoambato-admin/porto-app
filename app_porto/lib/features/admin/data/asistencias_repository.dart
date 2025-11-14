@@ -39,10 +39,15 @@ class AsistenciasRepository {
   Future<List<Map<String, dynamic>>> listarSesiones({
     int? idSubcategoria,
     String? fechaISO,
+    // ===== RECOMENDACIÓN: Añade filtros de rango para el historial =====
+    String? desde, 
+    String? hasta,
   }) async {
     final q = <String, String>{};
     if (idSubcategoria != null) q['id_subcategoria'] = '$idSubcategoria';
     if (fechaISO != null) q['fecha'] = fechaISO;
+    if (desde != null) q['desde'] = desde; // Para _fetchSesionesHistorial
+    if (hasta != null) q['hasta'] = hasta; // Para _fetchSesionesHistorial
 
     final res = await _http.get(
       Endpoints.asistenciasSesiones,
@@ -55,6 +60,7 @@ class AsistenciasRepository {
         .toList();
   }
 
+  /// NOTA: Tu backend debe devolver aquí el campo 'estatus' (string)
   Future<List<Map<String, dynamic>>> detalleSesion(int idSesion) async {
     final res = await _http.get(
       Endpoints.asistenciasSesionId(idSesion),
@@ -66,14 +72,16 @@ class AsistenciasRepository {
         .toList();
   }
 
-  /// marcas: [{ id_estudiante, presente, observaciones?, orden_lista? }, ...]
+  /// marcas: [{ id_estudiante, estatus: 'presente', observaciones? }, ...]
+  // ===== MODIFICADO: Envía 'estatus' (string) =====
   Future<void> marcarBulk(int idSesion, List<Map<String, dynamic>> marcas) async {
     await _http.post(
       Endpoints.asistenciasSesionMarcar(idSesion),
       headers: _h,
-      body: { 'marcas': marcas },
+      body: { 'marcas': marcas }, // El body ya está formateado correctamente por la UI
     );
   }
+  // ================================================
 
   // ==== Apoyos existentes ====
 
@@ -82,6 +90,35 @@ class AsistenciasRepository {
     final res = await _http.get(
       Endpoints.subcatEstPorSubcategoria(idSubcategoria),
       headers: _h,
+    );
+    return (res as List)
+        .cast<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+  
+  // ===== NUEVO: Método para el reporte por alumno (Pestaña 4) =====
+  /// NOTA: Tu backend debe devolver aquí el campo 'estatus' (string)
+  Future<List<Map<String, dynamic>>> asistenciaPorEstudiante({
+    required int idSubcategoria,
+    required int idEstudiante,
+    required String desde,
+    required String hasta,
+  }) async {
+    final q = <String, String>{
+      'id_subcategoria': '$idSubcategoria',
+      'id_estudiante': '$idEstudiante',
+      'desde': desde,
+      'hasta': hasta,
+    };
+    
+    // Asume un endpoint nuevo, o modifica el existente
+    final endpoint = Endpoints.asistenciasHistorialEstudiante; // (ej: '/asistencias/historial-estudiante')
+
+    final res = await _http.get(
+      endpoint,
+      headers: _h,
+      query: q,
     );
     return (res as List)
         .cast<Map>()

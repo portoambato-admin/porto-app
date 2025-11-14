@@ -1,10 +1,24 @@
 // lib/features/admin/sections/admin_pagos_screen.dart
+// (Actualizado con funciones de exportación PDF/Excel y corrección de pageTheme)
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:app_porto/app/app_scope.dart';
 import '../data/pagos_repository.dart';
 import '../../../core/constants/endpoints.dart';
+
+// ===== IMPORTS AÑADIDOS PARA EXPORTACIÓN =====
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cross_file/cross_file.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:flutter/services.dart' show rootBundle;
+// ===========================================
 
 // ==== utils ====
 double _asDouble(dynamic v) =>
@@ -33,14 +47,13 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
   dynamic get _mensRepo => _scope.mensualidades;
   PagosRepository get _pagosRepo => _scope.pagos;
   dynamic get _estRepo => _scope.estudiantes;
-  // NUEVO: repo de matrículas
   dynamic get _matriculasRepo => _scope.matriculas;
 
   final _fmtMoney = NumberFormat.currency(locale: 'es_EC', symbol: r'$');
 
   // ===== Auth gate =====
-  bool _authChecked = false; // ya verifiqué token
-  bool _isAuth = false;       // hay token válido
+  bool _authChecked = false;
+  bool _isAuth = false;
 
   Future<void> _checkAuthAndLoad() async {
     try {
@@ -54,7 +67,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         _isAuth = (t != null && t.isNotEmpty);
       });
 
-      // ✅ Solo cargar datos si hay token
       if (_isAuth) {
         await _cargarEstudiantes();
       } else {
@@ -154,11 +166,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     return res;
   }
 
-  // POST de respaldo si el repo no expone crear()
   Future<dynamic> _safePost(String url, Map<String, dynamic> body) async {
     final res = await _scope.http.post(
       url,
-      body: body, // 👈 Map; el HttpClient hace jsonEncode una sola vez
+      body: body,
       headers: const {},
     );
     return res;
@@ -332,12 +343,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       final idEst = (_estudiante!['id'] as num).toInt();
       dynamic list;
 
-      // Intentos repo
       try { list = await _mensRepo.porEstudiante(idEst); } catch (_) {}
       list ??= await (() async { try { return await _mensRepo.listar(estudianteId: idEst); } catch (_) {} return null; })();
       list ??= await (() async { try { return await _mensRepo.listarPorEstudiante(idEst); } catch (_) {} return null; })();
 
-      // Fallback HTTP
       if (list == null) {
         final base = Endpoints.mensualidades;
         final urls = [
@@ -356,14 +365,13 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           List<Map<String, dynamic>>.from((list ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
 
       for (final m in data) {
-        m['id']    = m['id'] ?? m['id_mensualidad'] ?? m['mensualidad_id'];
-        m['estado']= (m['estado'] ?? 'pendiente').toString();
+        m['id'] = m['id'] ?? m['id_mensualidad'] ?? m['mensualidad_id'];
+        m['estado'] = (m['estado'] ?? 'pendiente').toString();
         m['valor'] = _asDouble(m['valor']);
-        m['mes']   = m['mes'] ?? m['month'];
-        m['anio']  = m['anio'] ?? m['year'];
+        m['mes'] = m['mes'] ?? m['month'];
+        m['anio'] = m['anio'] ?? m['year'];
       }
 
-      // filtros
       if (_estado != 'Todos') {
         data = data.where((m) => (m['estado'] ?? '') == _estado).toList();
       }
@@ -377,7 +385,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       if (!mounted) return;
       setState(() => _mensualidades = data);
 
-      // recalcular totales
       await _recalcularTotales();
     } catch (e) {
       if (mounted) {
@@ -599,6 +606,75 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           : AppBar(
               title: const Text('Gestión de Pagos'),
               actions: [
+                PopupMenuButton<String>(
+                  tooltip: 'Exportar',
+                  enabled: _estudiante != null,
+                  onSelected: (v) async {
+                    if (_estudiante == null) {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         const SnackBar(content: Text('Selecciona un estudiante primero')),
+                       );
+                       return;
+                    }
+                    // --- AÑADIDO TRY-CATCH ---
+                    try {
+                      switch (v) {
+                        case 'pagos.xlsx':
+                          await _exportPagosExcel();
+                          break;
+                        case 'pagos.pdf':
+                          await _exportPagosPdf();
+                          break;
+                        case 'preview.pagos':
+                          final b = await _buildPagosPdfBytes();
+                          await Printing.layoutPdf(onLayout: (_) async => b);
+                          break;
+                      }
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error al exportar: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                    // --- FIN TRY-CATCH ---
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'pagos.xlsx',
+                      enabled: _estudiante != null,
+                      child: const ListTile(
+                        leading: Icon(Icons.grid_on),
+                        title: Text('Exportar pagos (Excel)'),
+                        subtitle: Text('Usa los filtros activos'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'pagos.pdf',
+                      enabled: _estudiante != null,
+                      child: const ListTile(
+                        leading: Icon(Icons.picture_as_pdf),
+                        title: Text('Exportar pagos (PDF)'),
+                        subtitle: Text('Usa los filtros activos'),
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'preview.pagos',
+                      enabled: _estudiante != null,
+                      child: const ListTile(
+                        leading: Icon(Icons.print),
+                        title: Text('Vista previa / Imprimir'),
+                      ),
+                    ),
+                  ],
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Icon(Icons.download),
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   onPressed: () async {
@@ -760,7 +836,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         const SizedBox(height: 12),
         if (_estudiante != null) _buildResumen(),
         if (_estudiante != null) const SizedBox(height: 8),
-        // Acciones de generación
         if (_estudiante != null) _buildAccionesGeneracion(),
         if (_estudiante != null) const SizedBox(height: 8),
         Expanded(
@@ -910,7 +985,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
 
     final anioSugerido = _anioFiltro ?? DateTime.now().year;
 
-    // Pide año + valor mensual
     final cfg = await showDialog<_GenMensConfig>(
       context: context,
       builder: (_) => _GenerarMensualidadesDialog(
@@ -930,11 +1004,9 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     try {
       final idEst = (_estudiante!['id'] as num).toInt();
 
-      // 1) Resolver matrícula del estudiante (activa / más reciente)
       List<Map<String, dynamic>> mats = [];
       try { mats = await _matriculasRepo.porEstudiante(idEst); } catch (_) {}
       if (mats.isEmpty) {
-        // Fallback HTTP
         final base = Endpoints.matriculas;
         final urls = [
           '$base?estudianteId=$idEst',
@@ -983,7 +1055,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         return;
       }
 
-      // 2) Determinar meses a crear (evita duplicados)
       final ahora = DateTime.now();
       final mesDesde = (cfg.anio == ahora.year) ? ahora.month : 1;
       final existentes = _mensualidades
@@ -1003,7 +1074,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         return;
       }
 
-      // 3) Crear mensualidades
       int creados = 0, fallidos = 0;
       for (final mes in mesesObjetivo) {
         try {
@@ -1018,7 +1088,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
             );
             ok = true;
           } catch (_) {
-            // Fallback HTTP
             final body = {
               'id_matricula': idMatricula,
               'mes': mes,
@@ -1026,7 +1095,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
               'valor': cfg.valorMensual,
               'estado': 'pendiente',
             };
-            // intenta varias rutas comunes si tu backend usa /crear o /create
             final base = Endpoints.mensualidades;
             final urls = <String>[base, '$base/crear'];
             for (final u in urls) {
@@ -1043,7 +1111,6 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         }
       }
 
-      // 4) Refrescar & feedback
       await _cargarMensualidades();
 
       final total = cfg.valorMensual * creados;
@@ -1069,6 +1136,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
 
     return ListView.separated(
       controller: _rightScrollCtl,
+      padding: const EdgeInsets.all(12), // Añadido padding
       itemCount: anios.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (_, idx) {
@@ -1137,7 +1205,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
                         _chip('Valor', _fmtMoney.format(valorR), Icons.attach_money),
                         _chip('Pagado', _fmtMoney.format(pagado), Icons.check_circle, Colors.green),
                         _chip('Pendiente', _fmtMoney.format(pendiente), Icons.pending,
-                          pendiente > 0 ? Colors.orange : Colors.grey),
+                            pendiente > 0 ? Colors.orange : Colors.grey),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1164,7 +1232,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
                     const Divider(height: 24),
                     Text('Historial de pagos', style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: 8),
-                    FutureBuilder<List<Map<String, dynamic>>>(   // pagos
+                    FutureBuilder<List<Map<String, dynamic>>>(    // pagos
                       future: _cargarPagos(m['id'] as int),
                       builder: (context, snapP) {
                         final pagos = snapP.data ?? [];
@@ -1328,6 +1396,428 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       },
     );
   }
+
+  // =================================================================
+  // ===== INICIO: SECCIÓN DE EXPORTACIÓN AÑADIDA =====================
+  // =================================================================
+
+  // --- Helpers de formato ---
+  String _fmtDate(Object? v) {
+    if (v == null) return '—';
+    final s = v.toString();
+    try {
+      final d = DateTime.parse(s);
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return s.isEmpty ? '—' : s;
+    }
+  }
+
+  String _pickStr(Map r, List<String> keys) {
+    for (final k in keys) {
+      final v = r[k];
+      if (v != null && '$v'.isNotEmpty) return '$v';
+    }
+    return '';
+  }
+
+  xls.CellValue _cv(dynamic v) {
+    if (v == null) return xls.TextCellValue('');
+    if (v is bool) return xls.BoolCellValue(v);
+    if (v is int) return xls.IntCellValue(v);
+    if (v is double) return xls.DoubleCellValue(v);
+    final s = '$v';
+    final n = double.tryParse(s);
+    return (n != null) ? xls.DoubleCellValue(n) : xls.TextCellValue(s);
+  }
+
+  // --- Helpers de guardado ---
+  Future<String?> _pickSavePath({
+    required String suggestedName,
+    required List<String> extensions,
+    String? label,
+    List<String>? mimeTypes,
+  }) async {
+    if (kIsWeb) return suggestedName;
+    final location = await getSaveLocation(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: label ?? 'Archivo',
+          extensions: extensions,
+          mimeTypes: mimeTypes,
+        ),
+      ],
+      suggestedName: suggestedName,
+    );
+    return location?.path;
+  }
+
+  Future<void> _saveBytes(
+    Uint8List bytes, {
+    required String defaultFileName,
+    required List<String> extensions,
+    String? mimeType,
+  }) async {
+    try {
+      if (kIsWeb) {
+        final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+        await xf.saveTo(defaultFileName);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Descarga iniciada: $defaultFileName')),
+        );
+        return;
+      }
+
+      final path = await _pickSavePath(
+        suggestedName: defaultFileName,
+        extensions: extensions,
+        mimeTypes: mimeType == null ? null : [mimeType],
+      );
+
+      if (path == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Guardado cancelado')),
+        );
+        return;
+      }
+
+      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+      await xf.saveTo(path);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Archivo guardado en: $path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo guardar: $e')),
+      );
+    }
+  }
+
+  // --- Helpers de PDF ---
+  pw.Widget _buildSectionHeader(
+      String title, IconData icon, PdfColor color, pw.Font materialFont) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        color: color,
+        borderRadius: const pw.BorderRadius.only(
+          topLeft: pw.Radius.circular(4),
+          topRight: pw.Radius.circular(4),
+        ),
+      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      margin: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        children: [
+          pw.Icon(pw.IconData(icon.codePoint),
+              font: materialFont, color: PdfColors.white, size: 16),
+          pw.SizedBox(width: 8),
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildChip(String label, String? value, IconData icon,
+      PdfColor color, pw.Font materialFont) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: pw.BoxDecoration(
+        color: color,
+        borderRadius: pw.BorderRadius.circular(12),
+      ),
+      child: pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Icon(pw.IconData(icon.codePoint),
+              font: materialFont, size: 12, color: PdfColors.black),
+          pw.SizedBox(width: 6),
+          pw.Text(
+            value == null || value.isEmpty
+                ? label
+                : '$label: ${value.trim()}',
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.black),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Lógica Principal de Exportación ---
+
+  Future<void> _exportPagosExcel() async {
+    if (_estudiante == null) throw Exception('No hay estudiante seleccionado');
+    
+    // MODIFICACIÓN: La fuente de datos es la lista ya filtrada '_mensualidades'
+    final rows = _mensualidades;
+    final nombreEst = _estudiante!['nombreCompleto'] ?? 'estudiante';
+
+    final book = xls.Excel.createExcel();
+    final sheet = book['Pagos'];
+    sheet.appendRow([
+      xls.TextCellValue('Mes'),
+      xls.TextCellValue('Año'),
+      xls.TextCellValue('Estado'),
+      xls.TextCellValue('Monto'),
+      xls.TextCellValue('Fecha pago'), // Se usará la fecha de la mensualidad si no hay pago
+      xls.TextCellValue('Observación'),
+    ]);
+    for (final r in rows) {
+      final mes = _mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes'])));
+      final anio = _pickStr(r, ['anio','año','anio_pago','ano','year']);
+      final est = _pickStr(r, ['estado','status']);
+      final monto = _pickStr(r, ['monto','valor','importe','total','pago']);
+      // Nota: Esta pantalla no tiene fechas de pago individuales, usamos la fecha de la mensualidad
+      final fpago = _fmtDate(_pickStr(r, ['fecha', 'fecha_pago', 'fecha_vencimiento']));
+      final obs = _pickStr(r, ['observacion','observación','nota','comentario']);
+
+      sheet.appendRow([
+        _cv(mes), _cv(anio), _cv(est), _cv(monto), _cv(fpago), _cv(obs),
+      ]);
+    }
+    final encoded = book.encode()!;
+    final bytes = Uint8List.fromList(encoded);
+    await _saveBytes(
+      bytes,
+      defaultFileName: 'pagos_${nombreEst}.xlsx',
+      extensions: const ['xlsx'],
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  // ******** ESTE ES EL MÉTODO CORREGIDO ********
+  Future<Uint8List> _buildPagosPdfBytes() async {
+    if (_estudiante == null) throw Exception('No hay estudiante seleccionado');
+    
+    final rows = _mensualidades;
+    
+    // Cargar fuentes desde assets
+    final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+    final robotoFont = pw.Font.ttf(robotoData);
+    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialFont = pw.Font.ttf(materialData);
+
+    final doc = pw.Document();
+    final nombre = _estudiante!['nombreCompleto'] ?? 'Estudiante';
+    final titulo = 'Reporte de Pagos';
+
+    const baseColor = PdfColors.blueGrey800;
+    const lightColor = PdfColors.grey100;
+
+    // Calcular Total
+    double totalFiltrado = 0.0;
+    for (final r in rows) {
+      final montoStr = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
+      final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
+      if (estado != 'anulado') {
+         totalFiltrado += _asDouble(montoStr);
+      }
+    }
+
+    // Helper para celda de tabla
+    pw.Widget buildCell(String text, {
+      pw.Alignment alignment = pw.Alignment.centerLeft,
+      bool isHeader = false,
+      PdfColor? background,
+    }) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(6),
+        color: background,
+        alignment: alignment,
+        child: pw.Text(
+          text,
+          style: isHeader
+              ? pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10)
+              : const pw.TextStyle(fontSize: 10),
+        ),
+      );
+    }
+
+    // Construir Filas de la Tabla
+    final List<pw.TableRow> tableRows = [];
+
+    // Fila de Encabezado
+    tableRows.add(pw.TableRow(
+      decoration: const pw.BoxDecoration(color: baseColor),
+      children: [
+        buildCell('Mes', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Año', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Estado', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Monto', isHeader: true, alignment: pw.Alignment.centerRight),
+        buildCell('Fecha', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Observación', isHeader: true),
+      ],
+    ));
+
+    // Filas de Datos
+    for (int i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      final background = i % 2 == 0 ? lightColor : null;
+      final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
+      final monto = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
+          
+      PdfColor statusColor;
+      IconData statusIcon;
+      switch (estado) {
+        case 'pagado':
+          statusColor = PdfColors.green100;
+          statusIcon = Icons.check_circle;
+          break;
+        case 'anulado':
+          statusColor = PdfColors.red100;
+          statusIcon = Icons.cancel;
+          break;
+        default: // 'pendiente' o cualquier otro
+          statusColor = PdfColors.yellow100;
+          statusIcon = Icons.pending;
+      }
+
+      tableRows.add(pw.TableRow(
+        decoration: pw.BoxDecoration(color: background),
+        children: [
+          buildCell(_mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes']))), alignment: pw.Alignment.center),
+          buildCell(_pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']), alignment: pw.Alignment.center),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(6),
+            color: background,
+            alignment: pw.Alignment.center,
+            child: _buildChip(estado, '', statusIcon, statusColor, materialFont),
+          ),
+          buildCell(_fmtMoney.format(_asDouble(monto)), alignment: pw.Alignment.centerRight),
+          buildCell(_fmtDate(_pickStr(r, ['fecha', 'fecha_pago', 'fecha_vencimiento'])), alignment: pw.Alignment.center),
+          buildCell(_pickStr(r, ['observacion', 'observación', 'nota', 'comentario'])),
+        ],
+      ));
+    }
+
+    // Construir la Página
+    doc.addPage(
+      pw.MultiPage(
+        // === CORRECCIÓN: 'theme' ahora está DENTRO de 'pageTheme' ===
+        pageTheme: pw.PageTheme(
+          margin: const pw.EdgeInsets.all(24),
+          theme: pw.ThemeData.withFont(base: robotoFont), // <-- Movido aquí
+        ),
+        // Encabezado
+        header: (context) => pw.Column(children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(titulo.toUpperCase(),
+                  style: pw.TextStyle(
+                      color: baseColor,
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold)),
+              pw.Text(nombre,
+                  style: const pw.TextStyle(
+                      color: PdfColors.grey700, fontSize: 14)),
+            ],
+          ),
+          pw.Divider(color: PdfColors.grey400, height: 8),
+          pw.SizedBox(height: 10),
+        ]),
+        // Pie de página
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            pw.Text(
+                'Página ${context.pageNumber} de ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ],
+        ),
+        build: (context) => [
+          _buildSectionHeader('Pagos Filtrados', Icons.receipt_long, baseColor, materialFont),
+          pw.SizedBox(height: 6),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.8), // Mes
+              1: const pw.FlexColumnWidth(1.2), // Año
+              2: const pw.FlexColumnWidth(1.8), // Estado
+              3: const pw.FlexColumnWidth(1.5), // Monto
+              4: const pw.FlexColumnWidth(1.8), // Fecha
+              5: const pw.FlexColumnWidth(3.0), // Observación
+            },
+            children: tableRows,
+          ),
+          pw.Divider(color: PdfColors.grey300, height: 24, thickness: 1.5),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.SizedBox(
+              width: 250,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                   pw.Text(
+                    'TOTAL (SEGÚN FILTRO)',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 10,
+                        color: PdfColors.grey700),
+                   ),
+                   pw.SizedBox(height: 4),
+                   pw.Text(
+                    _fmtMoney.format(totalFiltrado),
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 18,
+                        color: baseColor),
+                   ),
+                   pw.SizedBox(height: 8),
+                   pw.Text(
+                    _anioFiltro == null && _estado == 'Todos' && !_soloPendiente
+                      ? 'Mostrando todos los registros.'
+                      : 'Filtros aplicados.',
+                    style:  pw.TextStyle(
+                        fontSize: 9,
+                        fontStyle: pw.FontStyle.italic,
+                        color: PdfColors.grey600),
+                   )
+                ]
+              )
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+  // ******** FIN DEL MÉTODO CORREGIDO ********
+
+  Future<void> _exportPagosPdf() async {
+    if (_estudiante == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona un estudiante primero')),
+      );
+      return;
+    }
+    final bytes = await _buildPagosPdfBytes();
+    final nombreEst = _estudiante!['nombreCompleto'] ?? 'estudiante';
+    await _saveBytes(
+      bytes,
+      defaultFileName: 'pagos_${nombreEst}.pdf',
+      extensions: const ['pdf'],
+      mimeType: 'application/pdf',
+    );
+  }
+
+  // =================================================================
+  // ===== FIN: SECCIÓN DE EXPORTACIÓN AÑADIDA =======================
+  // =================================================================
 }
 
 // ===== Diálogo para crear/editar pago =====
@@ -1631,8 +2121,8 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
               alignment: Alignment.centerLeft,
               child: Text(
                 count == 0
-                  ? 'No hay meses faltantes.'
-                  : 'Se crearán $count mes(es): ${_mesNombre(desde)}–Diciembre\nTotal a generar: ${widget.fmtMoney.format(total)}',
+                    ? 'No hay meses faltantes.'
+                    : 'Se crearán $count mes(es): ${_mesNombre(desde)}–Diciembre\nTotal a generar: ${widget.fmtMoney.format(total)}',
               ),
             ),
             if (_error != null) ...[

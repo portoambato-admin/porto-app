@@ -1,12 +1,16 @@
-import 'dart:async'; // Para el Debouncer
-import 'dart:convert';
-// NOTE: La importación de dart:html está bien si se usa con kIsWeb
-// ignore: avoid_web_libraries_in_flutter
+// ignore_for_file: avoid_web_libraries_in_flutter
+
+import 'dart:async'; // Debouncer
 import 'dart:html' as html;
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cross_file/cross_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:excel/excel.dart' as xls;
 
 import '../../../app/app_scope.dart';
 import '../../../core/constants/route_names.dart';
@@ -25,10 +29,10 @@ class AdminSubcategoriasScreen extends StatefulWidget {
   State<AdminSubcategoriasScreen> createState() => _AdminSubcategoriasScreenState();
 }
 
-// ==== Intents propios para atajos (Ctrl+F / Ctrl+N / Ctrl+R) ====
-class FocusSearchIntent extends Intent { const FocusSearchIntent(); } // Ctrl+F
-class NewSubcatIntent extends Intent { const NewSubcatIntent(); }     // Ctrl+N
-class ReloadIntent extends Intent { const ReloadIntent(); }           // Ctrl+R
+// ==== Intents (Ctrl+F / Ctrl+N / Ctrl+R) ====
+class FocusSearchIntent extends Intent { const FocusSearchIntent(); }
+class NewSubcatIntent extends Intent { const NewSubcatIntent(); }
+class ReloadIntent extends Intent { const ReloadIntent(); }
 
 enum _ViewMode { table, cards }
 
@@ -52,7 +56,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   bool _loading = false;
   String? _error;
 
-  // Paginación (totales para pestañas)
+  // Paginación
   int _actPage = 1, _actPageSize = 10, _actTotal = 0;
   int _inaPage = 1, _inaPageSize = 10, _inaTotal = 0;
   int _allPage = 1, _allPageSize = 10, _allTotal = 0;
@@ -63,7 +67,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
   bool _reposListos = false;
 
-  // Preferencias visuales (solo UI)
+  // Preferencias visuales
   _ViewMode _viewMode = _ViewMode.table;
   bool _dense = false;
 
@@ -87,7 +91,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       _catRepo = scope.categorias;
       try { _alumnosRepo = scope.estudiantes; } catch (_) {}
       _reposListos = true;
-      // 🔧 Dispara la primera carga aquí
       _init();
     }
   }
@@ -102,7 +105,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     super.dispose();
   }
 
-  // ======== Debouncer búsqueda ========
+  // ===== Debouncer búsqueda =====
   void _onSearchChanged() {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
@@ -112,9 +115,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   }
 
   void _resetPages() {
-    _actPage = 1;
-    _inaPage = 1;
-    _allPage = 1;
+    _actPage = 1; _inaPage = 1; _allPage = 1;
   }
 
   Future<void> _init() async {
@@ -125,7 +126,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         for (final c in _catOptions)
           (c['id'] as num).toInt(): (c['nombre']?.toString() ?? '')
       };
-      // ⚠️ Llama directo al loader real (pone _loading y trae datos)
       await _loadData(_tab.index);
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); });
@@ -133,8 +133,33 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   }
 
   Future<void> _loadCurrent() async {
-    if (_loading) return; // evita solapar cargas
+    if (_loading) return;
     await _loadData(_tab.index);
+  }
+
+  // ===== Orden natural: "Sub-4" < "Sub-10" (por nombre o código) =====
+  int? _firstNum(String? s) {
+    if (s == null) return null;
+    final m = RegExp(r'(\d+)').firstMatch(s);
+    return (m == null) ? null : int.tryParse(m.group(1)!);
+  }
+
+  int _compareSub(Map a, Map b) {
+    final sa = a['nombre']?.toString();
+    final sb = b['nombre']?.toString();
+    final ca = a['codigo']?.toString();
+    final cb = b['codigo']?.toString();
+
+    final na = _firstNum(sa) ?? _firstNum(ca);
+    final nb = _firstNum(sb) ?? _firstNum(cb);
+
+    if (na != null && nb != null) return na.compareTo(nb);
+    if (na != null) return -1;
+    if (nb != null) return 1;
+
+    final aa = (sa ?? ca ?? '').toLowerCase();
+    final bb = (sb ?? cb ?? '').toLowerCase();
+    return aa.compareTo(bb);
   }
 
   Future<void> _loadData(int tabIndex) async {
@@ -143,19 +168,10 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     bool? onlyActive;
     int page, pageSize;
     switch (tabIndex) {
-      case 1:
-        onlyActive = false;
-        page = _inaPage; pageSize = _inaPageSize;
-        break;
-      case 2:
-        onlyActive = null;
-        page = _allPage; pageSize = _allPageSize;
-        break;
+      case 1: onlyActive = false; page = _inaPage; pageSize = _inaPageSize; break;
+      case 2: onlyActive = null;  page = _allPage; pageSize = _allPageSize; break;
       case 0:
-      default:
-        onlyActive = true;
-        page = _actPage; pageSize = _actPageSize;
-        break;
+      default: onlyActive = true; page = _actPage; pageSize = _actPageSize; break;
     }
 
     try {
@@ -165,10 +181,11 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         q: _q,
         idCategoria: _idCategoria,
         onlyActive: onlyActive,
-        sort: 'nombre_subcategoria',
+        sort: 'nombre_subcategoria', // backend; aquí reforzamos orden natural
         order: 'asc',
       );
-      final items = List<Map<String, dynamic>>.from(res['items']);
+
+      final items = List<Map<String, dynamic>>.from(res['items'])..sort(_compareSub);
       final total = (res['total'] as num).toInt();
 
       setState(() {
@@ -206,7 +223,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return '—';
   }
 
-  // ===== Acciones de fila / globales =====
+  // ===== Acciones fila/global =====
   Future<void> _onNew() async {
     final ok = await _openForm();
     if (ok == true) await _loadCurrent();
@@ -329,69 +346,79 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Exportar CSV =====
-  void _exportCsvCurrent() {
+  // ===================== EXPORTACIÓN (SOLO EXCEL) =====================
+
+  // Datos y nombre base por pestaña
+  (List<Map<String, dynamic>> data, String baseName) _currentExportData() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
     final name = tab == 0
         ? 'subcategorias_activas'
         : (tab == 1 ? 'subcategorias_inactivas' : 'subcategorias_todas');
+    return (data, name);
+  }
 
-    final csv = StringBuffer()..writeln('ID,Subcategoria,Codigo,Categoria,Activo,Creado');
-    for (final r in data) {
-      final id = r['id'] ?? '';
-      final nom = _csvEscape(r['nombre']);
-      final cod = _csvEscape(r['codigo']);
-      final cat = _csvEscape(_catNameOf(r));
-      final act = (r['activo'] == true) ? '1' : '0';
-      final cre = r['creadoEn']?.toString().split('T').first ?? '';
-      csv.writeln('$id,$nom,$cod,$cat,$act,$cre');
-    }
-    final content = csv.toString();
-
+  // Guardar bytes cross-platform
+  Future<void> _saveBytes(Uint8List bytes, String filename, String mimeType) async {
     if (kIsWeb) {
-      // BOM para Excel
-      final bytes = <int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content));
-      final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
+      final blob = html.Blob([bytes], mimeType);
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: url)..download = '$name.csv';
+      final a = html.AnchorElement(href: url)..download = filename;
       a.click();
       html.Url.revokeObjectUrl(url);
-    } else {
-      _showCsvDialog(content, '$name.csv');
+      return;
     }
+    dynamic dir = await getDownloadsDirectory();
+    dir ??= await getApplicationDocumentsDirectory();
+    final path = '${dir.path}/$filename';
+    final xf = XFile.fromData(bytes, name: filename, mimeType: mimeType);
+    await xf.saveTo(path);
+    _showSnack('Guardado en: $path');
   }
 
-  static String _csvEscape(Object? v) {
-    final s = v?.toString() ?? '';
-    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-      return '"${s.replaceAll('"', '""')}"';
-    }
-    return s;
-  }
+  // Exportar Excel (.xlsx)
+  Future<void> _exportExcelCurrent() async {
+    final (data, base) = _currentExportData();
 
-  Future<void> _showCsvDialog(String data, String filename) async {
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('CSV: $filename'),
-        content: SizedBox(width: 600, height: 360, child: SelectableText(data)),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: data));
-              if (mounted) Navigator.pop(context);
-              _showSnack('Copiado al portapapeles');
-            },
-            child: const Text('Copiar'),
-          ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-        ],
-      ),
+    final book = xls.Excel.createExcel();
+    const sheetName = 'Subcategorias';
+    final defaultSheet = book.getDefaultSheet();
+    if (defaultSheet != null) book.rename(defaultSheet, sheetName);
+    final sheet = book[sheetName];
+
+    // Encabezados
+    sheet.appendRow( [
+      xls.TextCellValue('ID'),
+      xls.TextCellValue('Subcategoría'),
+      xls.TextCellValue('Código'),
+      xls.TextCellValue('Categoría'),
+      xls.TextCellValue('Activo'),
+      xls.TextCellValue('Creado'),
+    ]);
+
+    // Filas
+    for (final r in data) {
+      sheet.appendRow([
+        xls.TextCellValue('${r['id'] ?? ''}'),
+        xls.TextCellValue('${r['nombre'] ?? ''}'),
+        xls.TextCellValue('${r['codigo'] ?? ''}'),
+        xls.TextCellValue(_catNameOf(r)),
+        xls.TextCellValue(r['activo'] == true ? '1' : '0'),
+        xls.TextCellValue((r['creadoEn']?.toString().split('T').first) ?? ''),
+      ]);
+    }
+
+    final bytes = Uint8List.fromList(book.encode()!);
+    await _saveBytes(
+      bytes,
+      '$base.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }
 
-  // ===== Asignación masiva (selector SOLO no asignados, con timeouts y error visible) =====
+  // ====================================================================
+
+  // ===== Asignación masiva (selector NO asignados) =====
   Future<void> _openBulkPickerDialog(Map<String, dynamic> row) async {
     if (_alumnosRepo == null) {
       _showSnack('No está inyectado AppScope.estudiantes (repo de estudiantes).');
@@ -401,7 +428,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     final int idSub = (row['id'] as num).toInt();
     final String nombreSub = row['nombre']?.toString() ?? '';
 
-    // Estado local del diálogo
     final qCtrl = TextEditingController();
     Timer? debounce;
     bool loading = true;
@@ -464,8 +490,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
           ),
         );
 
-        if (mounted) Navigator.of(ctx).pop(); // cerrar selector
-        await _loadCurrent();                 // refrescar tabla
+        if (mounted) Navigator.of(ctx).pop();
+        await _loadCurrent();
         _showSnack('Asignación completada');
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al asignar: $e')));
@@ -478,7 +504,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
-          // ⚡️ Carga inicial con microtask + timeout dentro del fetch
           Future.microtask(() async {
             if (!loading && items.isNotEmpty) return;
             await load();
@@ -490,7 +515,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
           final bool canBack = page > 1;
           final bool canFwd = page < totalPages;
 
-          // Cálculo “Mostrando”
           final int showingFrom = total == 0 ? 0 : ((page - 1) * pageSize + 1);
           final int rawTo = page * pageSize;
           final int showingTo = rawTo > total ? total : rawTo;
@@ -668,7 +692,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Helpers: obtener "no asignados globales" con timeout y normalización =====
+  // ===== Helpers no asignados =====
   Future<Map<String, dynamic>> _fetchNoAsignadosGlobal({
     String? q,
     required int page,
@@ -678,57 +702,30 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       throw 'Repo de estudiantes no disponible (AppScope.estudiantes).';
     }
 
-    // Utilidad con timeout
     Future<dynamic> _tryCall(Future<dynamic> Function() fn) async {
-      try {
-        return await fn().timeout(const Duration(seconds: 6));
-      } catch (_) {
-        return null;
-      }
+      try { return await fn().timeout(const Duration(seconds: 6)); } catch (_) { return null; }
     }
 
     dynamic res;
+    try { res ??= await _tryCall(() => _alumnosRepo.noAsignadosGlobal(q: q, page: page, pageSize: pageSize)); } catch (_) {}
+    try { res ??= await _tryCall(() => _alumnosRepo.noAsignados(q: q, page: page, pageSize: pageSize)); } catch (_) {}
+    try { res ??= await _tryCall(() => _alumnosRepo.sinSubcategoria(q: q, page: page, pageSize: pageSize)); } catch (_) {}
+    try { res ??= await _tryCall(() => _alumnosRepo.paged(q: q, page: page, pageSize: pageSize, asignado: false)); } catch (_) {}
 
-    // 🎯 Prioriza TU método real si existe:
-    // 1) noAsignadosGlobal(q, page, pageSize)
-    try {
-      res ??= await _tryCall(() => _alumnosRepo.noAsignadosGlobal(q: q, page: page, pageSize: pageSize));
-    } catch (_) {}
+    if (res == null) throw 'No hay endpoint para listar estudiantes sin subcategoría.';
 
-    // 2) noAsignados(q, page, pageSize)  (sin idSubcategoria)
-    try {
-      res ??= await _tryCall(() => _alumnosRepo.noAsignados(q: q, page: page, pageSize: pageSize));
-    } catch (_) {}
-
-    // 3) sinSubcategoria(q, page, pageSize)
-    try {
-      res ??= await _tryCall(() => _alumnosRepo.sinSubcategoria(q: q, page: page, pageSize: pageSize));
-    } catch (_) {}
-
-    // 4) paged(q, page, pageSize, asignado: false)
-    try {
-      res ??= await _tryCall(() => _alumnosRepo.paged(q: q, page: page, pageSize: pageSize, asignado: false));
-    } catch (_) {}
-
-    if (res == null) {
-      throw 'No hay endpoint/método para listar estudiantes sin subcategoría. Implementa uno en EstudiantesRepository (p.ej. noAsignadosGlobal).';
-    }
-
-    // ---- Normalización de respuesta ----
     List<Map<String, dynamic>> items = const [];
     int total = 0;
     final offset = (page - 1) * pageSize;
 
     Map<String, dynamic> _unwrapMap(Map m) {
-      dynamic list = m['items'] ?? m['rows'] ??
-          (m['data'] is Map ? (m['data']['items'] ?? m['data']['rows']) : null);
+      dynamic list = m['items'] ?? m['rows'] ?? (m['data'] is Map ? (m['data']['items'] ?? m['data']['rows']) : null);
       if (list is List) {
         items = List<Map<String, dynamic>>.from(list.map((e) => Map<String, dynamic>.from(e as Map)));
       } else if (m['data'] is List) {
         items = List<Map<String, dynamic>>.from((m['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
       }
-      final t = m['total'] ?? m['count'] ??
-          (m['data'] is Map ? m['data']['total'] ?? m['data']['count'] : null);
+      final t = m['total'] ?? m['count'] ?? (m['data'] is Map ? m['data']['total'] ?? m['data']['count'] : null);
       total = (t is num) ? t.toInt() : (page == 1 ? items.length : (offset + items.length));
       return {'items': items, 'total': total};
     }
@@ -744,7 +741,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       throw 'Respuesta de no asignados no reconocida.';
     }
 
-    // ---- Filtro de seguridad: dejar SOLO 100% no asignados ----
     bool _isUnassigned(Map<String, dynamic> r) {
       if (r['asignado'] == true || r['tieneSubcategoria'] == true) return false;
       if (r['subcategoriaId'] != null || r['idSubcategoria'] != null) return false;
@@ -755,11 +751,10 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
     items = items.where(_isUnassigned).toList();
     total = items.length < total ? total : items.length;
-
     return {'items': items, 'total': total};
   }
 
-  // ===== Helpers de UI para cada estudiante =====
+  // ===== Helpers estudiante =====
   int? _studentIdOf(Map<String, dynamic> r) {
     final v = r['id'] ?? r['id_estudiante'] ?? r['idEstudiante'] ?? r['estudianteId'];
     if (v is num) return v.toInt();
@@ -790,25 +785,18 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
-  // ===== Normalizador de asignación masiva =====
+  // ===== Normalizador asignación masiva =====
   Future<Map<String, dynamic>> _asignarMasivoNormalizado({
     required int idSub,
     required List<int> ids,
   }) async {
     dynamic res;
-
-    // a) Intentar estudiantesRepo.asignarASubcategoria
     try {
       if (_alumnosRepo != null) {
-        res = await _alumnosRepo.asignarASubcategoria(
-          ids: ids,
-          idSubcategoria: idSub,
-        );
+        res = await _alumnosRepo.asignarASubcategoria(ids: ids, idSubcategoria: idSub);
         return _normalizeAssignResponse(res, ids);
       }
     } catch (_) {}
-
-    // b) Intentar subcategoriasRepo.asignarEstudiantesMasivo
     try {
       final fn = _subRepo.asignarEstudiantesMasivo;
       if (fn != null) {
@@ -816,8 +804,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         return _normalizeAssignResponse(res, ids);
       }
     } catch (_) {}
-
-    throw 'No se encontró método para asignación masiva en AppScope.estudiantes o subcategorias.';
+    throw 'No se encontró método para asignación masiva en estudiantes o subcategorias.';
   }
 
   Map<String, dynamic> _normalizeAssignResponse(dynamic res, List<int> sent) {
@@ -853,8 +840,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       ya.addAll(_toIntList(res['yaEstaban'] ?? res['existentes'] ?? res['duplicados']));
       no.addAll(_toIntList(res['noEncontrados'] ?? res['no_existentes'] ?? res['faltantes']));
       errs.addAll(_toErrMap(res['errores']));
-
-      // Si vino 200 OK pero sin detalle, asumir éxito total
       if (asignados.isEmpty && ya.isEmpty && no.isEmpty && errs.isEmpty) {
         asignados.addAll(sent);
       }
@@ -866,14 +851,12 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     } else if (res == true) {
       asignados.addAll(sent);
     } else {
-      // Respuesta no reconocida
       for (final id in sent) {
         errs[id] = 'Respuesta no reconocida del servidor.';
       }
     }
 
     List<int> _clean(List<int> l) => l.toSet().toList()..sort();
-
     return {
       'asignados': _clean(asignados),
       'yaEstaban': _clean(ya),
@@ -882,12 +865,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     };
   }
 
-  // Chip contador reutilizable (sin necesidad de BuildContext)
+  // Chip contador
   Widget _chipCount(IconData icon, String label, int count, Color? color) {
-    return Chip(
-      avatar: Icon(icon, size: 18, color: color),
-      label: Text('$label: $count'),
-    );
+    return Chip(avatar: Icon(icon, size: 18, color: color), label: Text('$label: $count'));
   }
 
   // ===== Paginación =====
@@ -1018,7 +998,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return Padding(padding: const EdgeInsets.all(12), child: core);
   }
 
-  // ===== Header mejorado =====
+  // ===== Header =====
   Widget _buildHeader(BuildContext context, bool isNarrow) {
     final activeFilters = Wrap(
       spacing: 6,
@@ -1111,10 +1091,11 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       ),
     );
 
+    // ✅ Solo Excel
     final exportBtn = OutlinedButton.icon(
-      onPressed: _exportCsvCurrent,
-      icon: const Icon(Icons.download),
-      label: const Text('Exportar'),
+      onPressed: _exportExcelCurrent,
+      icon: const Icon(Icons.grid_on),
+      label: const Text('Excel'),
     );
 
     final add = FilledButton.icon(
@@ -1223,8 +1204,16 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
+  // Encabezado compacto para DataTable (evita overflow)
+  Widget _th(String s) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(s),
+      );
+
   // ===== Tabla (desktop) =====
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
+    final isNarrow = MediaQuery.of(context).size.width < 820;
     final textStyle = _dense
         ? Theme.of(context).textTheme.bodySmall
         : Theme.of(context).textTheme.bodyMedium;
@@ -1233,37 +1222,41 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       behavior: const ScrollBehavior().copyWith(scrollbars: true),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: _dense ? 36 : 48,
-          dataRowMinHeight: _dense ? 32 : 44,
-          dataRowMaxHeight: _dense ? 40 : null,
-          columns: const [
-            DataColumn(label: Text('ID')),
-            DataColumn(label: Text('Subcategoría')),
-            DataColumn(label: Text('Código')),
-            DataColumn(label: Text('Categoría')),
-            DataColumn(label: Text('Estado')),
-            DataColumn(label: Text('Creado')),
-            DataColumn(label: Text('Acciones')),
-          ],
-          rows: rows.map((r) {
-            final bool activo = r['activo'] == true;
-            final estadoIcon = Icon(
-              activo ? Icons.check_circle : Icons.cancel,
-              color: activo ? Colors.green : Colors.grey,
-              size: _dense ? 18 : 20,
-              semanticLabel: activo ? 'Activa' : 'Inactiva',
-            );
-            return DataRow(cells: [
-              DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(r['codigo']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(_catNameOf(r), style: textStyle)),
-              DataCell(estadoIcon),
-              DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
-              DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
-            ]);
-          }).toList(),
+        child: ClipRect(
+          child: DataTable(
+            columnSpacing: isNarrow ? 16 : 24,
+            horizontalMargin: 12,
+            headingRowHeight: _dense ? 36 : 48,
+            dataRowMinHeight: _dense ? 32 : 44,
+            dataRowMaxHeight: _dense ? 40 : null,
+            columns: [
+              DataColumn(label: _th('ID')),
+              DataColumn(label: _th('Subcategoría')),
+              DataColumn(label: _th('Código')),
+              DataColumn(label: _th('Categoría')),
+              DataColumn(label: _th('Estado')),
+              DataColumn(label: _th('Creado')),
+              DataColumn(label: _th('Acciones')),
+            ],
+            rows: rows.map((r) {
+              final bool activo = r['activo'] == true;
+              final estadoIcon = Icon(
+                activo ? Icons.check_circle : Icons.cancel,
+                color: activo ? Colors.green : Colors.grey,
+                size: _dense ? 18 : 20,
+                semanticLabel: activo ? 'Activa' : 'Inactiva',
+              );
+              return DataRow(cells: [
+                DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
+                DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
+                DataCell(SelectableText(r['codigo']?.toString() ?? '', style: textStyle)),
+                DataCell(SelectableText(_catNameOf(r), style: textStyle)),
+                DataCell(estadoIcon),
+                DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
+                DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
+              ]);
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -1389,8 +1382,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
             },
           ),
         ),
-
-        // ✅ Solo selector visual de NO asignados
         Tooltip(
           message: 'Asignar estudiantes (solo no asignados)',
           child: IconButton(
@@ -1400,7 +1391,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
             onPressed: () => _openBulkPickerDialog(r),
           ),
         ),
-
         Tooltip(
           message: 'Editar',
           child: IconButton(
@@ -1423,7 +1413,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Atajos de teclado (corregido) =====
+  // ===== Atajos de teclado =====
   Widget _withShortcuts(Widget child) {
     return FocusTraversalGroup(
       child: Shortcuts(
@@ -1461,7 +1451,6 @@ class _PaginationControls extends StatelessWidget {
   final void Function(int) onPageSizeChange;
 
   const _PaginationControls({
-    super.key,
     required this.currentPage,
     required this.totalItems,
     required this.pageSize,
@@ -1537,7 +1526,6 @@ class _EmptyState extends StatelessWidget {
   final (String, VoidCallback)? secondary;
 
   const _EmptyState({
-    super.key,
     required this.title,
     required this.subtitle,
     required this.primary,
@@ -1577,7 +1565,7 @@ class _ErrorView extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
 
-  const _ErrorView({super.key, required this.error, required this.onRetry});
+  const _ErrorView({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1602,7 +1590,7 @@ class _ErrorView extends StatelessWidget {
 }
 
 class _LoadingChip extends StatelessWidget {
-  const _LoadingChip({super.key});
+  const _LoadingChip();
 
   @override
   Widget build(BuildContext context) {
@@ -1619,7 +1607,7 @@ class _LoadingPlaceholder extends StatelessWidget {
   final _ViewMode viewMode;
   final bool dense;
 
-  const _LoadingPlaceholder({super.key, required this.isNarrow, required this.viewMode, required this.dense});
+  const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
 
   @override
   Widget build(BuildContext context) {
@@ -1652,7 +1640,7 @@ class _LoadingPlaceholder extends StatelessWidget {
 
 class _Skeleton extends StatelessWidget {
   final double height;
-  const _Skeleton({super.key, required this.height});
+  const _Skeleton({required this.height});
 
   @override
   Widget build(BuildContext context) {

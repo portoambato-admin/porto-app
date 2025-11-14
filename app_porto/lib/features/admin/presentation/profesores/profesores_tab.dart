@@ -880,10 +880,10 @@ class _EmptyState extends StatelessWidget {
   final (String, VoidCallback)? secondary;
 
   const _EmptyState({
-    super.key,
     required this.title,
     required this.subtitle,
-    required this.primary,
+    required this.primary, 
+    // ignore: unused_element_parameter
     this.secondary,
   });
 
@@ -920,7 +920,7 @@ class _ErrorView extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
 
-  const _ErrorView({super.key, required this.error, required this.onRetry});
+  const _ErrorView({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -945,7 +945,7 @@ class _ErrorView extends StatelessWidget {
 }
 
 class _LoadingChip extends StatelessWidget {
-  const _LoadingChip({super.key});
+  const _LoadingChip();
 
   @override
   Widget build(BuildContext context) {
@@ -962,7 +962,7 @@ class _LoadingPlaceholder extends StatelessWidget {
   final _ViewMode viewMode;
   final bool dense;
 
-  const _LoadingPlaceholder({super.key, required this.isNarrow, required this.viewMode, required this.dense});
+  const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
 
   @override
   Widget build(BuildContext context) {
@@ -995,7 +995,7 @@ class _LoadingPlaceholder extends StatelessWidget {
 
 class _Skeleton extends StatelessWidget {
   final double height;
-  const _Skeleton({super.key, required this.height});
+  const _Skeleton({required this.height});
 
   @override
   Widget build(BuildContext context) {

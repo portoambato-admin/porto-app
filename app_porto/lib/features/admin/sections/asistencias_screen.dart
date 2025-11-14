@@ -1,13 +1,65 @@
-// lib/features/admin/sections/admin_asistencias_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../app/app_scope.dart';
 import '../../../core/constants/endpoints.dart';
 
+// ===== IMPORTS AÑADIDOS =====
+import 'package:table_calendar/table_calendar.dart';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cross_file/cross_file.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+import 'package:flutter/services.dart' show rootBundle;
+// ===========================================
+
 String _todayISO() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-// ===== Helpers robustos =====
+// ===== NUEVO: Enum de Estatus de Asistencia =====
+enum EstatusAsistencia {
+  presente,
+  tarde,
+  ausente,
+  justificado,
+}
+
+/// Helper para convertir el enum a un string para la BD
+String estatusAsistenciaToString(EstatusAsistencia estatus) {
+  switch (estatus) {
+    case EstatusAsistencia.presente:
+      return 'presente';
+    case EstatusAsistencia.tarde:
+      return 'tarde';
+    case EstatusAsistencia.ausente:
+      return 'ausente';
+    case EstatusAsistencia.justificado:
+      return 'justificado';
+  }
+}
+
+/// Helper para leer el string desde la BD
+EstatusAsistencia estatusAsistenciaFromString(String? s) {
+  switch (s?.toLowerCase()) {
+    case 'presente':
+      return EstatusAsistencia.presente;
+    case 'tarde':
+      return EstatusAsistencia.tarde;
+    case 'justificado':
+      return EstatusAsistencia.justificado;
+    case 'ausente':
+      return EstatusAsistencia.ausente;
+    default:
+      // Por defecto (incluyendo null o 'falta'), es ausente
+      return EstatusAsistencia.ausente;
+  }
+}
+// ================================================
+
+// ===== Helpers robustos (Top-level) =====
 int? _toIntOrNull(dynamic v) {
   if (v == null) return null;
   if (v is int) return v;
@@ -21,6 +73,17 @@ int? _readIdSesion(Map<String, dynamic>? sesion) {
   final raw = sesion?['id_sesion'] ?? sesion?['idSesion'] ?? sesion?['id'];
   return _toIntOrNull(raw);
 }
+
+String _mesNombre(int? m) {
+  const meses = [
+    '',
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+  if (m == null || m < 1 || m > 12) return '-';
+  return meses[m];
+}
+// =========================================
 
 class AdminAsistenciasScreen extends StatefulWidget {
   const AdminAsistenciasScreen({super.key});
@@ -54,14 +117,27 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
 
   // Estudiantes sesión actual
   bool _loading = false;
-  List<_RowAlumno> _rows = [];
+  List<_RowAlumno> _rows = []; // Roster completo de la subcategoría
   final _alumnoSearchCtrl = TextEditingController();
 
-  // Historial
+  // Historial (Lista y Calendario)
   String _histDesde = _isoNDiasAtras(30);
   String _histHasta = _todayISO();
   bool _loadingHist = false;
   List<Map<String, dynamic>> _sesionesHistorial = [];
+  Map<DateTime, String> _sesionResumenes = {}; // Para el calendario
+  CalendarFormat _calendarFormat = CalendarFormat.month;
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+
+  // Reporte por Alumno
+  int? _selAlumnoReporteId; // ID del alumno seleccionado para el reporte
+  bool _loadingReporteAlumno = false;
+  List<Map<String, dynamic>> _historialAlumno = []; // Asistencias del alumno
+
+  // ===== NUEVO: Lista para las sesiones del día seleccionado (Calendario) =====
+  List<Map<String, dynamic>> _sesionesDelDiaSeleccionado = [];
+  // ========================================================================
 
   static String _isoNDiasAtras(int n) =>
       DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(Duration(days: n)));
@@ -71,8 +147,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     super.initState();
     _subcatSearchCtrl.addListener(_applySubcatFilter);
     _alumnoSearchCtrl.addListener(_applyAlumnoFilter);
-
-    // Cargar subcategorías post-frame (evita dependOnInheritedWidget en initState)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadSubcats();
@@ -100,11 +174,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         _loading = false;
       });
     } catch (e) {
-      setState(() {
-        _subcats = [];
-        _filteredSubcats = [];
-        _loading = false;
-      });
+      setState(() { _loading = false; });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No pude cargar subcategorías: $e')),
@@ -192,10 +262,16 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
           final mm = Map<String, dynamic>.from(m as Map);
           final idEst = _toIntOrNull(mm['id_estudiante'] ?? mm['idEstudiante']);
           if (idEst == null) continue;
-          final presente = mm['presente'] == true;
+          
+          // ===== MODIFICADO: Leer estatus desde la BD =====
+          final estatusStr = (mm['estatus'] ?? mm['status'])?.toString();
+          final estatus = estatusAsistenciaFromString(estatusStr);
+          // =================================================
+
           final obs = (mm['observaciones'] ?? '').toString();
           map[idEst] = (map[idEst] ?? _RowAlumno(idEstudiante: idEst, nombre: ''))
-            ..presente = presente
+            // ..presente = presente  <-- Se fue
+            ..estatus = estatus     // <-- Nuevo
             ..observaciones = obs;
         }
       }
@@ -214,13 +290,12 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   }
 
   // Abre una sesión pasada (desde Historial)
-  Future<void> _abrirSesionExistente(Map<String, dynamic> sesion) async {
+  Future<void> _abrirSesionExistente(Map<String, dynamic> sesion, TabController tabController) async {
     final id = _selSubcatId;
     if (id == null) return;
-    // Configura fecha/horas si vienen
+
     final fechaRaw = (sesion['fecha'] ?? sesion['fechaISO'] ?? sesion['dia'])?.toString();
     if (fechaRaw != null && fechaRaw.isNotEmpty) {
-      // tomar yyyy-MM-dd del inicio
       final iso = fechaRaw.length >= 10 ? fechaRaw.substring(0, 10) : fechaRaw;
       setState(() => _fecha = iso);
     }
@@ -229,7 +304,9 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     if (hi != null && hi.isNotEmpty) _iniCtrl.text = hi;
     if (hf != null && hf.isNotEmpty) _finCtrl.text = hf;
 
-    // Reutiliza el flujo que busca/crea y lista (no recreará si ya existe)
+    // Cambia al tab de "Tomar Asistencia"
+    tabController.animateTo(0);
+    // Carga los datos de esa sesión
     await _crearOAbrirSesionYListar();
   }
 
@@ -239,12 +316,14 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     final last = DateTime(now.year + 1, 12, 31);
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.parse(_fecha),
+      initialDate: DateTime.tryParse(_fecha) ?? now,
       firstDate: first,
       lastDate: last,
       locale: const Locale('es'),
     );
-    if (picked != null) setState(() => _fecha = DateFormat('yyyy-MM-dd').format(picked));
+    if (picked != null) {
+      setState(() => _fecha = DateFormat('yyyy-MM-dd').format(picked));
+    }
   }
 
   Future<void> _pickTime(TextEditingController ctrl) async {
@@ -261,16 +340,23 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
   }
 
-  void _toggleAll(bool v) => setState(() { for (final r in _rows) r.presente = v; });
+  // ===== MODIFICADO: Manejar estatus, no bool =====
+  void _setAllStatus(EstatusAsistencia estatus) => setState(() {
+    for (final r in _rows) r.estatus = estatus;
+  });
+  // ===============================================
 
   Future<void> _guardar() async {
     if (_idSesion == null) return;
     try {
+      // ===== MODIFICADO: Enviar 'estatus' como string =====
       final marcas = _rows.map((r) => {
         'id_estudiante': r.idEstudiante,
-        'presente': r.presente,
+        'estatus': estatusAsistenciaToString(r.estatus), // <-- MODIFICADO
         if (r.observaciones.trim().isNotEmpty) 'observaciones': r.observaciones.trim(),
       }).toList();
+      // ====================================================
+
       await _asistRepo.marcarBulk(_idSesion!, marcas);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -284,10 +370,10 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
   }
 
-  // ====== HISTORIAL ======
+  // ====== HISTORIAL (Y CALENDARIO) ======
   Future<void> _pickRange() async {
-    final initialStart = DateTime.parse(_histDesde);
-    final initialEnd   = DateTime.parse(_histHasta);
+    final initialStart = DateTime.tryParse(_histDesde) ?? DateTime.now().subtract(const Duration(days: 30));
+    final initialEnd   = DateTime.tryParse(_histHasta) ?? DateTime.now();
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(initialStart.year - 1),
@@ -310,9 +396,9 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     required String desde,
     required String hasta,
   }) async {
-    // 1) Intenta con métodos del repo si existen (flexible)
     try {
       final dyn = _asistRepo as dynamic;
+      // El repo ahora soporta 'desde' y 'hasta' aquí
       final r = await dyn.listarSesiones(idSubcategoria: subcatId, desde: desde, hasta: hasta);
       if (r is List) return r;
     } catch (_) {}
@@ -322,7 +408,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       if (r is List) return r;
     } catch (_) {}
 
-    // 2) Fallback: GET directo
+    // Fallback a HTTP directo
     final path = '/asistencias/sesiones?subcategoria=$subcatId&desde=$desde&hasta=$hasta';
     final res = await _http.get(path, headers: const {'Accept': 'application/json'});
     return (res as List);
@@ -335,13 +421,38 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     try {
       final list = await _fetchSesionesHistorial(subcatId: id, desde: _histDesde, hasta: _histHasta);
       final parsed = list.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map)).toList();
+      
+      final newResumenes = <DateTime, String>{};
+      for (final s in parsed) {
+        final fechaStr = _pickStr(s, ['fecha', 'fechaISO', 'dia']);
+        if (fechaStr.length < 10) continue;
+        final fechaDt = DateTime.tryParse(fechaStr.substring(0, 10));
+        if (fechaDt != null) {
+          // El backend ahora provee 'presentes_count' y 'total_estudiantes'
+          final p = s['presentes'] ?? s['presentes_count'] ?? s['asistentes'];
+          final t = s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
+          if (p != null && t != null) {
+            newResumenes[DateTime.utc(fechaDt.year, fechaDt.month, fechaDt.day)] = '$p/$t';
+          }
+        }
+      }
+
       setState(() {
         _sesionesHistorial = parsed;
+        _sesionResumenes = newResumenes;
         _loadingHist = false;
+        
+        // ===== NUEVO: Refresca la lista del día seleccionado si hay uno =====
+        if (_selectedDay != null) {
+          _filtrarSesionesDelDia(_selectedDay!);
+        }
+        // ===============================================================
       });
     } catch (e) {
       setState(() {
         _sesionesHistorial = [];
+        _sesionResumenes = {};
+        _sesionesDelDiaSeleccionado = []; // Limpia también la lista filtrada
         _loadingHist = false;
       });
       if (!mounted) return;
@@ -350,6 +461,87 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       );
     }
   }
+
+  // ====== REPORTE POR ALUMNO (NUEVO) ======
+  Future<List> _fetchAsistenciasPorEstudiante({
+    required int subcatId,
+    required int estudianteId,
+    required String desde,
+    required String hasta,
+  }) async {
+    // 1) Intenta con el método del repo (preferido)
+    try {
+      final dyn = _asistRepo as dynamic;
+      final r = await dyn.asistenciaPorEstudiante(
+        idSubcategoria: subcatId, 
+        idEstudiante: estudianteId, 
+        desde: desde, 
+        hasta: hasta
+      );
+      if (r is List) return r;
+    } catch (_) {}
+    
+    // 2) Fallback: GET directo (usa el endpoint que definimos)
+    final path = '/asistencias/historial-estudiante?subcategoria=$subcatId&estudiante=$estudianteId&desde=$desde&hasta=$hasta';
+    final res = await _http.get(path, headers: const {'Accept': 'application/json'});
+    return (res as List);
+  }
+
+  Future<void> _loadHistorialPorEstudiante(int estudianteId) async {
+    final idSubcat = _selSubcatId;
+    if (idSubcat == null) return;
+    
+    setState(() { 
+      _loadingReporteAlumno = true;
+      _selAlumnoReporteId = estudianteId;
+      _historialAlumno = [];
+    });
+
+    try {
+      final list = await _fetchAsistenciasPorEstudiante(
+        subcatId: idSubcat,
+        estudianteId: estudianteId,
+        desde: _histDesde, // Reutiliza los filtros de fecha
+        hasta: _histHasta,
+      );
+      final parsed = list.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map)).toList();
+      setState(() {
+        _historialAlumno = parsed;
+        _loadingReporteAlumno = false;
+      });
+    } catch (e) {
+      setState(() {
+        _historialAlumno = [];
+        _loadingReporteAlumno = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No pude cargar el historial del alumno: $e')),
+      );
+    }
+  }
+
+  // ===== NUEVO: Filtra la lista de historial para el día seleccionado =====
+  void _filtrarSesionesDelDia(DateTime diaSeleccionado) {
+    final diaUtc = DateTime.utc(diaSeleccionado.year, diaSeleccionado.month, diaSeleccionado.day);
+    
+    final sesionesFiltradas = _sesionesHistorial.where((sesion) {
+      final fechaStr = _pickStr(sesion, ['fecha', 'fechaISO', 'dia']);
+      if (fechaStr.length < 10) return false;
+      
+      final fechaDt = DateTime.tryParse(fechaStr.substring(0, 10));
+      if (fechaDt == null) return false;
+      
+      final fechaUtc = DateTime.utc(fechaDt.year, fechaDt.month, fechaDt.day);
+      return isSameDay(fechaUtc, diaUtc);
+    }).toList();
+
+    setState(() {
+      _sesionesDelDiaSeleccionado = sesionesFiltradas;
+    });
+  }
+  // ====================================================================
+
 
   // ====== FILTRO DE ALUMNOS EN MEMORIA ======
   List<_RowAlumno> get _rowsFiltered {
@@ -372,6 +564,11 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
             _step = 0;
             _rows.clear();
             _idSesion = null;
+            _sesionesHistorial = []; // Limpia historial al salir
+            _sesionResumenes = {};
+            _historialAlumno = [];
+            _selAlumnoReporteId = null;
+            _sesionesDelDiaSeleccionado = []; // Limpia lista de calendario
           });
         }),
       ),
@@ -404,85 +601,102 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : (_filteredSubcats.isEmpty
-                ? _EmptySubcats(onReload: _loadSubcats)
-                : LayoutBuilder(
-                    builder: (ctx, c) {
-                      final w = c.maxWidth;
-                      final cross = w >= 1200 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
-                      return GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: cross,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 3.5,
-                        ),
-                        itemCount: _filteredSubcats.length,
-                        itemBuilder: (_, i) {
-                          final it = _filteredSubcats[i];
-                          final id = _toIntOrZero(it['id'] ?? it['id_subcategoria']);
-                          final nombre = (it['nombre'] ?? it['nombre_subcategoria'] ?? 'Sin nombre').toString();
+                  ? _EmptySubcats(onReload: _loadSubcats)
+                  : LayoutBuilder(
+                      builder: (ctx, c) {
+                        final w = c.maxWidth;
+                        final cross = w >= 1200 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: cross,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 3.5,
+                          ),
+                          itemCount: _filteredSubcats.length,
+                          itemBuilder: (_, i) {
+                            final it = _filteredSubcats[i];
+                            final id = _toIntOrZero(it['id'] ?? it['id_subcategoria']);
+                            final nombre = (it['nombre'] ?? it['nombre_subcategoria'] ?? 'Sin nombre').toString();
 
-                          return InkWell(
-                            onTap: () async {
-                              setState(() {
-                                _selSubcatId = id;
-                                _selSubcatNombre = nombre;
-                                _step = 1;
-                              });
-                              // Carga la sesión (hoy) y también el historial por defecto
-                              await _crearOAbrirSesionYListar();
-                              await _loadHistorial();
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Card(
-                              elevation: 1,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 14),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.group, size: 22),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        nombre,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
+                            return InkWell(
+                              onTap: () async {
+                                setState(() {
+                                  _selSubcatId = id;
+                                  _selSubcatNombre = nombre;
+                                  _step = 1;
+                                  // Resetea filtros de fecha al cambiar de subcategoría
+                                  _histDesde = _isoNDiasAtras(30);
+                                  _histHasta = _todayISO();
+                                  _focusedDay = DateTime.now();
+                                  _selectedDay = null;
+                                  _sesionesDelDiaSeleccionado = []; // Limpia lista
+                                });
+                                // Carga la sesión (hoy) y también el historial por defecto
+                                await _crearOAbrirSesionYListar();
+                                await _loadHistorial();
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Card(
+                                elevation: 1,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.group, size: 22),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          nombre,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.chevron_right),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      const Icon(Icons.chevron_right),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  )),
+                            );
+                          },
+                        );
+                      },
+                    )),
         ),
       ],
     );
   }
 
-  // Tabs: Tomar asistencia / Historial
+  // Tabs: AHORA CON 4 PESTAÑAS
   Widget _buildStepAttendanceTabs() {
     return DefaultTabController(
-      length: 2,
+      length: 4, 
       child: Column(
         children: [
-          const TabBar(tabs: [
-            Tab(text: 'Tomar asistencia', icon: Icon(Icons.fact_check_outlined)),
-            Tab(text: 'Historial', icon: Icon(Icons.history)),
-          ]),
+          const TabBar(
+            isScrollable: true, 
+            tabs: [
+              Tab(text: 'Tomar asistencia', icon: Icon(Icons.fact_check_outlined)),
+              Tab(text: 'Historial (Lista)', icon: Icon(Icons.history)),
+              Tab(text: 'Calendario', icon: Icon(Icons.calendar_month)), 
+              Tab(text: 'Por Alumno', icon: Icon(Icons.person_search)), 
+            ]
+          ),
           Expanded(
             child: TabBarView(
               children: [
                 _buildTakeAttendanceTab(),
-                _buildHistoryTab(),
+                Builder(
+                  builder: (context) => _buildHistoryTab(
+                    DefaultTabController.of(context),
+                  ),
+                ),
+                _buildCalendarTab(), // <-- Pestaña 3 (Mejorada)
+                _buildStudentReportTab(), 
               ],
             ),
           ),
@@ -491,78 +705,96 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     );
   }
 
+  // ===== PESTAÑA 1: TOMAR ASISTENCIA =====
   Widget _buildTakeAttendanceTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Controles de sesión
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: Wrap(
-            spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
+        // --- ÁREA DE FILTROS ---
+        SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          scrollDirection: Axis.horizontal,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              Wrap(
+                spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text('Fecha: $_fecha', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_month),
-                    label: const Text('Cambiar'),
-                    onPressed: _pickDate,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Fecha: $_fecha', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month),
+                        label: const Text('Cambiar'),
+                        onPressed: _pickDate,
+                      ),
+                    ],
+                  ),
+                  _TimeField(controller: _iniCtrl, label: 'Inicio', onPick: () => _pickTime(_iniCtrl)),
+                  _TimeField(controller: _finCtrl,  label: 'Fin',    onPick: () => _pickTime(_finCtrl)),
+                  FilledButton.icon(
+                    onPressed: (_selSubcatId == null) ? null : _crearOAbrirSesionYListar,
+                    icon: const Icon(Icons.playlist_add_check),
+                    label: const Text('Crear / abrir sesión'),
                   ),
                 ],
               ),
-              _TimeField(controller: _iniCtrl, label: 'Inicio', onPick: () => _pickTime(_iniCtrl)),
-              _TimeField(controller: _finCtrl,  label: 'Fin',    onPick: () => _pickTime(_finCtrl)),
-              FilledButton.icon(
-                onPressed: (_selSubcatId == null) ? null : _crearOAbrirSesionYListar,
-                icon: const Icon(Icons.playlist_add_check),
-                label: const Text('Crear / abrir sesión'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Acciones + buscador alumno
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-          child: Row(
-            children: [
-              ElevatedButton.icon(
-                onPressed: _rows.isEmpty ? null : () => _toggleAll(true),
-                icon: const Icon(Icons.check_box),
-                label: const Text('Marcar todos'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _rows.isEmpty ? null : () => _toggleAll(false),
-                icon: const Icon(Icons.check_box_outline_blank),
-                label: const Text('Desmarcar todos'),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: 280,
-                child: TextField(
-                  controller: _alumnoSearchCtrl,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Buscar alumno...',
-                    border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              
+              // ===== MODIFICADO: Se eliminó el Padding(bottom: 4.0) que causaba overflow =====
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // ===== MODIFICADO: Botones de estatus =====
+                      ElevatedButton.icon(
+                        onPressed: _rows.isEmpty ? null : () => _setAllStatus(EstatusAsistencia.presente),
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('Todos Presentes'),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _rows.isEmpty ? null : () => _setAllStatus(EstatusAsistencia.ausente),
+                        icon: const Icon(Icons.cancel),
+                        label: const Text('Todos Ausentes'),
+                      ),
+                      // ============================================
+                    ],
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: (_rows.isEmpty || _idSesion == null) ? null : _guardar,
-                icon: const Icon(Icons.save),
-                label: const Text('Guardar'),
+                  const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 280,
+                        child: TextField(
+                          controller: _alumnoSearchCtrl,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            prefixIcon: Icon(Icons.search),
+                            hintText: 'Buscar alumno...',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: (_rows.isEmpty || _idSesion == null) ? null : _guardar,
+                        icon: const Icon(Icons.save),
+                        label: const Text('Guardar'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        const SizedBox(height: 8),
+        const Divider(height: 1),
         Expanded(
           child: _loading
               ? const Center(child: CircularProgressIndicator())
@@ -580,28 +812,184 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     );
   }
 
-  Widget _buildHistoryTab() {
+  // ===== Tarjeta de resumen de historial =====
+  Widget _buildHistSummaryRow() {
+    final theme = Theme.of(context);
+    final totalSesiones = _sesionesHistorial.length;
+
+    int totalPresentes = 0;
+    int totalCapacidad = 0;
+
+    for (final s in _sesionesHistorial) {
+      final p = _toIntOrNull(s['presentes'] ?? s['presentes_count'] ?? s['asistentes']) ?? 0;
+      final t = _toIntOrNull(s['total'] ?? s['total_estudiantes'] ?? s['inscritos']) ?? 0;
+      totalPresentes += p;
+      totalCapacidad += t;
+    }
+
+    final porcentajeGlobal = (totalCapacidad > 0)
+        ? (totalPresentes / totalCapacidad * 100)
+        : 0.0;
+
+    Widget _statCard({
+      required IconData icon,
+      required String label,
+      required String value,
+      Color? color,
+    }) {
+      final c = color ?? theme.colorScheme.primaryContainer;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: c,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20, color: theme.colorScheme.onPrimaryContainer),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        _statCard(
+          icon: Icons.event_note,
+          label: 'Sesiones en el rango',
+          value: '$totalSesiones',
+        ),
+        _statCard(
+          icon: Icons.groups,
+          label: 'Total asistencias registradas',
+          value: '$totalPresentes / $totalCapacidad',
+        ),
+        _statCard(
+          icon: Icons.bar_chart_rounded,
+          label: 'Asistencia promedio',
+          value: totalCapacidad == 0
+              ? '—'
+              : '${porcentajeGlobal.toStringAsFixed(1)} %',
+        ),
+      ],
+    );
+  }
+
+  // ===== PESTAÑA 2: HISTORIAL (LISTA) =====
+  Widget _buildHistoryTab(TabController tabController) {
+    final theme = Theme.of(context);
+
     return Column(
       children: [
-        // Filtros de rango
+        // Filtros de rango + export
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-          child: Row(
-            children: [
-              Text('Desde: $_histDesde · Hasta: $_histHasta'),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _pickRange,
-                icon: const Icon(Icons.date_range),
-                label: const Text('Cambiar rango'),
+          child: Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.calendar_month, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$_histDesde  →  $_histHasta',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _pickRange,
+                    icon: const Icon(Icons.date_range),
+                    label: const Text('Cambiar rango'),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton.outlined(
+                    onPressed: _loadHistorial,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Actualizar',
+                  ),
+                  const SizedBox(width: 8),
+                  // Exportar
+                  PopupMenuButton<String>(
+                    tooltip: 'Exportar Historial',
+                    enabled: !_loadingHist && _sesionesHistorial.isNotEmpty,
+                    onSelected: (v) async {
+                      try {
+                        if (v == 'excel') {
+                          await _exportHistorialExcel();
+                        } else if (v == 'pdf') {
+                          await _exportHistorialPdf();
+                        }
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error al exportar: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'excel',
+                        child: ListTile(
+                          leading: Icon(Icons.grid_on),
+                          title: Text('Exportar a Excel'),
+                          subtitle: Text('Lista de sesiones'),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'pdf',
+                        child: ListTile(
+                          leading: Icon(Icons.picture_as_pdf),
+                          title: Text('Exportar a PDF'),
+                          subtitle: Text('Lista de sesiones'),
+                        ),
+                      ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6.0),
+                      child: Icon(Icons.download),
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
-              OutlinedButton.icon(
-                onPressed: _loadHistorial,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Actualizar'),
-              ),
-            ],
+            ),
           ),
         ),
         const Divider(height: 1),
@@ -609,42 +997,782 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
           child: _loadingHist
               ? const Center(child: CircularProgressIndicator())
               : (_sesionesHistorial.isEmpty
-                ? const Center(child: Text('Sin sesiones en el rango'))
-                : ListView.separated(
-                    itemCount: _sesionesHistorial.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final s = _sesionesHistorial[i];
-                      final id = _readIdSesion(s);
-                      final fecha = (s['fecha'] ?? s['fechaISO'] ?? s['dia'] ?? '').toString();
-                      final fShort = fecha.isNotEmpty
-                          ? (fecha.length >= 10 ? fecha.substring(0, 10) : fecha)
-                          : '(sin fecha)';
-                      final hi = (s['hora_inicio'] ?? s['horaInicio'] ?? '--:--').toString();
-                      final hf = (s['hora_fin'] ?? s['horaFin'] ?? '--:--').toString();
-
-                      // Si el backend devuelve conteos, los mostramos (opcionales)
-                      final presentes = s['presentes'] ?? s['presentes_count'] ?? s['asistentes'];
-                      final total = s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
-
-                      return ListTile(
-                        leading: const Icon(Icons.event_note),
-                        title: Text('Fecha: $fShort  ·  $hi - $hf'),
-                        subtitle: (presentes != null && total != null)
-                            ? Text('Presentes: $presentes / $total')
-                            : null,
-                        trailing: TextButton.icon(
-                          onPressed: id == null ? null : () => _abrirSesionExistente(s),
-                          icon: const Icon(Icons.open_in_new),
-                          label: const Text('Abrir'),
+                  ? const Center(child: Text('Sin sesiones registradas en el rango seleccionado'))
+                  : Column(
+                      children: [
+                        // Resumen tipo "dashboard"
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                          child: _buildHistSummaryRow(),
                         ),
-                      );
-                    },
-                  )),
+                        const SizedBox(height: 4),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: theme.colorScheme.outline.withOpacity(0.2),
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Scrollbar(
+                                  thumbVisibility: true,
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(minWidth: 720),
+                                      child: SingleChildScrollView(
+                                        child: DataTable(
+                                          headingRowColor: MaterialStateProperty.all(
+                                            theme.colorScheme.surfaceVariant,
+                                          ),
+                                          columns: const [
+                                            DataColumn(
+                                              label: Text(
+                                                'Fecha',
+                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                            DataColumn(
+                                              label: Text(
+                                                'Horario',
+                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                            DataColumn(
+                                              label: Text(
+                                                'Presentes',
+                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                            DataColumn(
+                                              label: Text(
+                                                '% Asistencia',
+                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                            DataColumn(
+                                              label: Text(
+                                                'Acciones',
+                                                style: TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ),
+                                          ],
+                                          rows: _sesionesHistorial.map((s) {
+                                            final fechaStr = _pickStr(s, ['fecha', 'fechaISO', 'dia']);
+                                            final fecha = _fmtDate(fechaStr);
+                                            final hi = _pickStr(s, ['hora_inicio', 'horaInicio']);
+                                            final hf = _pickStr(s, ['hora_fin', 'horaFin']);
+                                            final horario = (hi.isNotEmpty && hf.isNotEmpty)
+                                                ? '$hi – $hf'
+                                                : 'N/A';
+
+                                            final p = _toIntOrNull(
+                                                  s['presentes'] ??
+                                                      s['presentes_count'] ??
+                                                      s['asistentes'],
+                                                ) ??
+                                                0;
+                                            final t = _toIntOrNull(
+                                                  s['total'] ??
+                                                      s['total_estudiantes'] ??
+                                                      s['inscritos'],
+                                                ) ??
+                                                0;
+                                            final pct =
+                                                (t > 0) ? (p / t * 100).toStringAsFixed(1) : '—';
+
+                                            final id = _readIdSesion(s);
+
+                                            return DataRow(
+                                              cells: [
+                                                DataCell(Text(fecha)),
+                                                DataCell(Text(horario)),
+                                                DataCell(
+                                                  Text('$p / $t'),
+                                                ),
+                                                DataCell(
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.circle,
+                                                        size: 10,
+                                                        color: t == 0
+                                                            ? theme.disabledColor
+                                                            : (p / (t == 0 ? 1 : t)) >= 0.8
+                                                                ? Colors.green
+                                                                : (p / (t == 0 ? 1 : t)) >= 0.5
+                                                                    ? Colors.orange
+                                                                    : Colors.red,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        t == 0 ? '—' : '$pct %',
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                DataCell(
+                                                  TextButton.icon(
+                                                    onPressed: id == null
+                                                        ? null
+                                                        : () => _abrirSesionExistente(
+                                                              s,
+                                                              tabController,
+                                                            ),
+                                                    icon: const Icon(Icons.open_in_new, size: 18),
+                                                    label: const Text('Abrir'),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )),
         ),
       ],
     );
   }
+
+  // ===== PESTAÑA 3: CALENDARIO (MODIFICADA Y MEJORADA) =====
+  Widget _buildCalendarTab() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TableCalendar(
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              calendarFormat: _calendarFormat,
+              locale: 'es_ES',
+              selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+              
+              // ===== MODIFICADO: onDaySelected ahora filtra la lista =====
+              onDaySelected: (selectedDay, focusedDay) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+                // Llama a la nueva función de filtro
+                _filtrarSesionesDelDia(selectedDay); 
+              },
+              // ========================================================
+
+              // ===== MODIFICADO: onPageChanged limpia la selección =====
+              onPageChanged: (focusedDay) {
+                _focusedDay = focusedDay;
+                final firstDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
+                final lastDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
+                
+                setState(() {
+                  _histDesde = DateFormat('yyyy-MM-dd').format(firstDayOfMonth);
+                  _histHasta = DateFormat('yyyy-MM-dd').format(lastDayOfMonth);
+                  // Limpia la selección al cambiar de mes
+                  _selectedDay = null; 
+                  _sesionesDelDiaSeleccionado = [];
+                });
+                // Recarga el historial para los marcadores del mes
+                _loadHistorial(); 
+              },
+              // =======================================================
+              
+              onFormatChanged: (format) {
+                if (_calendarFormat != format) {
+                  setState(() { _calendarFormat = format; });
+                }
+              },
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: (context, day, events) {
+                  final key = DateTime.utc(day.year, day.month, day.day);
+                  final resumen = _sesionResumenes[key];
+                  if (resumen != null) {
+                    return Positioned(
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          resumen,
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    );
+                  }
+                  return null;
+                },
+              ),
+            ),
+          ),
+          const Divider(),
+          
+          // ===== MODIFICADO: Lógica de la lista de sesiones =====
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Text(
+              _selectedDay == null
+                ? 'Sesiones del mes'
+                : 'Sesiones para: ${DateFormat('EEE dd, MMM y', 'es').format(_selectedDay!)}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          if (_selectedDay == null)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40.0, horizontal: 20),
+              child: Center(
+                child: Text(
+                  'Selecciona un día en el calendario para ver el detalle de las sesiones.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else if (_loadingHist)
+             const Padding(
+               padding: EdgeInsets.all(40.0),
+               child: Center(child: CircularProgressIndicator()),
+             )
+          else if (_sesionesDelDiaSeleccionado.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 40.0, horizontal: 20),
+              child: Center(
+                child: Text(
+                  'No se encontraron sesiones registradas para este día.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // Usa la nueva lista filtrada
+              itemCount: _sesionesDelDiaSeleccionado.length, 
+              itemBuilder: (_, i) {
+                // Usa la nueva lista filtrada
+                final s = _sesionesDelDiaSeleccionado[i]; 
+                return _HistorialSesionTile(
+                  sesion: s,
+                  onAbrir: (sesion) => _abrirSesionExistente(sesion, DefaultTabController.of(context)),
+                );
+              },
+            )
+          // ======================================================
+        ],
+      ),
+    );
+  }
+
+  // ===== NUEVO: Widget de Resumen para Reporte Alumno =====
+  Widget _buildReporteAlumnoSummary() {
+    if (_historialAlumno.isEmpty) return const SizedBox.shrink();
+
+    int presentes = 0;
+    int ausentes = 0;
+    int tardes = 0;
+    int justificados = 0;
+    final total = _historialAlumno.length;
+
+    for (final item in _historialAlumno) {
+      // Asumimos que el historial ahora también trae el campo 'estatus'
+      final estatus = estatusAsistenciaFromString(item['estatus']?.toString());
+      switch (estatus) {
+        case EstatusAsistencia.presente:
+          presentes++;
+          break;
+        case EstatusAsistencia.ausente:
+          ausentes++;
+          break;
+        case EstatusAsistencia.tarde:
+          tardes++;
+          break;
+        case EstatusAsistencia.justificado:
+          justificados++;
+          break;
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: [
+          Chip(
+            avatar: Icon(Icons.check_circle, color: Colors.green),
+            label: Text('Presente: $presentes'),
+          ),
+          Chip(
+            avatar: Icon(Icons.schedule, color: Colors.orange),
+            label: Text('Tarde: $tardes'),
+          ),
+          Chip(
+            avatar: Icon(Icons.cancel, color: Colors.red),
+            label: Text('Ausente: $ausentes'),
+          ),
+          Chip(
+            avatar: Icon(Icons.assignment_turned_in, color: Colors.blue),
+            label: Text('Justificado: $justificados'),
+          ),
+          Chip(
+            label: Text('Total Sesiones: $total', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+  // ========================================================
+
+
+  // ===== PESTAÑA 4: REPORTE POR ALUMNO (MODIFICADO) =====
+  Widget _buildStudentReportTab() {
+    final selectedStudent = _selAlumnoReporteId == null 
+        ? null 
+        : _rows.firstWhere(
+            (r) => r.idEstudiante == _selAlumnoReporteId,
+            orElse: () => _RowAlumno(idEstudiante: 0, nombre: 'Error'),
+          );
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: DropdownButtonFormField<int>(
+            value: _selAlumnoReporteId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Seleccionar Estudiante',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.person),
+            ),
+            // Usa el Roster '_rows' que ya cargamos en la Pestaña 1
+            items: _rows.map((_RowAlumno alumno) {
+              return DropdownMenuItem<int>(
+                value: alumno.idEstudiante,
+                child: Text(alumno.nombre, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (int? newValue) {
+              if (newValue != null) {
+                _loadHistorialPorEstudiante(newValue);
+              }
+            },
+          ),
+        ),
+        Expanded(
+          child: _selAlumnoReporteId == null
+              ? const Center(child: Text('Selecciona un alumno para ver su reporte'))
+              : _loadingReporteAlumno 
+                  ? const Center(child: CircularProgressIndicator())
+                  : _historialAlumno.isEmpty
+                      ? const Center(child: Text('Este alumno no tiene asistencias registradas en el rango'))
+                      : Column( // ===== MODIFICADO: Añadida Column =====
+                          children: [
+                            // ===== NUEVO: Resumen de estatus =====
+                            _buildReporteAlumnoSummary(),
+                            const Divider(),
+                            // ===================================
+                            Expanded( // ===== MODIFICADO: ListView en Expanded =====
+                              child: ListView.separated(
+                                padding: const EdgeInsets.all(8),
+                                itemCount: _historialAlumno.length,
+                                separatorBuilder: (_,__) => const Divider(height: 1, indent: 16, endIndent: 16),
+                                itemBuilder: (context, index) {
+                                  final item = _historialAlumno[index];
+                                  
+                                  // ===== MODIFICADO: Usar estatus para icono y color =====
+                                  final estatus = estatusAsistenciaFromString(item['estatus']?.toString());
+                                  final (icon, color) = _StatusToggle._info[estatus]!; 
+                                  // ===================================================
+
+                                  final fechaStr = _pickStr(item, ['fecha', 'fechaISO', 'dia']);
+                                  final fechaFmt = _fmtDate(fechaStr);
+                                  final obs = _pickStr(item, ['observaciones', 'obs']);
+                                  
+                                  return ListTile(
+                                    leading: Icon(icon, color: color), // <-- MODIFICADO
+                                    title: Text(fechaFmt),
+                                    subtitle: obs.isNotEmpty ? Text('Obs: $obs') : null,
+                                    // ===== NUEVO: Trailing chip con estatus =====
+                                    trailing: Chip(
+                                      label: Text(
+                                        estatusAsistenciaToString(estatus).toUpperCase(),
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                      backgroundColor: color.withOpacity(0.1),
+                                    ),
+                                    // =========================================
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+        ),
+      ],
+    );
+  }
+  
+  // =================================================================
+  // ===== INICIO: SECCIÓN DE EXPORTACIÓN ============================
+  // =================================================================
+
+  String _fmtDate(Object? v) {
+    if (v == null) return '—';
+    final s = v.toString();
+    try {
+      final d = DateTime.parse(s);
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return s.isEmpty ? '—' : s;
+    }
+  }
+
+  String _pickStr(Map r, List<String> keys) {
+    for (final k in keys) {
+      final v = r[k];
+      if (v != null && '$v'.isNotEmpty) return '$v';
+    }
+    return '';
+  }
+
+  xls.CellValue _cv(dynamic v) {
+    if (v == null) return xls.TextCellValue('');
+    if (v is bool) return xls.BoolCellValue(v);
+    if (v is int) return xls.IntCellValue(v);
+    if (v is double) return xls.DoubleCellValue(v);
+    final s = '$v';
+    final n = double.tryParse(s);
+    return (n != null) ? xls.DoubleCellValue(n) : xls.TextCellValue(s);
+  }
+
+  Future<String?> _pickSavePath({
+    required String suggestedName,
+    required List<String> extensions,
+    String? label,
+    List<String>? mimeTypes,
+  }) async {
+    if (kIsWeb) return suggestedName;
+    final location = await getSaveLocation(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: label ?? 'Archivo',
+          extensions: extensions,
+          mimeTypes: mimeTypes,
+        ),
+      ],
+      suggestedName: suggestedName,
+    );
+    return location?.path;
+  }
+
+  Future<void> _saveBytes(
+    Uint8List bytes, {
+    required String defaultFileName,
+    required List<String> extensions,
+    String? mimeType,
+  }) async {
+    try {
+      if (kIsWeb) {
+        final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+        await xf.saveTo(defaultFileName);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Descarga iniciada: $defaultFileName')),
+        );
+        return;
+      }
+
+      final path = await _pickSavePath(
+        suggestedName: defaultFileName,
+        extensions: extensions,
+        mimeTypes: mimeType == null ? null : [mimeType],
+      );
+
+      if (path == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Guardado cancelado')),
+        );
+        return;
+      }
+
+      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+      await xf.saveTo(path);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Archivo guardado en: $path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo guardar: $e')),
+      );
+    }
+  }
+
+  pw.Widget _buildSectionHeader(
+      String title, IconData icon, PdfColor color, pw.Font materialFont) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        color: color,
+        borderRadius: const pw.BorderRadius.only(
+          topLeft: pw.Radius.circular(4),
+          topRight: pw.Radius.circular(4),
+        ),
+      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      margin: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        children: [
+          pw.Icon(pw.IconData(icon.codePoint),
+              font: materialFont, color: PdfColors.white, size: 16),
+          pw.SizedBox(width: 8),
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildChip(String label, String? value, IconData icon,
+    PdfColor color, pw.Font materialFont) {
+  return pw.Container(
+    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    decoration: pw.BoxDecoration(
+      color: color,
+      borderRadius: pw.BorderRadius.circular(12),
+    ),
+    child: pw.Row(
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.Icon(
+          pw.IconData(icon.codePoint),
+          font: materialFont,
+          size: 12,
+          color: PdfColors.black,
+        ),
+        pw.SizedBox(width: 6),
+        pw.Text(
+          value == null || value.isEmpty
+              ? label
+              : '$label: ${value.trim()}',
+          style: const pw.TextStyle(
+            fontSize: 10,
+            color: PdfColors.black,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+
+  Future<void> _exportHistorialExcel() async {
+    final rows = _sesionesHistorial;
+    if (rows.isEmpty) throw Exception('No hay datos para exportar');
+    
+    final nombreSubcat = _selSubcatNombre ?? 'historial';
+
+    final book = xls.Excel.createExcel();
+    final sheet = book['Historial'];
+    sheet.appendRow([
+      xls.TextCellValue('Fecha'),
+      xls.TextCellValue('Hora Inicio'),
+      xls.TextCellValue('Hora Fin'),
+      xls.TextCellValue('Presentes'),
+      xls.TextCellValue('Total'),
+    ]);
+    
+    for (final r in rows) {
+      final fecha = _fmtDate(_pickStr(r, ['fecha', 'fechaISO', 'dia']));
+      final hi = _pickStr(r, ['hora_inicio', 'horaInicio']);
+      final hf = _pickStr(r, ['hora_fin', 'horaFin']);
+      final presentes = _toIntOrNull(r['presentes'] ?? r['presentes_count'] ?? r['asistentes']);
+      final total = _toIntOrNull(r['total'] ?? r['total_estudiantes'] ?? r['inscritos']);
+
+      sheet.appendRow([
+        _cv(fecha), _cv(hi), _cv(hf), _cv(presentes), _cv(total),
+      ]);
+    }
+    final encoded = book.encode()!;
+    final bytes = Uint8List.fromList(encoded);
+    await _saveBytes(
+      bytes,
+      defaultFileName: 'asistencia_${nombreSubcat}.xlsx',
+      extensions: const ['xlsx'],
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  Future<Uint8List> _buildHistorialPdfBytes() async {
+    final rows = _sesionesHistorial;
+    if (rows.isEmpty) throw Exception('No hay datos para exportar');
+    
+    final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+    final robotoFont = pw.Font.ttf(robotoData);
+    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialFont = pw.Font.ttf(materialData);
+
+    final doc = pw.Document();
+    final nombreSubcat = _selSubcatNombre ?? 'Historial';
+    final titulo = 'Historial de Asistencias';
+
+    const baseColor = PdfColors.blueGrey800;
+    const lightColor = PdfColors.grey100;
+
+    pw.Widget buildCell(String text, {
+      pw.Alignment alignment = pw.Alignment.centerLeft,
+      bool isHeader = false,
+      PdfColor? background,
+    }) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(6),
+        color: background,
+        alignment: alignment,
+        child: pw.Text(
+          text,
+          style: isHeader
+              ? pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10)
+              : const pw.TextStyle(fontSize: 10),
+        ),
+      );
+    }
+
+    final List<pw.TableRow> tableRows = [];
+
+    tableRows.add(pw.TableRow(
+      decoration: const pw.BoxDecoration(color: baseColor),
+      children: [
+        buildCell('Fecha', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Horario', isHeader: true, alignment: pw.Alignment.center),
+        buildCell('Asistencia', isHeader: true, alignment: pw.Alignment.center),
+      ],
+    ));
+
+    for (int i = 0; i < rows.length; i++) {
+      final r = rows[i];
+      final background = i % 2 == 0 ? lightColor : null;
+      
+      final fecha = _fmtDate(_pickStr(r, ['fecha', 'fechaISO', 'dia']));
+      final hi = _pickStr(r, ['hora_inicio', 'horaInicio']);
+      final hf = _pickStr(r, ['hora_fin', 'horaFin']);
+      final horario = (hi.isNotEmpty && hf.isNotEmpty) ? '$hi - $hf' : 'N/A';
+      
+      final presentes = _toIntOrNull(r['presentes'] ?? r['presentes_count'] ?? r['asistentes']);
+      final total = _toIntOrNull(r['total'] ?? r['total_estudiantes'] ?? r['inscritos']);
+      final asistencia = (presentes != null && total != null) ? '$presentes / $total' : 'N/A';
+
+      tableRows.add(pw.TableRow(
+        decoration: pw.BoxDecoration(color: background),
+        children: [
+          buildCell(fecha, alignment: pw.Alignment.center),
+          buildCell(horario, alignment: pw.Alignment.center),
+          buildCell(asistencia, alignment: pw.Alignment.center),
+        ],
+      ));
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: pw.PageTheme(
+          margin: const pw.EdgeInsets.all(24),
+          theme: pw.ThemeData.withFont(base: robotoFont),
+        ),
+        header: (context) => pw.Column(children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(titulo.toUpperCase(),
+                  style: pw.TextStyle(
+                      color: baseColor,
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold)),
+              pw.Text(nombreSubcat,
+                  style: const pw.TextStyle(
+                      color: PdfColors.grey700, fontSize: 14)),
+            ],
+          ),
+          pw.Divider(color: PdfColors.grey400, height: 8),
+          pw.SizedBox(height: 10),
+        ]),
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            pw.Text(
+                'Página ${context.pageNumber} de ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+          ],
+        ),
+        build: (context) => [
+          _buildSectionHeader('Sesiones en Rango ($_histDesde al $_histHasta)', 
+              Icons.history, baseColor, materialFont),
+          pw.SizedBox(height: 6),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(2),
+              1: const pw.FlexColumnWidth(2),
+              2: const pw.FlexColumnWidth(1.5),
+            },
+            children: tableRows,
+          ),
+          pw.SizedBox(height: 20),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Total de sesiones: ${rows.length}',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)
+            )
+          )
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
+  Future<void> _exportHistorialPdf() async {
+    final bytes = await _buildHistorialPdfBytes();
+    final nombreSubcat = _selSubcatNombre ?? 'historial';
+    await _saveBytes(
+      bytes,
+      defaultFileName: 'asistencia_${nombreSubcat}.pdf',
+      extensions: const ['pdf'],
+      mimeType: 'application/pdf',
+    );
+  }
+
+  // =================================================================
+  // ===== FIN: SECCIÓN DE EXPORTACIÓN ===============================
+  // =================================================================
 }
 
 // ===== Widgets auxiliares =====
@@ -693,19 +1821,151 @@ class _EmptySubcats extends StatelessWidget {
   }
 }
 
+// ===== WIDGET: _HistorialSesionTile (usado en Calendario) =====
+class _HistorialSesionTile extends StatelessWidget {
+  final Map<String, dynamic> sesion;
+  final void Function(Map<String, dynamic>) onAbrir;
+  
+  const _HistorialSesionTile({required this.sesion, required this.onAbrir});
+
+  String _pickStr(Map r, List<String> keys) {
+    for (final k in keys) {
+      final v = r[k];
+      if (v != null && '$v'.isNotEmpty) return '$v';
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = sesion;
+    final id = _readIdSesion(s);
+    final fecha = _pickStr(s, ['fecha', 'fechaISO', 'dia']);
+    final fShort = fecha.isNotEmpty
+        ? (fecha.length >= 10 ? fecha.substring(0, 10) : fecha)
+        : null;
+    
+    DateTime? fechaDt;
+    if (fShort != null) {
+      try { fechaDt = DateTime.parse(fShort); } catch (_) {}
+    }
+
+    final hi = _pickStr(s, ['hora_inicio', 'horaInicio']);
+    final hf = _pickStr(s, ['hora_fin', 'horaFin']);
+    final horario = (hi.isNotEmpty && hf.isNotEmpty) ? '$hi - $hf' : 'N/A';
+
+    final presentes = s['presentes'] ?? s['presentes_count'] ?? s['asistentes'];
+    final total = s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
+    
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      elevation: 1,
+      child: ListTile(
+        leading: Container(
+          width: 50,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (fechaDt != null) ...[
+                Text(
+                  DateFormat('MMM', 'es').format(fechaDt).toUpperCase(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary
+                  ),
+                ),
+                Text(
+                  DateFormat('dd').format(fechaDt),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ] else
+                const Icon(Icons.event_busy),
+            ],
+          ),
+        ),
+        title: Text(horario, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: (presentes != null && total != null)
+            ? Text('Asistencia: $presentes / $total')
+            : const Text('Sin detalle de asistencia'),
+        trailing: TextButton(
+          onPressed: id == null ? null : () => onAbrir(s),
+          child: const Text('Abrir'),
+        ),
+      ),
+    );
+  }
+}
+
+// ===== MODIFICADO: Modelo _RowAlumno usa Estatus =====
 class _RowAlumno {
   final int idEstudiante;
   final String nombre;
-  bool presente;
+  EstatusAsistencia estatus; // <-- MODIFICADO
   String observaciones;
   _RowAlumno({
     required this.idEstudiante,
     required this.nombre,
-    this.presente = false,
+    this.estatus = EstatusAsistencia.ausente, // <-- MODIFICADO (default ausente)
     this.observaciones = '',
   });
 }
+// ===================================================
 
+// ===== NUEVO: Widget selector de estatus =====
+class _StatusToggle extends StatelessWidget {
+  final EstatusAsistencia estatus;
+  final ValueChanged<EstatusAsistencia> onEstatusChanged;
+
+  const _StatusToggle({
+    required this.estatus,
+    required this.onEstatusChanged,
+  });
+
+  // Mapeo de estatus a ícono y color
+  static const Map<EstatusAsistencia, (IconData, Color)> _info = {
+    EstatusAsistencia.presente: (Icons.check_circle, Colors.green),
+    EstatusAsistencia.tarde: (Icons.schedule, Colors.orange),
+    EstatusAsistencia.ausente: (Icons.cancel, Colors.red),
+    EstatusAsistencia.justificado: (Icons.assignment_turned_in, Colors.blue),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return ToggleButtons(
+      isSelected: EstatusAsistencia.values.map((e) => e == estatus).toList(),
+      onPressed: (index) {
+        onEstatusChanged(EstatusAsistencia.values[index]);
+      },
+      // Estilos para que se vea bien
+      borderRadius: BorderRadius.circular(8),
+      selectedColor: Colors.white,
+      fillColor: _info[estatus]!.$2.withOpacity(0.8),
+      color: _info[estatus]!.$2.withOpacity(0.6),
+      borderColor: Colors.grey.withOpacity(0.3),
+      selectedBorderColor: _info[estatus]!.$2.withOpacity(0.5),
+      constraints: const BoxConstraints(minHeight: 36.0, minWidth: 36.0),
+      children: EstatusAsistencia.values.map((e) {
+        final (icon, color) = _info[e]!;
+        return Tooltip(
+          message: estatusAsistenciaToString(e).toUpperCase(),
+          child: Icon(icon, size: 20),
+        );
+      }).toList(),
+    );
+  }
+}
+// =============================================
+
+// ===== MODIFICADO: _rowsTable usa _StatusToggle =====
 Widget _rowsTable({
   required List<_RowAlumno> rows,
   required void Function(int, _RowAlumno) onChanged,
@@ -721,18 +1981,20 @@ Widget _rowsTable({
         final r = rows[i];
         return ListTile(
           dense: true,
-          leading: Checkbox(
-            value: r.presente,
-            onChanged: (v) => onChanged(
+          // ===== MODIFICADO: de Checkbox a _StatusToggle =====
+          leading: _StatusToggle(
+            estatus: r.estatus,
+            onEstatusChanged: (v) => onChanged(
               i,
               _RowAlumno(
                 idEstudiante: r.idEstudiante,
                 nombre: r.nombre,
-                presente: v ?? false,
+                estatus: v, // <-- Aquí
                 observaciones: r.observaciones,
               ),
             ),
           ),
+          // ==================================================
           title: Text(r.nombre),
           trailing: SizedBox(
             width: 300,
@@ -748,7 +2010,7 @@ Widget _rowsTable({
                 _RowAlumno(
                   idEstudiante: r.idEstudiante,
                   nombre: r.nombre,
-                  presente: r.presente,
+                  estatus: r.estatus, // <-- MODIFICADO
                   observaciones: v,
                 ),
               ),
@@ -759,3 +2021,4 @@ Widget _rowsTable({
     ),
   );
 }
+// ========================================================

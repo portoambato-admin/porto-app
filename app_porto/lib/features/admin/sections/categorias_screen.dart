@@ -1,11 +1,19 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
+
 import 'dart:async'; // Debouncer búsqueda
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
+import 'dart:typed_data';
 import 'dart:html' as html;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'package:cross_file/cross_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../../app/app_scope.dart';
 
@@ -113,6 +121,25 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     await _loadData(_tab.index);
   }
 
+  // ==== Helpers de orden natural por nombre ("Sub-4" < "Sub-10") ====
+  int? _numFromName(String? s) {
+    if (s == null) return null;
+    final m = RegExp(r'(\d+)').firstMatch(s);
+    return (m == null) ? null : int.tryParse(m.group(1)!);
+  }
+
+  int _compareCategoria(dynamic a, dynamic b) {
+    final sa = (a ?? '').toString();
+    final sb = (b ?? '').toString();
+    final na = _numFromName(sa);
+    final nb = _numFromName(sb);
+
+    if (na != null && nb != null) return na.compareTo(nb);      // natural (numérico)
+    if (na != null) return -1;                                  // con número primero
+    if (nb != null) return 1;
+    return sa.toLowerCase().compareTo(sb.toLowerCase());        // alfabético
+  }
+
   Future<void> _loadData(int tabIndex) async {
     setState(() { _loading = true; _error = null; });
 
@@ -126,17 +153,19 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     }
 
     try {
-      // Mantengo sort simple para copiar el “formato” de Subcategorías
       final res = await _repo.paged(
         page: page,
         pageSize: pageSize,
         q: _q,
-        sort: 'nombre_categoria', // si tu API usa 'nombre', no pasa nada si ignora clave
+        sort: 'nombre_categoria', // el backend ordena lexicográfico; aquí corregimos a natural
         order: 'asc',
         onlyActive: onlyActive,
       );
 
-      final items = List<Map<String, dynamic>>.from(res['items'] as List);
+      // Orden natural por nombre (Sub-4 < Sub-10) **dentro de la página**
+      final items = List<Map<String, dynamic>>.from(res['items'] as List)
+        ..sort((a, b) => _compareCategoria(a['nombre'], b['nombre']));
+
       final total = (res['total'] as num).toInt();
 
       setState(() {
@@ -289,13 +318,71 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     );
   }
 
-  // ===== Exportar CSV =====
-  void _exportCsvCurrent() {
+  // ===================== EXPORTACIONES ======================
+
+  // Menú de formatos
+  Future<void> _showExportOptions() async {
+    final sel = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Exportar categorías'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'csv'),
+            child: const ListTile(leading: Icon(Icons.table_rows), title: Text('CSV')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'xlsx'),
+            child: const ListTile(leading: Icon(Icons.grid_on), title: Text('Excel (.xlsx)')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'pdf'),
+            child: const ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('PDF')),
+          ),
+        ],
+      ),
+    );
+    if (sel == null) return;
+    switch (sel) {
+      case 'csv': _exportCsvCurrent(); break;
+      case 'xlsx': _exportExcelCurrent(); break;
+      case 'pdf': _exportPdfCurrent(); break;
+    }
+  }
+
+  // Obtiene datos y nombre base según pestaña
+  (List<Map<String, dynamic>> data, String baseName) _currentExportData() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
     final name = tab == 0
         ? 'categorias_activas'
         : (tab == 1 ? 'categorias_inactivas' : 'categorias_todas');
+    return (data, name);
+  }
+
+  // Guarda bytes de forma cross-platform
+  Future<void> _saveBytes(Uint8List bytes, String filename, String mimeType, {List<String>? exts}) async {
+    if (kIsWeb) {
+      final blob = html.Blob([bytes], mimeType);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final a = html.AnchorElement(href: url)..download = filename;
+      a.click();
+      html.Url.revokeObjectUrl(url);
+      return;
+    }
+    // Nativo: intenta "Descargas", si no existe usa "Documentos"
+    dynamic dir = await getDownloadsDirectory();
+    dir ??= await getApplicationDocumentsDirectory();
+    final String targetPath = '${dir.path}/$filename';
+
+    final xf = XFile.fromData(bytes, name: filename, mimeType: mimeType);
+    await xf.saveTo(targetPath);
+    _showSnack('Guardado en: $targetPath');
+  }
+
+  // ===== CSV =====
+  void _exportCsvCurrent() {
+    final (data, base) = _currentExportData();
 
     final csv = StringBuffer()..writeln('ID,Categoria,EdadMin,EdadMax,Activo,Creado');
     for (final r in data) {
@@ -308,17 +395,8 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
       csv.writeln('$id,$nom,$eMin,$eMax,$act,$cre');
     }
     final content = csv.toString();
-
-    if (kIsWeb) {
-      final bytes = <int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content)); // BOM para Excel
-      final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: url)..download = '$name.csv';
-      a.click();
-      html.Url.revokeObjectUrl(url);
-    } else {
-      _showCsvDialog(content, '$name.csv');
-    }
+    final bytes = Uint8List.fromList(<int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content))); // BOM para Excel
+    _saveBytes(bytes, '$base.csv', 'text/csv', exts: const ['csv']);
   }
 
   static String _csvEscape(Object? v) {
@@ -329,26 +407,217 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     return s;
   }
 
-  Future<void> _showCsvDialog(String data, String filename) async {
-    await showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text('CSV: $filename'),
-        content: SizedBox(width: 600, height: 360, child: SelectableText(data)),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: data));
-              if (mounted) Navigator.pop(context);
-              _showSnack('Copiado al portapapeles');
-            },
-            child: const Text('Copiar'),
+  // ===== Excel (.xlsx) =====
+  Future<void> _exportExcelCurrent() async {
+    final (data, base) = _currentExportData();
+
+    final book = xls.Excel.createExcel();
+    const sheetName = 'Categorias';
+    final defaultSheet = book.getDefaultSheet();
+    if (defaultSheet != null) {
+      book.rename(defaultSheet, sheetName);
+    }
+    final sheet = book[sheetName];
+
+    // Encabezados como TextCellValue
+    sheet.appendRow( [
+      xls.TextCellValue('ID'),
+      xls.TextCellValue('Categoría'),
+      xls.TextCellValue('EdadMin'),
+      xls.TextCellValue('EdadMax'),
+      xls.TextCellValue('Activo'),
+      xls.TextCellValue('Creado'),
+    ]);
+
+    // Filas con CellValue
+    for (final r in data) {
+      sheet.appendRow([
+        xls.TextCellValue('${r['id'] ?? ''}'),
+        xls.TextCellValue('${r['nombre'] ?? ''}'),
+        xls.TextCellValue('${r['edadMin'] ?? ''}'),
+        xls.TextCellValue('${r['edadMax'] ?? ''}'),
+        xls.TextCellValue(r['activo'] == true ? '1' : '0'),
+        xls.TextCellValue((r['creadoEn']?.toString().split('T').first) ?? ''),
+      ]);
+    }
+
+    final bytes = Uint8List.fromList(book.encode()!);
+    await _saveBytes(
+      bytes,
+      '$base.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      exts: const ['xlsx'],
+    );
+  }
+
+  // ======== Helpers de PDF mejorado ========
+  String _two(int n) => n < 10 ? '0$n' : '$n';
+
+  String get _tabLabel {
+    switch (_tab.index) {
+      case 0: return 'Activas';
+      case 1: return 'Inactivas';
+      default: return 'Todas';
+    }
+  }
+
+  pw.Widget _badge(String text) => pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin: const pw.EdgeInsets.only(right: 6),
+        decoration: pw.BoxDecoration(
+          color: PdfColor.fromInt(0xFFEFF6FF),
+          border: pw.Border.all(color: PdfColor.fromInt(0xFFBFD7FF)),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
+      );
+
+  pw.Widget _hCell(String t) => pw.Padding(
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(t, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+      );
+
+  pw.Widget _cCell(String t) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: pw.Text(t, style: const pw.TextStyle(fontSize: 10)),
+      );
+
+  // ===== PDF (formato mejorado) =====
+  Future<void> _exportPdfCurrent() async {
+    final (data, base) = _currentExportData();
+
+    final now = DateTime.now();
+    final fecha = '${now.year}-${_two(now.month)}-${_two(now.day)} '
+        '${_two(now.hour)}:${_two(now.minute)}';
+
+    final headerBg = PdfColor.fromInt(0xFFEFEFEF);
+    final altRowBg = PdfColor.fromInt(0xFFF7F7F7);
+    final borderClr = PdfColor.fromInt(0xFFBBBBBB);
+
+    final doc = pw.Document();
+
+    // Filas del cuerpo (zebra)
+    final bodyRows = <pw.TableRow>[];
+    for (var i = 0; i < data.length; i++) {
+      final r = data[i];
+      final isAlt = i.isOdd;
+      bodyRows.add(
+        pw.TableRow(
+          decoration: isAlt ? pw.BoxDecoration(color: altRowBg) : null,
+          children: [
+            _cCell('${r['id'] ?? ''}'),
+            _cCell('${r['nombre'] ?? ''}'),
+            _cCell('${r['edadMin'] ?? ''}'),
+            _cCell('${r['edadMax'] ?? ''}'),
+            _cCell((r['activo'] == true) ? 'Sí' : 'No'),
+            _cCell((r['creadoEn']?.toString().split('T').first) ?? ''),
+          ],
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 36),
+        footer: (ctx) => pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Página ${ctx.pageNumber} / ${ctx.pagesCount}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        ),
+        build: (ctx) => [
+          // ===== Encabezado del reporte =====
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Reporte de Categorías',
+                        style: pw.TextStyle(
+                          fontSize: 18,
+                          fontWeight: pw.FontWeight.bold,
+                        )),
+                    pw.SizedBox(height: 2),
+                    pw.Text('Academia de Fútbol PortoAmbato',
+                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+                  ],
+                ),
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('Exportado: $fecha', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text('Vista: $_tabLabel', style: const pw.TextStyle(fontSize: 10)),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+
+          // ===== Chips de criterios (si aplica) =====
+          if (_q != null && _q!.isNotEmpty) pw.Row(children: [_badge('Búsqueda: "${_q!}"')]),
+          if (_q != null && _q!.isNotEmpty) pw.SizedBox(height: 8),
+
+          // ===== Tabla =====
+          pw.Container(
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: borderClr, width: 0.5),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Table(
+              border: pw.TableBorder(
+                left: pw.BorderSide(color: borderClr, width: 0.5),
+                right: pw.BorderSide(color: borderClr, width: 0.5),
+                horizontalInside: pw.BorderSide(color: borderClr, width: 0.5),
+              ),
+              columnWidths: <int, pw.TableColumnWidth>{
+                0: const pw.FixedColumnWidth(40),   // ID
+                1: const pw.FlexColumnWidth(3),     // Categoría
+                2: const pw.FixedColumnWidth(45),   // EdadMin
+                3: const pw.FixedColumnWidth(45),   // EdadMax
+                4: const pw.FixedColumnWidth(45),   // Activo
+                5: const pw.FixedColumnWidth(80),   // Creado
+              },
+              children: [
+                // Header
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(color: headerBg),
+                  children: [
+                    _hCell('ID'),
+                    _hCell('Categoría'),
+                    _hCell('EdadMin'),
+                    _hCell('EdadMax'),
+                    _hCell('Activo'),
+                    _hCell('Creado'),
+                  ],
+                ),
+                // Body
+                ...bodyRows,
+              ],
+            ),
+          ),
+
+          pw.SizedBox(height: 8),
+
+          // ===== Total =====
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text('Total: ${data.length}',
+                style:  pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ),
         ],
       ),
     );
+
+    final bytes = await doc.save();
+    await _saveBytes(bytes, '$base.pdf', 'application/pdf', exts: const ['pdf']);
   }
+
+  // ===================== FIN EXPORTACIONES ======================
 
   // ===== Paginación =====
   void _onPageChange(int tabIndex, int newPage) {
@@ -396,232 +665,230 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
   // ============================ BUILD =================================
   // ====================================================================
   @override
-Widget build(BuildContext context) {
-  final isFirstLoad = _loading &&
-      _actItems.isEmpty &&
-      _inaItems.isEmpty &&
-      _allItems.isEmpty;
+  Widget build(BuildContext context) {
+    final isFirstLoad = _loading &&
+        _actItems.isEmpty &&
+        _inaItems.isEmpty &&
+        _allItems.isEmpty;
 
-  final core = LayoutBuilder(
-    builder: (ctx, c) {
-      final isNarrow = c.maxWidth < 820;
-      const double maxContentWidth = 1200;
-      final double width = c.maxWidth > maxContentWidth ? maxContentWidth : c.maxWidth;
+    final core = LayoutBuilder(
+      builder: (ctx, c) {
+        final isNarrow = c.maxWidth < 820;
+        const double maxContentWidth = 1200;
+        final double width = c.maxWidth > maxContentWidth ? maxContentWidth : c.maxWidth;
 
-      final header = _buildHeader(context, isNarrow);
+        final header = _buildHeader(context, isNarrow);
 
-      final tabs = TabBar(
-        controller: _tab,
-        isScrollable: isNarrow,
-        tabs: [
-          Tab(text: 'Activas (${_actTotal})'),
-          Tab(text: 'Inactivas (${_inaTotal})'),
-          Tab(text: 'Todas (${_allTotal})'),
-        ],
-      );
+        final tabs = TabBar(
+          controller: _tab,
+          isScrollable: isNarrow,
+          tabs: [
+            Tab(text: 'Activas (${_actTotal})'),
+            Tab(text: 'Inactivas (${_inaTotal})'),
+            Tab(text: 'Todas (${_allTotal})'),
+          ],
+        );
 
-      final content = isFirstLoad
-          ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
-          : _error != null
-              ? _ErrorView(error: _error!, onRetry: _loadCurrent)
-              : TabBarView(
-                  controller: _tab,
-                  children: [
-                    _buildTabContent(context, isNarrow, 0),
-                    _buildTabContent(context, isNarrow, 1),
-                    _buildTabContent(context, isNarrow, 2),
-                  ],
-                );
+        final content = isFirstLoad
+            ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
+            : _error != null
+                ? _ErrorView(error: _error!, onRetry: _loadCurrent)
+                : TabBarView(
+                    controller: _tab,
+                    children: [
+                      _buildTabContent(context, isNarrow, 0),
+                      _buildTabContent(context, isNarrow, 1),
+                      _buildTabContent(context, isNarrow, 2),
+                    ],
+                  );
 
-      final body = Align(
-        alignment: Alignment.topCenter,
-        child: SizedBox(
-          width: width,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              header,
-              const SizedBox(height: 12),
-              tabs,
-              const SizedBox(height: 8),
-              Expanded(
-                child: Stack(
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      child: content,
-                    ),
-                    if (_loading && !isFirstLoad)
-                      const Positioned(
-                        right: 12,
-                        top: 8,
-                        child: _LoadingChip(),
+        final body = Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: width,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header,
+                const SizedBox(height: 12),
+                tabs,
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: content,
                       ),
-                  ],
+                      if (_loading && !isFirstLoad)
+                        const Positioned(
+                          right: 12,
+                          top: 8,
+                          child: _LoadingChip(),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      );
+        );
 
-      return _withShortcuts(body);
-    },
-  );
+        return _withShortcuts(body);
+      },
+    );
 
-  return Scaffold(
-    appBar: AppBar(title: const Text('Categorías')),
-    body: Padding(padding: const EdgeInsets.all(12), child: core),
-  );
-}
-
+    return Scaffold(
+      appBar: AppBar(title: const Text('Categorías')),
+      body: Padding(padding: const EdgeInsets.all(12), child: core),
+    );
+  }
 
   // ===== Header alineado al formato =====
   Widget _buildHeader(BuildContext context, bool isNarrow) {
-  final activeFilters = Wrap(
-    spacing: 6,
-    runSpacing: 6,
-    children: [
-      if (_q != null)
+    final activeFilters = Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        if (_q != null)
+          InputChip(
+            label: Text('Búsqueda: "${_q!}"'),
+            onDeleted: () { _searchCtrl.clear(); _loadCurrent(); },
+            avatar: const Icon(Icons.search, size: 18),
+          ),
         InputChip(
-          label: Text('Búsqueda: "${_q!}"'),
-          onDeleted: () { _searchCtrl.clear(); _loadCurrent(); },
-          avatar: const Icon(Icons.search, size: 18),
+          label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
+          avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
+          onPressed: () => setState(() {
+            _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
+          }),
         ),
-      InputChip(
-        label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
-        avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
-        onPressed: () => setState(() {
-          _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
-        }),
-      ),
-      InputChip(
-        label: Text(_dense ? 'Denso' : 'Cómodo'),
-        avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
-        onPressed: () => setState(() => _dense = !_dense),
-      ),
-    ],
-  );
+        InputChip(
+          label: Text(_dense ? 'Denso' : 'Cómodo'),
+          avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
+          onPressed: () => setState(() => _dense = !_dense),
+        ),
+      ],
+    );
 
-  final searchField = TextField(
-    controller: _searchCtrl,
-    focusNode: _searchFocus,
-    decoration: InputDecoration(
-      hintText: 'Buscar por nombre…',
-      prefixIcon: const Icon(Icons.search),
-      suffixIcon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Tooltip(
-            message: 'Limpiar',
-            child: IconButton(
-              icon: const Icon(Icons.clear),
-              onPressed: () { _searchCtrl.clear(); _loadCurrent(); },
+    final searchField = TextField(
+      controller: _searchCtrl,
+      focusNode: _searchFocus,
+      decoration: InputDecoration(
+        hintText: 'Buscar por nombre…',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: 'Limpiar',
+              child: IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () { _searchCtrl.clear(); _loadCurrent(); },
+              ),
             ),
-          ),
-          Tooltip(
-            message: 'Recargar (Ctrl+R)',
-            child: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCurrent),
-          ),
-        ],
+            Tooltip(
+              message: 'Recargar (Ctrl+R)',
+              child: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCurrent),
+            ),
+          ],
+        ),
       ),
-    ),
-    onSubmitted: (_) => _loadCurrent(),
-    textInputAction: TextInputAction.search,
-  );
+      onSubmitted: (_) => _loadCurrent(),
+      textInputAction: TextInputAction.search,
+    );
 
-  final viewSelector = SegmentedButton<_ViewMode>(
-    segments: const [
-      ButtonSegment<_ViewMode>(value: _ViewMode.table, icon: Icon(Icons.table_chart), label: Text('Tabla')),
-      ButtonSegment<_ViewMode>(value: _ViewMode.cards,  icon: Icon(Icons.view_agenda), label: Text('Tarjetas')),
-    ],
-    selected: {_viewMode},
-    onSelectionChanged: (s) => setState(() => _viewMode = s.first),
-  );
+    final viewSelector = SegmentedButton<_ViewMode>(
+      segments: const [
+        ButtonSegment<_ViewMode>(value: _ViewMode.table, icon: Icon(Icons.table_chart), label: Text('Tabla')),
+        ButtonSegment<_ViewMode>(value: _ViewMode.cards,  icon: Icon(Icons.view_agenda), label: Text('Tarjetas')),
+      ],
+      selected: {_viewMode},
+      onSelectionChanged: (s) => setState(() => _viewMode = s.first),
+    );
 
-  final perPage = DropdownButtonFormField<int>(
-    value: switch (_tab.index) {
-      0 => _actPageSize,
-      1 => _inaPageSize,
-      _ => _allPageSize,
-    },
-    decoration: const InputDecoration(
-      prefixIcon: Icon(Icons.format_list_numbered),
-      labelText: 'Por página',
-    ),
-    items: const [
-      DropdownMenuItem(value: 10, child: Text('10')),
-      DropdownMenuItem(value: 20, child: Text('20')),
-      DropdownMenuItem(value: 50, child: Text('50')),
-    ],
-    onChanged: (v) {
-      if (v == null) return;
-      setState(() {
-        if (_tab.index == 0) { _actPageSize = v; _actPage = 1; }
-        else if (_tab.index == 1) { _inaPageSize = v; _inaPage = 1; }
-        else { _allPageSize = v; _allPage = 1; }
-      });
-      _loadCurrent();
-    },
-  );
+    final perPage = DropdownButtonFormField<int>(
+      value: switch (_tab.index) {
+        0 => _actPageSize,
+        1 => _inaPageSize,
+        _ => _allPageSize,
+      },
+      decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.format_list_numbered),
+        labelText: 'Por página',
+      ),
+      items: const [
+        DropdownMenuItem(value: 10, child: Text('10')),
+        DropdownMenuItem(value: 20, child: Text('20')),
+        DropdownMenuItem(value: 50, child: Text('50')),
+      ],
+      onChanged: (v) {
+        if (v == null) return;
+        setState(() {
+          if (_tab.index == 0) { _actPageSize = v; _actPage = 1; }
+          else if (_tab.index == 1) { _inaPageSize = v; _inaPage = 1; }
+          else { _allPageSize = v; _allPage = 1; }
+        });
+        _loadCurrent();
+      },
+    );
 
-  final exportBtn = OutlinedButton.icon(
-    onPressed: _exportCsvCurrent,
-    icon: const Icon(Icons.download),
-    label: const Text('Exportar'),
-  );
+    // ⬇️ Botón Exportar -> abre diálogo para CSV / Excel / PDF
+    final exportBtn = OutlinedButton.icon(
+      onPressed: _showExportOptions,
+      icon: const Icon(Icons.download),
+      label: const Text('Exportar'),
+    );
 
-  // ✅ Botón azul “Nueva”
-  final add = FilledButton.icon(
-    onPressed: _onNew,
-    icon: const Icon(Icons.add),
-    label: const Text('Nueva'),
-  );
+    // ✅ Botón azul “Nueva”
+    final add = FilledButton.icon(
+      onPressed: _onNew,
+      icon: const Icon(Icons.add),
+      label: const Text('Nueva'),
+    );
 
-  if (isNarrow) {
+    if (isNarrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          searchField,
+          const SizedBox(height: 8),
+          viewSelector,
+          const SizedBox(height: 8),
+          perPage,
+          const SizedBox(height: 8),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            exportBtn,
+            const SizedBox(width: 8),
+            add,
+          ]),
+          const SizedBox(height: 8),
+          activeFilters,
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        searchField,
-        const SizedBox(height: 8),
-        viewSelector,
-        const SizedBox(height: 8),
-        perPage,
-        const SizedBox(height: 8),
-        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-          exportBtn,
-          const SizedBox(width: 8),
-          add,
-        ]),
+        Row(
+          children: [
+            Expanded(child: searchField),
+            const SizedBox(width: 8),
+            SizedBox(width: 240, child: viewSelector),
+            const SizedBox(width: 8),
+            SizedBox(width: 180, child: perPage),
+            const Spacer(),
+            exportBtn,
+            const SizedBox(width: 8),
+            add, // ← visible en desktop
+          ],
+        ),
         const SizedBox(height: 8),
         activeFilters,
       ],
     );
   }
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Row(
-        children: [
-          Expanded(child: searchField),
-          const SizedBox(width: 8),
-          SizedBox(width: 240, child: viewSelector),
-          const SizedBox(width: 8),
-          SizedBox(width: 180, child: perPage),
-          const Spacer(),
-          exportBtn,
-          const SizedBox(width: 8),
-          add, // ← aquí queda visible en desktop
-        ],
-      ),
-      const SizedBox(height: 8),
-      activeFilters,
-    ],
-  );
-}
-
-
 
   List<Map<String, dynamic>> _itemsForTab(int index) {
     switch (index) {
@@ -684,8 +951,16 @@ Widget build(BuildContext context) {
     );
   }
 
+  // Encabezado “seguro” para DataColumn (evita overflow)
+  Widget _th(String s) => FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(s),
+      );
+
   // ===== Tabla (desktop) =====
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
+    final isNarrow = MediaQuery.of(context).size.width < 820;
     final textStyle = _dense
         ? Theme.of(context).textTheme.bodySmall
         : Theme.of(context).textTheme.bodyMedium;
@@ -694,39 +969,43 @@ Widget build(BuildContext context) {
       behavior: const ScrollBehavior().copyWith(scrollbars: true),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: _dense ? 36 : 48,
-          dataRowMinHeight: _dense ? 32 : 44,
-          dataRowMaxHeight: _dense ? 40 : null,
-          columns: const [
-            DataColumn(label: Text('ID')),
-            DataColumn(label: Text('Categoría')),
-            DataColumn(label: Text('Edad')),
-            DataColumn(label: Text('Estado')),
-            DataColumn(label: Text('Creado')),
-            DataColumn(label: Text('Acciones')),
-          ],
-          rows: rows.map((r) {
-            final bool activo = r['activo'] == true;
-            final String edades = [
-              r['edadMin']?.toString(),
-              r['edadMax']?.toString(),
-            ].where((e) => (e != null && e.isNotEmpty)).join(' - ');
-            final estadoIcon = Icon(
-              activo ? Icons.check_circle : Icons.cancel,
-              color: activo ? Colors.green : Colors.grey,
-              size: _dense ? 18 : 20,
-              semanticLabel: activo ? 'Activa' : 'Inactiva',
-            );
-            return DataRow(cells: [
-              DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
-              DataCell(SelectableText(edades.isEmpty ? '—' : edades, style: textStyle)),
-              DataCell(estadoIcon),
-              DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
-              DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
-            ]);
-          }).toList(),
+        child: ClipRect( // evita artefactos de overflow en modo debug
+          child: DataTable(
+            columnSpacing: isNarrow ? 16 : 24,
+            horizontalMargin: 12,
+            headingRowHeight: _dense ? 36 : 48,
+            dataRowMinHeight: _dense ? 32 : 44,
+            dataRowMaxHeight: _dense ? 40 : null,
+            columns: [
+              DataColumn(label: _th('ID')),
+              DataColumn(label: _th('Categoría')),
+              DataColumn(label: _th('Edad')),
+              DataColumn(label: _th('Estado')),
+              DataColumn(label: _th('Creado')),
+              DataColumn(label: _th('Acciones')),
+            ],
+            rows: rows.map((r) {
+              final bool activo = r['activo'] == true;
+              final String edades = [
+                r['edadMin']?.toString(),
+                r['edadMax']?.toString(),
+              ].where((e) => (e != null && e.isNotEmpty)).join(' - ');
+              final estadoIcon = Icon(
+                activo ? Icons.check_circle : Icons.cancel,
+                color: activo ? Colors.green : Colors.grey,
+                size: _dense ? 18 : 20,
+                semanticLabel: activo ? 'Activa' : 'Inactiva',
+              );
+              return DataRow(cells: [
+                DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
+                DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
+                DataCell(SelectableText(edades.isEmpty ? '—' : edades, style: textStyle)),
+                DataCell(estadoIcon),
+                DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
+                DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
+              ]);
+            }).toList(),
+          ),
         ),
       ),
     );
@@ -860,7 +1139,6 @@ class _PaginationControls extends StatelessWidget {
   final void Function(int) onPageSizeChange;
 
   const _PaginationControls({
-    super.key,
     required this.currentPage,
     required this.totalItems,
     required this.pageSize,
@@ -936,7 +1214,6 @@ class _EmptyState extends StatelessWidget {
   final (String, VoidCallback)? secondary;
 
   const _EmptyState({
-    super.key,
     required this.title,
     required this.subtitle,
     required this.primary,
@@ -976,7 +1253,7 @@ class _ErrorView extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
 
-  const _ErrorView({super.key, required this.error, required this.onRetry});
+  const _ErrorView({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1001,7 +1278,7 @@ class _ErrorView extends StatelessWidget {
 }
 
 class _LoadingChip extends StatelessWidget {
-  const _LoadingChip({super.key});
+  const _LoadingChip();
 
   @override
   Widget build(BuildContext context) {
@@ -1018,7 +1295,7 @@ class _LoadingPlaceholder extends StatelessWidget {
   final _ViewMode viewMode;
   final bool dense;
 
-  const _LoadingPlaceholder({super.key, required this.isNarrow, required this.viewMode, required this.dense});
+  const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
 
   @override
   Widget build(BuildContext context) {
@@ -1051,7 +1328,7 @@ class _LoadingPlaceholder extends StatelessWidget {
 
 class _Skeleton extends StatelessWidget {
   final double height;
-  const _Skeleton({super.key, required this.height});
+  const _Skeleton({required this.height});
 
   @override
   Widget build(BuildContext context) {
@@ -1065,5 +1342,3 @@ class _Skeleton extends StatelessWidget {
     );
   }
 }
-
-

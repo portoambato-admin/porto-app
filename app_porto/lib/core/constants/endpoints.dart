@@ -82,4 +82,5 @@ abstract class Endpoints {
   static String asistenciasSesionId(int idSesion) => '/asistencias/sesiones/$idSesion';
   static String asistenciasSesionMarcar(int idSesion) =>
       '/asistencias/sesiones/$idSesion/marcar';
+  static String get asistenciasHistorialEstudiante => '/asistencias/historial-estudiante';
 }
