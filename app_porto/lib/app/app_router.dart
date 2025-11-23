@@ -1,8 +1,7 @@
-// lib/app/app_router.dart
 import 'package:flutter/material.dart';
 
+// Roles
 import '../features/admin/sections/roles_screen.dart' show RolesScreen;
-
 
 // Rutas (constantes)
 import '../core/constants/route_names.dart';
@@ -10,12 +9,17 @@ import '../core/constants/route_names.dart';
 // Home (NO diferido)
 import '../features/public/presentation/screen/home_screen.dart';
 
-// PÚBLICAS diferidas (lazy) — ¡ojo con los alias, evita 'new'!
-import '../features/public/presentation/screen/store_screen.dart' deferred as store;
-import '../features/public/presentation/screen/events_screen.dart' deferred as events;
-import '../features/public/presentation/screen/categories_screen.dart' deferred as categories;
-import '../features/public/presentation/screen/benefits_screen.dart' deferred as benefits;
-import '../features/public/presentation/screen/about_screen.dart' deferred as about;
+// PÚBLICAS diferidas (lazy)
+import '../features/public/presentation/screen/store_screen.dart'
+    deferred as store;
+import '../features/public/presentation/screen/events_screen.dart'
+    deferred as events;
+import '../features/public/presentation/screen/categories_screen.dart'
+    deferred as categories;
+import '../features/public/presentation/screen/benefits_screen.dart'
+    deferred as benefits;
+import '../features/public/presentation/screen/about_screen.dart'
+    deferred as about;
 
 // Auth
 import '../features/auth/presentation/screens/auth_screen.dart';
@@ -24,28 +28,34 @@ import '../features/auth/presentation/screens/auth_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/admin/presentation/panel/panel_screen.dart';
 
-// ===== Admin: Hubs (NUEVO) =====
+// ===== Admin: Hubs =====
 import '../features/admin/presentation/hubs/personas_hub_screen.dart';
 import '../features/admin/presentation/hubs/academia_hub_screen.dart';
 import '../features/admin/presentation/hubs/finanzas_hub_screen.dart';
 import '../features/admin/presentation/hubs/sistema_hub_screen.dart';
+import '../features/admin/presentation/hubs/reportes_hub_screen.dart';
 
 // ===== Admin: secciones (NO lazy, protegidas) =====
 import '../features/admin/sections/usuarios_screen.dart';
 import '../features/admin/sections/asistencias_screen.dart';
-import '../features/admin/sections/categorias_screen.dart' show AdminCategoriasScreen;
-import '../features/admin/sections/config_screen.dart' show AdminConfigScreen;
-import '../features/admin/sections/admin_pagos_screen.dart' show AdminPagosScreen;
+import '../features/admin/sections/categorias_screen.dart'
+    show AdminCategoriasScreen;
+import '../features/admin/sections/config_screen.dart'
+    show AdminConfigScreen;
+import '../features/admin/sections/admin_pagos_screen.dart'
+    show AdminPagosScreen;
 
 import '../features/admin/presentation/profesores/profesores_screen.dart';
-import '../features/admin/sections/estudiantes_screen.dart' show AdminEstudiantesScreen;
-import '../features/admin/sections/estudiante_detail_screen.dart' show EstudianteDetailScreen;
+import '../features/admin/sections/estudiantes_screen.dart'
+    show AdminEstudiantesScreen;
+import '../features/admin/sections/estudiante_detail_screen.dart'
+    show EstudianteDetailScreen;
 
 // Subcategorías: listado y detalle
 import '../features/admin/sections/detalle_subcategorias_screen.dart'
-  show SubcategoriaEstudiantesScreen;
+    show SubcategoriaEstudiantesScreen;
 import '../features/admin/sections/admin_subcategorias_screen.dart'
-  show AdminSubcategoriasScreen;
+    show AdminSubcategoriasScreen;
 
 // Sesión
 import '../core/services/session.dart';
@@ -110,7 +120,7 @@ class AppRouter {
       case RouteNames.adminRoot:
         return _guardedPlain(s, builder: (_) => const PanelScreen());
 
-      // ======= Hubs base (NUEVOS) ============================================
+      // ======= Hubs base =====================================================
       case RouteNames.adminPersonas:
         return _guardedPlain(s, builder: (_) => const PersonasHubScreen());
 
@@ -122,6 +132,13 @@ class AppRouter {
 
       case RouteNames.adminSistema:
         return _guardedPlain(s, builder: (_) => const SistemaHubScreen());
+
+      // 🔹 Hub de REPORTES independiente
+      case RouteNames.adminReportes:
+        return _guardedPlain(
+          s,
+          builder: (_) => const ReportesHubScreen(),
+        );
 
       // ======= Subrutas anidadas (NUEVAS) ====================================
       // Personas
@@ -139,47 +156,57 @@ class AppRouter {
           ),
         );
 
+      case RouteNames.adminPersonasRoles:
+        return _guardedPlain(
+          s,
+          builder: (_) => PersonasHubScreen(
+            child: RolesScreen(embedded: true),
+          ),
+        );
+
       // Academia
       case RouteNames.adminAcademiaCategorias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminCategoriasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminCategoriasScreen()),
         );
-
-        
 
       case RouteNames.adminAcademiaSubcategorias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
         );
 
       case RouteNames.adminAcademiaEstudiantes:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminEstudiantesScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminEstudiantesScreen()),
         );
 
       case RouteNames.adminAcademiaAsistencias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminAsistenciasScreen()),
         );
-
-     
 
       // Finanzas
       case RouteNames.adminFinanzasPagos:
         return _guardedPlain(
           s,
-          builder: (_) => const FinanzasHubScreen(child: AdminPagosScreen()),
+          builder: (_) =>
+              const FinanzasHubScreen(child: AdminPagosScreen()),
         );
 
       // Sistema
       case RouteNames.adminSistemaConfig:
         return _guardedPlain(
           s,
-          builder: (_) => const SistemaHubScreen(child: AdminConfigScreen()),
+          builder: (_) =>
+              const SistemaHubScreen(child: AdminConfigScreen()),
         );
 
       // ======= Compatibilidad: rutas antiguas ================================
@@ -197,49 +224,54 @@ class AppRouter {
           ),
         );
 
+      case RouteNames.adminRoles:
+        return _guardedPlain(
+          s,
+          builder: (_) => PersonasHubScreen(
+            child: RolesScreen(embedded: true),
+          ),
+        );
+
       case RouteNames.adminCategorias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminCategoriasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminCategoriasScreen()),
         );
 
       case RouteNames.adminSubcategorias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
         );
 
       case RouteNames.adminAsistencias:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminAsistenciasScreen()),
         );
-
-      
 
       case RouteNames.adminPagos:
         return _guardedPlain(
           s,
-          builder: (_) => const FinanzasHubScreen(child: AdminPagosScreen()),
+          builder: (_) =>
+              const FinanzasHubScreen(child: AdminPagosScreen()),
         );
 
       case RouteNames.adminConfig:
         return _guardedPlain(
           s,
-          builder: (_) => const SistemaHubScreen(child: AdminConfigScreen()),
+          builder: (_) =>
+              const SistemaHubScreen(child: AdminConfigScreen()),
         );
-        case RouteNames.adminPersonasRoles:
-  return _guardedPlain(
-    s,
-    builder: (_) => PersonasHubScreen(
-      child: RolesScreen(embedded: true),
-    ),
-  );
 
       case RouteNames.adminEstudiantes:
         return _guardedPlain(
           s,
-          builder: (_) => const AcademiaHubScreen(child: AdminEstudiantesScreen()),
+          builder: (_) =>
+              const AcademiaHubScreen(child: AdminEstudiantesScreen()),
         );
 
       case RouteNames.adminEstudianteDetalle:
@@ -248,25 +280,35 @@ class AppRouter {
           int? id;
           if (args is Map && args['id'] != null) {
             final v = args['id'];
-            if (v is int) id = v;
-            else if (v is num) id = v.toInt();
-            else if (v is String) id = int.tryParse(v);
+            if (v is int) {
+              id = v;
+            } else if (v is num) {
+              id = v.toInt();
+            } else if (v is String) {
+              id = int.tryParse(v);
+            }
           }
           if (id == null) {
             return const _ArgsErrorPage('Falta argumento: id (int)');
           }
-          return AcademiaHubScreen(child: EstudianteDetailScreen(id: id));
+          return AcademiaHubScreen(
+            child: EstudianteDetailScreen(id: id),
+          );
         });
 
       // Subcategoría → Estudiantes (detalle)
       case RouteNames.adminSubcatEstudiantes:
         return _guardedPlain(s, builder: (_) {
-          final args = s.arguments is Map ? Map<String, dynamic>.from(s.arguments as Map) : <String, dynamic>{};
+          final args = s.arguments is Map
+              ? Map<String, dynamic>.from(s.arguments as Map)
+              : <String, dynamic>{};
           final idSubcat = _arg<int>(args, 'idSubcategoria');
-          final nombre   = _arg<String>(args, 'nombreSubcategoria');
-          final idCat    = _arg<int>(args, 'idCategoria'); // opcional
+          final nombre = _arg<String>(args, 'nombreSubcategoria');
+          final idCat = _arg<int>(args, 'idCategoria'); // opcional
           if (idSubcat == null || nombre == null) {
-            return const _ArgsErrorPage('Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)');
+            return const _ArgsErrorPage(
+              'Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)',
+            );
           }
           return AcademiaHubScreen(
             child: SubcategoriaEstudiantesScreen(

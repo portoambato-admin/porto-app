@@ -36,6 +36,11 @@ class PanelScreen extends StatelessWidget {
               label: 'Profesores',
               onTap: () => Navigator.pushNamed(context, RouteNames.adminProfesores),
             ),
+            HubOption(
+              icon: Icons.shield_outlined,
+              label: 'Roles',
+              onTap: () => Navigator.pushNamed(context, RouteNames.adminRoles),
+            ),
             // Roles/Permisos lo integramos cuando exista la ruta real (evitar opciones muertas)
           ],
         ),
@@ -92,6 +97,23 @@ class PanelScreen extends StatelessWidget {
     }
 
     if (showSistema) {
+      cards.add(
+        PanelHubCard(
+          icon: Icons.data_thresholding_outlined,
+          title: 'Reportes',
+          options: [
+            HubOption(
+              icon: Icons.desktop_mac_sharp,
+              label: 'Reportes',
+              onTap: () => Navigator.pushNamed(context, RouteNames.adminReportes),
+            ),
+            // Auditoría/Multimedia cuando exista ruta real
+          ],
+        ),
+      );
+    }
+
+     if (showSistema) {
       cards.add(
         PanelHubCard(
           icon: Icons.settings_suggest_outlined,

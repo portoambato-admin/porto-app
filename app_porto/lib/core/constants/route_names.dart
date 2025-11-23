@@ -1,4 +1,3 @@
-// lib/core/constants/route_names.dart
 abstract class RouteNames {
   // Públicas
   static const root = '/';
@@ -13,7 +12,7 @@ abstract class RouteNames {
   static const conocenos = '/conocenos';
 
   // ===== Admin: hubs raíz
-  static const adminRoot = '/admin';
+  static const adminRoot     = '/admin';
   static const adminPersonas = '/admin/personas';
   static const adminAcademia = '/admin/academia';
   static const adminFinanzas = '/admin/finanzas';
@@ -25,45 +24,72 @@ abstract class RouteNames {
   static const adminPersonasRoles      = '/admin/personas/roles'; // NEW
 
   // ===== Admin: subrutas de Academia
-  static const adminAcademiaCategorias     = '/admin/academia/categorias';
-  static const adminAcademiaSubcategorias  = '/admin/academia/subcategorias';
-  static const adminAcademiaEstudiantes    = '/admin/academia/estudiantes';
-  static const adminAcademiaAsistencias    = '/admin/academia/asistencias';
+  static const adminAcademiaCategorias    = '/admin/academia/categorias';
+  static const adminAcademiaSubcategorias = '/admin/academia/subcategorias';
+  static const adminAcademiaEstudiantes   = '/admin/academia/estudiantes';
+  static const adminAcademiaAsistencias   = '/admin/academia/asistencias';
 
   // ===== Admin: subrutas de Finanzas
   static const adminFinanzasPagos = '/admin/finanzas/pagos';
 
   // ===== Admin: subrutas de Sistema
-  static const adminSistemaConfig = '/admin/sistema/config';
+  static const adminSistemaConfig   = '/admin/sistema/config';
+  static const adminSistemaReportes = '/admin/sistema/reportes'; // NUEVO
 
-  // ===== Compat (rutas antiguas)
-  static const adminUsuarios       = '/admin/usuarios';
-  static const adminProfesores     = '/admin/profesores';
-  static const adminRoles          = '/admin/roles';        // NEW
-  static const adminCategorias     = '/admin/categorias';
-  static const adminSubcategorias  = '/admin/subcategorias';
-  static const adminAsistencias    = '/admin/asistencias';
-  static const adminPagos          = '/admin/pagos';
-  static const adminConfig         = '/admin/config';
+  // ===== Compat (rutas antiguas / atajos)
+  static const adminUsuarios      = '/admin/usuarios';
+  static const adminProfesores    = '/admin/profesores';
+  static const adminRoles         = '/admin/roles';        // NEW
+  static const adminCategorias    = '/admin/categorias';
+  static const adminSubcategorias = '/admin/subcategorias';
+  static const adminAsistencias   = '/admin/asistencias';
+  static const adminPagos         = '/admin/pagos';
+  static const adminReportes      = '/admin/reportes';     // NUEVO (atajo)
+  static const adminConfig        = '/admin/config';
 
   // Estudiantes (listado + detalle)
-  static const adminEstudiantes        = '/admin/estudiantes';
-  static const adminEstudianteDetalle  = '/admin/estudiantes/detalle';
+  static const adminEstudiantes       = '/admin/estudiantes';
+  static const adminEstudianteDetalle = '/admin/estudiantes/detalle';
 
   // Subcategoría → Estudiantes (detalle de subcat)
   static const adminSubcatEstudiantes = '/admin/subcategorias/estudiantes';
 
   // Guardadas (requieren token)
   static const guarded = <String>{
-    perfil, panel,
+    perfil,
+    panel,
     adminRoot,
-    adminPersonas, adminAcademia, adminFinanzas, adminSistema,
-    adminPersonasUsuarios, adminPersonasProfesores, adminPersonasRoles,
-    adminAcademiaCategorias, adminAcademiaSubcategorias,
-    adminAcademiaEstudiantes, adminAcademiaAsistencias, 
-    adminFinanzasPagos, adminSistemaConfig,
-    adminUsuarios, adminProfesores, adminRoles, adminCategorias, adminSubcategorias,
-    adminAsistencias, adminPagos, adminConfig,
-    adminEstudiantes, adminEstudianteDetalle, adminSubcatEstudiantes,
+    adminPersonas,
+    adminAcademia,
+    adminFinanzas,
+    adminSistema,
+
+    adminPersonasUsuarios,
+    adminPersonasProfesores,
+    adminPersonasRoles,
+
+    adminAcademiaCategorias,
+    adminAcademiaSubcategorias,
+    adminAcademiaEstudiantes,
+    adminAcademiaAsistencias,
+
+    adminFinanzasPagos,
+
+    adminSistemaConfig,
+    adminSistemaReportes, // NUEVO
+
+    adminUsuarios,
+    adminProfesores,
+    adminRoles,
+    adminCategorias,
+    adminSubcategorias,
+    adminAsistencias,
+    adminPagos,
+    adminConfig,
+    adminReportes,        // NUEVO
+
+    adminEstudiantes,
+    adminEstudianteDetalle,
+    adminSubcatEstudiantes,
   };
 }

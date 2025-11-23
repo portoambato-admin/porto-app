@@ -2,7 +2,7 @@ class AppEnv {
   // Cambia con --dart-define
   static const String apiBase = String.fromEnvironment(
     'API_BASE',
-    defaultValue: 'http://localhost:3000',
+    defaultValue: 'https://backend-production-cb2d.up.railway.app',
   );
 
   static const bool isProd = bool.fromEnvironment(

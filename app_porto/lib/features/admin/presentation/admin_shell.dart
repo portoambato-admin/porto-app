@@ -7,33 +7,51 @@ import 'package:app_porto/ui/components/breadcrumbs.dart';
 import 'widgets/admin_section_tabs.dart' show AdminSection;
 
 /// Hubs principales del panel
-enum AdminHub { personas, academia, finanzas, sistema }
+enum AdminHub { personas, academia, finanzas, reportes, sistema }
 
 extension _HubMeta on AdminHub {
   String get label {
     switch (this) {
-      case AdminHub.personas: return 'Personas';
-      case AdminHub.academia: return 'Academia';
-      case AdminHub.finanzas: return 'Finanzas';
-      case AdminHub.sistema:  return 'Sistema';
+      case AdminHub.personas:
+        return 'Personas';
+      case AdminHub.academia:
+        return 'Academia';
+      case AdminHub.finanzas:
+        return 'Finanzas';
+      case AdminHub.reportes:
+        return 'Reportes';
+      case AdminHub.sistema:
+        return 'Sistema';
     }
   }
 
   IconData get icon {
     switch (this) {
-      case AdminHub.personas: return Icons.groups_2_outlined;
-      case AdminHub.academia: return Icons.school_outlined;
-      case AdminHub.finanzas: return Icons.payments_outlined;
-      case AdminHub.sistema:  return Icons.settings_suggest_outlined;
+      case AdminHub.personas:
+        return Icons.groups_2_outlined;
+      case AdminHub.academia:
+        return Icons.school_outlined;
+      case AdminHub.finanzas:
+        return Icons.payments_outlined;
+      case AdminHub.reportes:
+        return Icons.data_thresholding_outlined;
+      case AdminHub.sistema:
+        return Icons.settings_suggest_outlined;
     }
   }
 
   String get route {
     switch (this) {
-      case AdminHub.personas: return '/admin/personas';
-      case AdminHub.academia: return '/admin/academia';
-      case AdminHub.finanzas: return '/admin/finanzas';
-      case AdminHub.sistema:  return '/admin/sistema';
+      case AdminHub.personas:
+        return '/admin/personas';
+      case AdminHub.academia:
+        return '/admin/academia';
+      case AdminHub.finanzas:
+        return '/admin/finanzas';
+      case AdminHub.reportes:
+        return '/admin/reportes';
+      case AdminHub.sistema:
+        return '/admin/sistema';
     }
   }
 }
@@ -50,9 +68,9 @@ class AdminShell extends StatefulWidget {
   final PreferredSizeWidget? bottomExtra;
 
   /// NUEVO: centralización
-  final double? maxContentWidth;         // si es null aplica heurística por breakpoint
+  final double? maxContentWidth; // si es null aplica heurística por breakpoint
   final EdgeInsetsGeometry? contentPadding;
-  final bool centerBottomExtra;          // centra el bottom (p.ej. TabBar)
+  final bool centerBottomExtra; // centra el bottom (p.ej. TabBar)
 
   const AdminShell({
     super.key,
@@ -115,20 +133,22 @@ class _AdminShellState extends State<AdminShell> {
   List<AdminHub> _allowedHubsForRole(int? roleId) {
     // 1=Admin, 2=Teacher, 3=Padre (según tu AuthState actual)
     if (roleId == 2) {
+      // Profesor: solo ve Academia
       return const [AdminHub.academia];
     }
-    return const [AdminHub.personas, AdminHub.academia, AdminHub.finanzas, AdminHub.sistema];
+
+    // Admin (y otros roles con acceso completo)
+    return const [
+      AdminHub.personas,
+      AdminHub.academia,
+      AdminHub.finanzas,
+      AdminHub.reportes, // ← Reportes antes de Sistema
+      AdminHub.sistema,
+    ];
   }
 
   void _navigate(AdminHub hub) {
-    // En PASO 1 aún no definimos rutas; evitamos crash si faltan
-    try {
-      Navigator.of(context).pushNamed(hub.route);
-    } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Las rutas de hubs se activan en el PASO 2')),
-      );
-    }
+    Navigator.of(context).pushNamed(hub.route);
   }
 
   Widget _buildSearch(BuildContext context) {
@@ -148,17 +168,28 @@ class _AdminShellState extends State<AdminShell> {
                       content: TextField(
                         controller: controller,
                         autofocus: true,
-                        decoration: const InputDecoration(hintText: 'Escribe para buscar'),
+                        decoration: const InputDecoration(
+                          hintText: 'Escribe para buscar',
+                        ),
                         onSubmitted: (v) => Navigator.pop(context, v),
                       ),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-                        FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Buscar')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancelar'),
+                        ),
+                        FilledButton(
+                          onPressed: () =>
+                              Navigator.pop(context, controller.text.trim()),
+                          child: const Text('Buscar'),
+                        ),
                       ],
                     );
                   },
                 );
-                if (text != null && text.trim().isNotEmpty) onSearch(text.trim());
+                if (text != null && text.trim().isNotEmpty) {
+                  onSearch(text.trim());
+                }
               },
         icon: const Icon(Icons.search),
       );
@@ -185,7 +216,7 @@ class _AdminShellState extends State<AdminShell> {
     if (context.isDesktop) return 1200;
     if (context.isTablet) return 1000;
     return double.infinity; // móvil: ocupa todo
-    }
+  }
 
   PreferredSizeWidget? _maybeCenteredBottom(PreferredSizeWidget? bottom) {
     if (bottom == null) return null;
@@ -217,7 +248,9 @@ class _AdminShellState extends State<AdminShell> {
           ),
       ],
       selectedIndex: selectedIndex,
-      labelType: context.isDesktop ? NavigationRailLabelType.none : NavigationRailLabelType.selected,
+      labelType: context.isDesktop
+          ? NavigationRailLabelType.none
+          : NavigationRailLabelType.selected,
       extended: context.isDesktop, // expandido en desktop
       onDestinationSelected: (i) => _navigate(hubs[i]),
     );
@@ -231,7 +264,10 @@ class _AdminShellState extends State<AdminShell> {
             children: [
               const Icon(Icons.admin_panel_settings_outlined, size: 28),
               const SizedBox(width: 10),
-              Text('Panel administrativo', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Panel administrativo',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ],
           ),
         ),
@@ -301,16 +337,15 @@ AdminHub _hubFromSection(AdminSection s) {
     case AdminSection.profesores:
       return AdminHub.personas;
 
+    case AdminSection.categorias:
+    case AdminSection.subcategorias:
+    case AdminSection.asistencias:
+      return AdminHub.academia;
+
     case AdminSection.pagos:
       return AdminHub.finanzas;
 
     case AdminSection.config:
       return AdminHub.sistema;
-
-    case AdminSection.categorias:
-    case AdminSection.subcategorias:
-    case AdminSection.asistencias:
-    
-    return AdminHub.academia;
   }
 }

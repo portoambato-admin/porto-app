@@ -21,13 +21,13 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
     super.dispose();
   }
 
-  TabBar _tabs() {
+  TabBar _tabs({required bool isScrollable}) {
     return TabBar(
       controller: _tab,
-      isScrollable: false,
+      isScrollable: isScrollable,
       tabs: const [
-        Tab(text: 'Profesores activos'),
-        Tab(text: 'Profesores inactivos'),
+        Tab(text: 'Acctivos'),
+        Tab(text: 'Inactivos'),
         Tab(text: 'Todos'),
       ],
     );
@@ -35,11 +35,21 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final bool isMobile = width < 700; // breakpoint simple para móvil/tablet
+
+    // ====== MODO EMBEBIDO (dentro de otra vista) ======
     if (widget.embedded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Align(alignment: Alignment.center, child: _tabs()),
+          Align(
+            alignment: Alignment.center,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: _tabs(isScrollable: isMobile),
+            ),
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: Padding(
@@ -51,12 +61,17 @@ class _ProfesoresScreenState extends State<ProfesoresScreen>
       );
     }
 
+    // ====== MODO NORMAL (pantalla completa con AdminShell) ======
     return AdminShell.legacy(
       section: AdminSection.profesores,
       title: 'Profesores',
-      bottomExtra: _tabs(),
+      // bottomExtra debe ser PreferredSizeWidget
+      bottomExtra: PreferredSize(
+        preferredSize: const Size.fromHeight(kTextTabBarHeight),
+        child: _tabs(isScrollable: isMobile),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(isMobile ? 8 : 12),
         child: ProfesoresTab(tab: _tab),
       ),
       actions: [

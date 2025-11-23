@@ -7,7 +7,7 @@ class ApiService {
   /// Base del backend (SIN /auth al final)
   static const String API_BASE = String.fromEnvironment(
     'API_BASE',
-    defaultValue: 'http://localhost:3000',
+    defaultValue: 'https://backend-production-cb2d.up.railway.app',
   );
 
   // ---------- Headers ----------
