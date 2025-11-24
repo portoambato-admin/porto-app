@@ -830,9 +830,6 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   }
 }
 
-/* =========================
-   Paginador / Vistas auxiliares
-   ========================= */
 
 class _Paginator extends StatelessWidget {
   const _Paginator({

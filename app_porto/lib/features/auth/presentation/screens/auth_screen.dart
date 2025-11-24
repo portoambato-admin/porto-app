@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'dart:io';
 
-// 🔄 Imports de tu app (sin api_service)
 import '../../../../app/app_scope.dart';
 import '../../../../core/constants/route_names.dart';
-import '../../../../core/state/auth_state.dart'; // seguimos usando tu AuthScope
+import '../../../../core/state/auth_state.dart';
 import '../../../../core/rbac/permission_gate.dart' show Permissions;
-
-// ✅ Import para limpiar el cache del token tras login
 import '../../../../core/services/session_token_provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+
+// =========================================================
+//                AUTH SCREEN PRINCIPAL
+// =========================================================
 
 enum _AuthMode { login, register }
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
-  static const double _maxCardWidth = 420;
+  static const double _maxCardWidth = 450;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -39,24 +44,28 @@ class _AuthScreenState extends State<AuthScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cs.surface,
+      // AGREGADO: Center + SingleChildScrollView para evitar errores de overflow
+      // si el teclado aparece o la pantalla es muy pequeña.
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AuthScreen._maxCardWidth),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Card(
-              elevation: 0,
-              color: cs.surface,
-              shape: RoundedRectangleBorder(
-                side: BorderSide(color: cs.outlineVariant),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                child: _MinimalAuthCard(
-                  mode: _mode,
-                  onModeChange: (m) => setState(() => _mode = m),
-                  redirectTo: _redirectTo,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: AuthScreen._maxCardWidth),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Card(
+                color: cs.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: cs.outlineVariant),
+                ),
+                elevation: 0,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
+                  child: _AuthCard(
+                    mode: _mode,
+                    onModeChange: (m) => setState(() => _mode = m),
+                    redirectTo: _redirectTo,
+                  ),
                 ),
               ),
             ),
@@ -67,28 +76,162 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-class _MinimalAuthCard extends StatefulWidget {
-  const _MinimalAuthCard({
+// =========================================================
+//                GOOGLE LOGIN BUTTON
+// =========================================================
+
+class _GoogleLoginButton extends StatefulWidget {
+  final String redirectTo;
+
+  const _GoogleLoginButton({required this.redirectTo});
+
+  @override
+  State<_GoogleLoginButton> createState() => _GoogleLoginButtonState();
+}
+
+class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
+  bool _loading = false;
+Future<void> _loginGoogle() async {
+  if (_loading) return;
+
+  setState(() => _loading = true);
+
+  try {
+    final scope = AppScope.of(context);
+    String? idToken;
+
+    // ANDROID / IOS
+    if (!kIsWeb) {
+      final googleSignIn = GoogleSignIn(scopes: ['email']);
+      GoogleSignInAccount? googleUser = await googleSignIn.signInSilently();
+      googleUser ??= await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final auth = await googleUser.authentication;
+      idToken = auth.idToken;
+    }
+
+    // WEB ✅ CORRECCIÓN AQUÍ
+    else {
+      final provider = firebase_auth.GoogleAuthProvider();
+      final auth = firebase_auth.FirebaseAuth.instance;
+
+      // ✅ signInWithPopup es el método correcto
+      final cred = await auth.signInWithPopup(provider);
+
+      idToken = await cred.user?.getIdToken();
+    }
+
+    if (idToken == null) {
+      throw Exception("No se pudo obtener el token de Google");
+    }
+
+    // LOGIN EN TU BACKEND
+    final loginRes = await scope.auth.loginGoogle(idToken);
+
+    await AuthScope.of(context).signIn(
+      token: loginRes.token,
+      userJson: jsonEncode(loginRes.user),
+    );
+
+    SessionTokenProvider.instance.clearCache();
+    await Permissions.of(context).refresh();
+
+    if (!mounted) return;
+
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      widget.redirectTo,
+      (_) => false,
+    );
+  } catch (e) {
+    debugPrint("GOOGLE LOGIN ERROR: $e");
+    
+    String errorMsg = "Error al iniciar sesión con Google";
+    
+    if (e.toString().contains('popup-closed-by-user')) {
+      errorMsg = "Cerraste la ventana de inicio de sesión";
+    } else if (e.toString().contains('popup-blocked')) {
+      errorMsg = "El navegador bloqueó la ventana emergente";
+    }
+    
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMsg),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+  } finally {
+    if (mounted) setState(() => _loading = false);
+  }
+}
+
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _loading ? null : _loginGoogle,
+        // CORRECCIÓN: ErrorBuilder para que no explote si falta la imagen
+        icon: _loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Image.asset(
+                "assets/img/google.png",
+                height: 20,
+                // Si no encuentra la imagen, pone este icono automáticamente
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.g_mobiledata, size: 28),
+              ),
+        label: const Text("Continuar con Google"),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: cs.onSurface,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================
+//                AUTH CARD
+// =========================================================
+
+class _AuthCard extends StatefulWidget {
+  final _AuthMode mode;
+  final ValueChanged<_AuthMode> onModeChange;
+  final String redirectTo;
+
+  const _AuthCard({
     required this.mode,
     required this.onModeChange,
     required this.redirectTo,
   });
 
-  final _AuthMode mode;
-  final ValueChanged<_AuthMode> onModeChange;
-  final String redirectTo;
-
   @override
-  State<_MinimalAuthCard> createState() => _MinimalAuthCardState();
+  State<_AuthCard> createState() => _AuthCardState();
 }
 
-class _MinimalAuthCardState extends State<_MinimalAuthCard> {
+class _AuthCardState extends State<_AuthCard> {
   final _form = GlobalKey<FormState>();
-  final _nombre = TextEditingController();
-  final _correo = TextEditingController();
-  final _pass   = TextEditingController();
-  final _correoFocus = FocusNode();
-  final _passFocus   = FocusNode();
+  final _nombreCtrl = TextEditingController();
+  final _correoCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  final FocusNode _correoFocus = FocusNode();
+  final FocusNode _passFocus = FocusNode();
 
   bool _obscure = true;
   bool _loading = false;
@@ -96,128 +239,179 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
 
   @override
   void dispose() {
-    _nombre.dispose();
-    _correo.dispose();
-    _pass.dispose();
+    _nombreCtrl.dispose();
+    _correoCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
     _correoFocus.dispose();
     _passFocus.dispose();
     super.dispose();
   }
 
+  // --- VALIDACIONES (Mismo código de antes) ---
+  final List<String> _dominiosProhibidos = const [
+    'tempmail', '10minutemail', 'mailinator', 'discard', 'guerrillamail', 'yopmail',
+  ];
+  final List<String> _contrasenasProhibidas = const [
+    '12345678', 'password', 'qwerty123', 'abc12345', '123456789', 'porto123', 'admin123',
+  ];
+
   String? _validateEmail(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Ingresa tu correo';
-    final emailRe = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
-    if (!emailRe.hasMatch(value)) return 'Correo no válido';
-    if (value.length > 50) return 'Máximo 50 caracteres';
+    final regex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$');
+    if (!regex.hasMatch(value)) return 'Correo no válido';
+    if (widget.mode == _AuthMode.register) {
+      final dominio = value.split('@').last.toLowerCase();
+      for (final bad in _dominiosProhibidos) {
+        if (dominio.contains(bad)) return 'Dominio no permitido';
+      }
+    }
+    if (value.length > 60) return 'Máximo 60 caracteres';
     return null;
   }
 
-  String? _validatePass(String? v, {required bool isRegister}) {
-    if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
-    if (isRegister && v.length < 6) return 'Mínimo 6 caracteres';
-    if (v.length > 20) return 'Máximo 20 caracteres';
+  String? _validateNombre(String? v) {
+    final text = v?.trim() ?? '';
+    if (text.isEmpty) return 'Ingresa tu nombre completo';
+    if (!RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑ ]+$').hasMatch(text)) return 'Solo letras y espacios';
+    if (!text.contains(' ')) return 'Incluye al menos un apellido';
+    if (text.length < 5) return 'Nombre demasiado corto';
     return null;
+  }
+
+  String? _validatePassword(String? v) {
+    if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
+    if (widget.mode == _AuthMode.login) return null;
+    if (v.length < 8) return 'Mínimo 8 caracteres';
+    if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Falta mayúscula';
+    if (!RegExp(r'[a-z]').hasMatch(v)) return 'Falta minúscula';
+    if (!RegExp(r'[0-9]').hasMatch(v)) return 'Falta número';
+    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v)) return 'Falta caracter especial';
+    if (_contrasenasProhibidas.contains(v.toLowerCase())) return 'Contraseña muy común';
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? _) {
+    if (_confirmCtrl.text.isEmpty) return 'Confirma tu contraseña';
+    if (_confirmCtrl.text != _passCtrl.text) return 'Las contraseñas no coinciden';
+    return null;
+  }
+
+  int _passwordStrength(String v) {
+    int score = 0;
+    if (v.length >= 8) score++;
+    if (RegExp(r'[A-Z]').hasMatch(v)) score++;
+    if (RegExp(r'[a-z]').hasMatch(v)) score++;
+    if (RegExp(r'[0-9]').hasMatch(v)) score++;
+    if (RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v)) score++;
+    return score;
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
     if (!_form.currentState!.validate()) return;
-    setState(() { _loading = true; _error = null; });
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       final scope = AppScope.of(context);
-
-      // 1) Registro (si aplica)
       if (widget.mode == _AuthMode.register) {
         await scope.http.post('/auth/register', body: {
-          'nombre': _nombre.text.trim(),
-          'correo': _correo.text.trim(),
-          'contrasena': _pass.text,
-        }, headers: const {});
+          'nombre': _nombreCtrl.text.trim(),
+          'correo': _correoCtrl.text.trim(),
+          'contrasena': _passCtrl.text.trim(),
+        });
       }
 
-      // 2) Login con el AuthRepository injectado en AppScope
       final loginRes = await scope.auth.login(
-        correo: _correo.text.trim(),
-        contrasena: _pass.text,
+        correo: _correoCtrl.text.trim(),
+        contrasena: _passCtrl.text.trim(),
       );
 
-      // 3) Persistir sesión con tu AuthScope
       await AuthScope.of(context).signIn(
         token: loginRes.token,
-        userJson: _safeJsonEncode(loginRes.user),
+        userJson: jsonEncode(loginRes.user),
       );
 
-      // ✅ Limpia cache del token provider (singleton)
       SessionTokenProvider.instance.clearCache();
-
-      // 4) Refrescar permisos RBAC antes de redirigir (best-effort)
       try { await Permissions.of(context).refresh(); } catch (_) {}
 
-      // 5) Redirigir respetando redirectTo
       if (!mounted) return;
-      final target = widget.redirectTo.isEmpty ? RouteNames.root : widget.redirectTo;
-      Navigator.pushNamedAndRemoveUntil(context, target, (_) => false);
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        widget.redirectTo.isEmpty ? RouteNames.root : widget.redirectTo,
+        (_) => false,
+      );
+    } on SocketException catch (_) {
+      setState(() => _error = 'Sin conexión a internet.');
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception:', '').trim());
+      String msg = e.toString().replaceAll("Exception: ", "");
+      if (msg.toLowerCase().contains('connection refused') || msg.contains('unreachable')) {
+        msg = 'No se pudo conectar con el servidor.';
+      } else if (msg.toLowerCase().contains("clientexception")) {
+         msg = "Error de conexión inesperado.";
+      }
+      setState(() => _error = msg);
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  String _safeJsonEncode(Map<String, dynamic> map) {
-    try {
-      return const JsonEncoder().convert(map);
-    } catch (_) {
-      return '{}';
-    }
-  }
-
-  void _handleBack() {
-    if (_loading) return;
-    final nav = Navigator.of(context);
-    if (nav.canPop()) {
-      nav.pop();
-    } else {
-      nav.pushReplacementNamed(RouteNames.root);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final strength = _passwordStrength(_passCtrl.text);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.sports_soccer, size: 20),
-              const SizedBox(width: 8),
-              Text('PortoAmbato', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.sports_soccer, size: 22, color: cs.primary),
+            const SizedBox(width: 8),
+            Text('PortoAmbato', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+
+        // CORRECCIÓN: Padding interno vertical reducido para que el texto no se corte
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<_AuthMode>(
+            segments: const [
+              ButtonSegment(value: _AuthMode.login, label: Text('Ingresar')),
+              ButtonSegment(value: _AuthMode.register, label: Text('Registro')),
             ],
+            selected: {widget.mode},
+            onSelectionChanged: (s) {
+              setState(() => _error = null);
+              widget.onModeChange(s.first);
+            },
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact, // Hace el botón un poco más denso
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
         ),
-        SegmentedButton<_AuthMode>(
-          segments: const [
-            ButtonSegment(value: _AuthMode.login, label: Text('Ingresar'), icon: Icon(Icons.login)),
-            ButtonSegment(value: _AuthMode.register, label: Text('Registro'), icon: Icon(Icons.person_add)),
-          ],
-          selected: {widget.mode},
-          onSelectionChanged: (s) { if (s.isNotEmpty) widget.onModeChange(s.first); },
-          showSelectedIcon: false,
-        ),
-        const SizedBox(height: 12),
+
+        const SizedBox(height: 14),
+
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
             widget.mode == _AuthMode.login ? 'Bienvenido' : 'Crear cuenta',
-            style: t.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            style: t.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
+
         const SizedBox(height: 8),
 
         Form(
@@ -227,119 +421,123 @@ class _MinimalAuthCardState extends State<_MinimalAuthCard> {
             children: [
               if (widget.mode == _AuthMode.register) ...[
                 TextFormField(
-                  controller: _nombre,
+                  controller: _nombreCtrl,
                   textInputAction: TextInputAction.next,
-                  inputFormatters: [ LengthLimitingTextInputFormatter(40) ],
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre completo',
-                    prefixIcon: Icon(Icons.person),
-                  ),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Ingresa tu nombre'
-                      : (v.trim().length > 40 ? 'Máximo 40 caracteres' : null),
-                  onFieldSubmitted: (_) => _correoFocus.requestFocus(),
+                  textCapitalization: TextCapitalization.words,
+                  inputFormatters: [LengthLimitingTextInputFormatter(40)],
+                  decoration: const InputDecoration(labelText: 'Nombre completo', prefixIcon: Icon(Icons.person)),
+                  validator: _validateNombre,
                 ),
                 const SizedBox(height: 10),
               ],
+
               TextFormField(
-                controller: _correo,
+                controller: _correoCtrl,
                 focusNode: _correoFocus,
-                autofocus: true,
                 textInputAction: TextInputAction.next,
                 keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
                 inputFormatters: [
-                  LengthLimitingTextInputFormatter(50),
+                  LengthLimitingTextInputFormatter(60),
                   FilteringTextInputFormatter.deny(RegExp(r'\s')),
                 ],
-                decoration: const InputDecoration(
-                  labelText: 'Correo',
-                  prefixIcon: Icon(Icons.alternate_email),
-                ),
+                decoration: const InputDecoration(labelText: 'Correo', prefixIcon: Icon(Icons.alternate_email)),
                 validator: _validateEmail,
-                onFieldSubmitted: (_) => _passFocus.requestFocus(),
               ),
+
               const SizedBox(height: 10),
+
               TextFormField(
-                controller: _pass,
+                controller: _passCtrl,
                 focusNode: _passFocus,
                 obscureText: _obscure,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(20),
-                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
-                ],
+                autofillHints: const [AutofillHints.password],
+                onChanged: (_) {
+                  if (widget.mode == _AuthMode.register && _confirmCtrl.text.isNotEmpty) {
+                    _form.currentState?.validate();
+                  }
+                  setState(() {});
+                },
                 decoration: InputDecoration(
                   labelText: 'Contraseña',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    tooltip: _obscure ? 'Mostrar' : 'Ocultar',
                     icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                 ),
-                validator: (v) => _validatePass(v, isRegister: widget.mode == _AuthMode.register),
-                onFieldSubmitted: (_) => _submit(),
+                validator: _validatePassword,
               ),
-              const SizedBox(height: 14),
+
+              if (widget.mode == _AuthMode.register) ...[
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: strength / 5,
+                  backgroundColor: cs.surfaceVariant,
+                  color: {0: Colors.red, 1: Colors.red, 2: Colors.orange, 3: Colors.yellow, 4: Colors.lightGreen, 5: Colors.green}[strength],
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(['Muy débil', 'Débil', 'Regular', 'Buena', 'Fuerte', 'Excelente'][strength], style: t.bodySmall),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _confirmCtrl,
+                  obscureText: _obscure,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(labelText: 'Confirmar contraseña', prefixIcon: Icon(Icons.lock_outline)),
+                  validator: _validateConfirmPassword,
+                ),
+              ],
+
+              const SizedBox(height: 18),
+
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _loading ? null : _submit,
                   child: _loading
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 6),
-                          child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                        )
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
                       : Text(widget.mode == _AuthMode.login ? 'Ingresar' : 'Registrarme'),
                 ),
               ),
+
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 12),
+
+              _GoogleLoginButton(redirectTo: widget.redirectTo),
+
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    _error!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                  ),
+                  child: Text(_error!, style: t.bodySmall?.copyWith(color: cs.error)),
                 ),
               ],
             ],
           ),
         ),
 
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
 
         Row(
           children: [
             TextButton.icon(
-              onPressed: _handleBack,
+              onPressed: _loading ? null : () => Navigator.of(context).canPop() ? Navigator.of(context).pop() : Navigator.pushReplacementNamed(context, RouteNames.root),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Volver'),
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
             ),
             const Spacer(),
             TextButton(
-              onPressed: () {
-                showDialog<void>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Recuperar contraseña'),
-                    content: const Text(
-                      'Muy pronto podrás recuperar tu contraseña desde aquí. '
-                      'Por ahora, contáctanos para ayudarte manualmente.'
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('Entendido'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Recuperar contraseña'),
+                  content: const Text('Muy pronto podrás recuperar tu contraseña desde aquí.'),
+                  actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Entendido'))],
+                ),
+              ),
               child: const Text('¿Olvidaste tu contraseña?'),
             ),
           ],

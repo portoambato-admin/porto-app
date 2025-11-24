@@ -8,6 +8,7 @@ class ApiService {
   static const String API_BASE = String.fromEnvironment(
     'API_BASE',
     defaultValue: 'https://backend-production-cb2d.up.railway.app',
+    //defaultValue: 'http://localhost:3000',
   );
 
   // ---------- Headers ----------

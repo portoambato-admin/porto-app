@@ -4,22 +4,43 @@
 <head>
   <base href="/" />
   <meta charset="UTF-8" />
-  <meta name="description"
-    content="Academia Oficial de Fútbol Porto Ambato. Entrenamientos por categorías, evaluaciones de rendimiento y gestión de pagos." />
-  <meta name="keywords" content="PortoAmbato, academia de fútbol, Ambato, entrenamientos, categorías, niños, jóvenes" />
+  <meta name="description" content="Academia Oficial de Fútbol Porto Ambato. Entrenamientos por categorías, evaluaciones y pagos." />
+  <meta name="keywords" content="PortoAmbato, academia de fútbol, Ambato" />
   <meta name="author" content="PortoAmbato" />
+
   <meta name="flutter-renderer" content="html">
   <meta name="flutter-service-worker" content="false">
-
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta property="og:title" content="PortoAmbato - Academia Oficial de Fútbol" />
-  <meta property="og:description" content="Formamos talento. Inspiramos disciplina." />
-  <meta property="og:type" content="website" />
-  <meta property="og:image" content="favicon.png" />
-  <meta name="theme-color" content="#0D47A1" />
+
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/png" href="favicon.png" />
+
   <title>PortoAmbato | Academia Oficial de Fútbol</title>
+
+  <!-- ✅ FIREBASE SDK MODULAR v10 (CORRECTO) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCfmXWL00Z5PQFdIT0rNVnFwVdmSDnLNXo",
+      authDomain: "autenticacion-porto.firebaseapp.com",
+      projectId: "autenticacion-porto",
+      storageBucket: "autenticacion-porto.appspot.com",
+      messagingSenderId: "71788233162",
+      appId: "1:71788233162:web:b2b30ca027aeb60d06cf33"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    // Exponer globalmente para que Flutter pueda acceder
+    window.firebaseApp = app;
+    window.firebaseAuth = auth;
+  </script>
+
+  <script defer src="flutter.js"></script>
+
   <style>
     .center {
       position: fixed;
@@ -30,8 +51,6 @@
       color: #0D47A1
     }
   </style>
-  <!-- Debe ir antes del script que inicializa -->
-  <script defer src="flutter.js"></script>
 </head>
 
 <body>
@@ -43,7 +62,7 @@
 
       function start(engineInitializer) {
         return engineInitializer.initializeEngine().then(function (appRunner) {
-          loaderEl?.remove();     // quitar loader ANTES de runApp
+          loaderEl?.remove();
           return appRunner.runApp();
         });
       }
@@ -56,8 +75,8 @@
       } else if (apiOld && typeof apiOld.loadEntrypoint === 'function') {
         apiOld.loadEntrypoint({}).then(start);
       } else {
-        console.error('No se encontró flutter.js');
-        if (loaderEl) loaderEl.textContent = 'Error cargando Flutter. Revisa consola.';
+        console.error("No se encontró flutter.js");
+        if (loaderEl) loaderEl.textContent = "Error cargando Flutter. Revisa consola.";
       }
     });
   </script>

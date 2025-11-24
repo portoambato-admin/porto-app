@@ -2,6 +2,7 @@ abstract class Endpoints {
   // ===== Auth & Me
   static const authLogin = '/auth/login';
   static const authLogout = '/auth/logout';
+  static const authLoginGoogle = '/auth/login/google';
   static const me = '/me';
   static const meAvatar = '/me/avatar';
   static const mePassword = '/me/password';
