@@ -117,39 +117,41 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
         idToken = auth.idToken;
       }
       // WEB ✅ CORRECCIÓN AQUÍ
-      else {
+      // WEB
+else {
+  final auth = firebase_auth.FirebaseAuth.instance;
+  final provider = firebase_auth.GoogleAuthProvider();
+  
+  provider.addScope('email');
+  provider.addScope('profile');
+  
+  final result = await auth.signInWithPopup(provider);
+  
+  if (result.user == null) {
+    throw Exception("No se obtuvo información del usuario");
+  }
+  
+  idToken = await result.user!.getIdToken(true);
+  
+  if (idToken == null || idToken!.isEmpty) {
+    throw Exception("No se pudo obtener el ID Token de Firebase");
+  }
+  
+  // ✅ AGREGAR ESTE LOG
+  debugPrint("🔑 Token obtenido:");
+  debugPrint("   Longitud: ${idToken!.length}");
+  debugPrint("   Inicio: ${idToken!.substring(0, 50)}");
+  
+  // Decodificar el payload del token (solo para debugging)
   try {
-    final auth = firebase_auth.FirebaseAuth.instance;
-    final provider = firebase_auth.GoogleAuthProvider();
-    
-    provider.addScope('email');
-    provider.addScope('profile');
-    
-    // Forzar popup limpio
-    final result = await auth.signInWithPopup(provider);
-    
-    if (result.user == null) {
-      throw Exception("No se obtuvo información del usuario");
-    }
-    
-    // OBTENER ID TOKEN CON REFRESH FORZADO
-    idToken = await result.user!.getIdToken(true);
-    
-    if (idToken == null || idToken!.isEmpty) {
-      throw Exception("No se pudo obtener el ID Token de Firebase");
-    }
-    
-    debugPrint("✅ ID Token obtenido (longitud: ${idToken!.length})");
-    
-  } on firebase_auth.FirebaseAuthException catch (e) {
-    debugPrint("❌ Firebase Auth Error: ${e.code} - ${e.message}");
-    
-    if (e.code == 'popup-closed-by-user') {
-      setState(() => _loading = false);
-      return;
-    }
-    
-    throw Exception("Error de autenticación: ${e.message}");
+    final parts = idToken!.split('.');
+    final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+    final json = jsonDecode(payload);
+    debugPrint("   AUD: ${json['aud']}");
+    debugPrint("   ISS: ${json['iss']}");
+    debugPrint("   EMAIL: ${json['email']}");
+  } catch (e) {
+    debugPrint("   No se pudo decodificar el payload");
   }
 }
 
