@@ -263,7 +263,7 @@ B.Wg.prototype={
 Mk(){var x=0,w=A.q(y.H)
 var $async$Mk=A.m(function(d,e){if(d===1)return A.n(e,w)
 while(true)switch(x){case 0:x=2
-return A.k(A.Dl(A.eS("https://wa.me/593995650089?text="+A.jA(2,"Hola, me gustar\xeda conocer los requisitos para ser auspiciante de PortoAmbato.",C.aX,!1),0,null),C.nE),$async$Mk)
+return A.k(A.Dl(A.eC("https://wa.me/593995650089?text="+A.jA(2,"Hola, me gustar\xeda conocer los requisitos para ser auspiciante de PortoAmbato.",C.aX,!1),0,null),C.nE),$async$Mk)
 case 2:if(!e)throw A.c(A.c1("No se pudo abrir WhatsApp"))
 return A.o(null,w)}})
 return A.p($async$Mk,w)},
@@ -285,7 +285,7 @@ $.aw()
 return A.bM(v,A.af(A.a([new A.a7(D.ar2,x,v),A.aX(A.f1(C.ce,A.a([new B.a6V(new A.IZ(10,10,v),A.jm(u,new B.biy(),C.c8,C.eo,v,v),v),A.bM(v,v,C.F,v,v,D.agi,v,v,v,v,v,v,v),A.cn(new A.a7(C.l5,A.jm(u,new B.biz(),C.c8,C.kQ,v,v),v),v,v)],w),C.K,C.p_,v),t,v)],w),C.x,C.u,C.y,0,C.E),C.bB,v,v,new A.bF(C.n_,v,r,s,v,v,C.al),v,v,C.Bw,v,v,v,v)}}
 B.yc.prototype={
 E(d){var x=null
-return A.eD(A.bH(this.c,x,x,18),C.S,A.x(this.d,x,x,x,x,x,x,x,x),x,x,C.dW,D.afw,x)}}
+return A.eE(A.bH(this.c,x,x,18),C.S,A.x(this.d,x,x,x,x,x,x,x,x),x,x,C.dW,D.afw,x)}}
 B.acq.prototype={
 hV(d){if(!(d.b instanceof A.ph))d.b=new A.ph(C.L)},
 aoq(d,e,f){var x,w=d.b
@@ -578,7 +578,7 @@ aAO(d){var x,w,v,u,t
 if(d==null)return D.a4Q
 x=d.ga_X()
 w=d.gv9(d)
-v=d.gj0(d)
+v=d.giy(d)
 if(C.n.n(w,"facebook")||C.n.n(w,"twitter")||w==="youtu")u="social"
 else if(x.ap(0,"feature"))u=x.h(0,"feature")
 else if(v==="/watch")u="emb_info"
@@ -975,7 +975,7 @@ D.bVO=new B.ai2("","","",C.aV)
 D.bYN=new B.ai4(!1,!1)
 D.bVP=new B.ai4(!0,!0)})();(function staticFields(){$.bVw=function(){var x="Obt\xe9n descuento en bebidas de hidrataci\xf3n por ser parte de la familia PortoAmbato.",w=y.N
 return A.a([A.O(["name","SANFRA","logo","assets/img/sponsors/sanfra.webp","videoId","ubQ0YvAggJg","desc","Sanfra M\xf3vil: todo en una sola app. Disponible en Google Play y App Store."],w,w),A.O(["name","MI NEGOCIO","logo","assets/img/sponsors/minegocio.webp","videoId","MWDaxG_nFnY","desc","10% de descuento en todos los planes para nuestra comunidad PortoAmbato."],w,w),A.O(["name","MUNDITODO","logo","assets/img/sponsors/mundi.webp","videoId","HGx_lDLm0X8","desc","Obt\xe9n el 10% descuento en productos seleccionados."],w,w),A.O(["name","OPALO","logo","assets/img/sponsors/opalo.webp","videoId","7DW1B0QKObE","desc","Conoce sus proyectos y recibe un descuento por ser parte de la comunidad PortoAmbato."],w,w),A.O(["name","TOGO","logo","assets/img/sponsors/togo.webp","videoId","wY2yE7gQcD8","desc",x],w,w),A.O(["name","MODERNA DENTAL CONCEPT ","logo","assets/img/sponsors/moderna.webp","videoId","xq9iypL-mMs","desc","Obt\xe9n un descuento especial para nuestros ni\xf1os de PortoAmbato."],w,w),A.O(["name","TARCO","logo","assets/img/sponsors/tarco.webp","videoId","C7nWZDIf9QI","desc",x],w,w),A.O(["name","PASSPORT","logo","assets/img/sponsors/pass.webp","videoId","cQzg_s7waBs","desc","Obt\xe9n descuento en viajes seleccionados junto a la selecci\xf3n del Ecuador por ser parte de la familia PortoAmbato."],w,w),A.O(["name","WAIIKIKI","logo","assets/img/sponsors/waikiki.webp","videoId","SykfmJhNSQs","desc","Obt\xe9n descuentos por ser parte de la familia PortoAmbato."],w,w)],A.ag("B<ac<h,h>>"))}()})();(function lazyInitializers(){var x=a.lazyFinal
-x($,"ceT","bQy",()=>A.eS("https://tu-sitio.com",0,null))
+x($,"ceT","bQy",()=>A.eC("https://tu-sitio.com",0,null))
 x($,"chI","bRY",()=>new B.aXz($.bRX()))})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_6",e:"endPart",h:b})})($__dart_deferred_initializers__,"xB6R3VXL5XbwLeqN4dcy/7ib7e8=");
+a.eventLog.push({p:"main.dart.js_6",e:"endPart",h:b})})($__dart_deferred_initializers__,"PwISJDFuhxWcF2kQAGjM6Aju+qE=");

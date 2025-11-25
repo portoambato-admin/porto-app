@@ -66,9 +66,14 @@ import '../core/services/session.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings s) {
-    final name = s.name ?? RouteNames.root;
+    // -------------------------------------------------------------------------
+    // CORRECCIÓN: Parseamos la URI para obtener solo el path (sin query params)
+    // Esto permite que /reset-password?token=xyz coincida con /reset-password
+    // -------------------------------------------------------------------------
+    final uri = Uri.parse(s.name ?? RouteNames.root);
+    final path = uri.path; 
 
-    switch (name) {
+    switch (path) {
       // ======= Públicas ======================================================
       case RouteNames.root:
         return MaterialPageRoute(builder: (_) => const HomeScreen());
@@ -123,6 +128,8 @@ class AppRouter {
         );
 
       case RouteNames.resetPassword:
+        // Flutter Web maneja los query params internamente en Uri.base
+        // No es necesario pasarlos como argumentos.
         return MaterialPageRoute(
           settings: s,
           builder: (_) => const ResetPasswordScreen(),
@@ -360,7 +367,9 @@ class AppRouter {
     RouteSettings s, {
     required WidgetBuilder builder,
   }) {
-    final redirectTo = s.name ?? RouteNames.root;
+    // También limpiamos el path aquí para verificar si está protegido
+    final uri = Uri.parse(s.name ?? RouteNames.root);
+    final redirectTo = uri.path;
 
     return MaterialPageRoute(
       settings: s,
