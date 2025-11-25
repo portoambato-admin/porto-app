@@ -17,11 +17,12 @@
 
   <title>PortoAmbato | Academia Oficial de Fútbol</title>
 
-  <!-- ✅ FIREBASE SDK MODULAR v10 (CORRECTO) -->
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+  <!-- ✅ FIREBASE COMPAT (Compatible con firebase_auth de Flutter) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
+  <script>
+    // Configuración de Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyCfmXWL00Z5PQFdIT0rNVnFwVdmSDnLNXo",
       authDomain: "autenticacion-porto.firebaseapp.com",
@@ -31,12 +32,12 @@
       appId: "1:71788233162:web:b2b30ca027aeb60d06cf33"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-
-    // Exponer globalmente para que Flutter pueda acceder
-    window.firebaseApp = app;
-    window.firebaseAuth = auth;
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    
+    // Verificar inicialización
+    console.log('✅ Firebase inicializado correctamente');
+    console.log('📧 Auth Domain:', firebaseConfig.authDomain);
   </script>
 
   <script defer src="flutter.js"></script>

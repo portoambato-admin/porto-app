@@ -49,7 +49,9 @@ class _AuthScreenState extends State<AuthScreen> {
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: AuthScreen._maxCardWidth),
+            constraints: const BoxConstraints(
+              maxWidth: AuthScreen._maxCardWidth,
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Card(
@@ -91,94 +93,110 @@ class _GoogleLoginButton extends StatefulWidget {
 
 class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
   bool _loading = false;
-Future<void> _loginGoogle() async {
-  if (_loading) return;
+  Future<void> _loginGoogle() async {
+    if (_loading) return;
 
-  setState(() => _loading = true);
+    setState(() => _loading = true);
 
+    try {
+      final scope = AppScope.of(context);
+      String? idToken;
+
+      // ANDROID / IOS
+      if (!kIsWeb) {
+        final googleSignIn = GoogleSignIn(scopes: ['email']);
+        GoogleSignInAccount? googleUser = await googleSignIn.signInSilently();
+        googleUser ??= await googleSignIn.signIn();
+
+        if (googleUser == null) {
+          setState(() => _loading = false);
+          return;
+        }
+
+        final auth = await googleUser.authentication;
+        idToken = auth.idToken;
+      }
+      // WEB ✅ CORRECCIÓN AQUÍ
+      else {
   try {
-    final scope = AppScope.of(context);
-    String? idToken;
-
-    // ANDROID / IOS
-    if (!kIsWeb) {
-      final googleSignIn = GoogleSignIn(scopes: ['email']);
-      GoogleSignInAccount? googleUser = await googleSignIn.signInSilently();
-      googleUser ??= await googleSignIn.signIn();
-
-      if (googleUser == null) {
-        setState(() => _loading = false);
-        return;
-      }
-
-      final auth = await googleUser.authentication;
-      idToken = auth.idToken;
-    }
-
-    // WEB ✅ CORRECCIÓN AQUÍ
-    else {
-        final auth = firebase_auth.FirebaseAuth.instance;
-        final provider = firebase_auth.GoogleAuthProvider();
-
-        // Agregamos scopes para asegurar que nos devuelva el idToken
-        provider.addScope('email');
-        provider.addScope('profile');
-
-        final result = await auth.signInWithPopup(provider);
-        
-        // ❌ ANTES (Token de Firebase - ESTO DABA ERROR EN TU BACKEND):
-        // idToken = await result.user?.getIdToken();
-
-        // ✅ AHORA (Token de Google - ESTO ES LO QUE TU BACKEND ESPERA):
-        idToken = await result.user?.getIdToken(true);
-      }
-
-    if (idToken == null) {
-      throw Exception("No se pudo obtener el token de Google");
-    }
-
-    // LOGIN EN TU BACKEND
-    final loginRes = await scope.auth.loginGoogle(idToken);
-
-    await AuthScope.of(context).signIn(
-      token: loginRes.token,
-      userJson: jsonEncode(loginRes.user),
-    );
-
-    SessionTokenProvider.instance.clearCache();
-    await Permissions.of(context).refresh();
-
-    if (!mounted) return;
-
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      widget.redirectTo,
-      (_) => false,
-    );
-  } catch (e) {
-    debugPrint("GOOGLE LOGIN ERROR: $e");
+    final auth = firebase_auth.FirebaseAuth.instance;
+    final provider = firebase_auth.GoogleAuthProvider();
     
-    String errorMsg = "Error al iniciar sesión con Google";
+    provider.addScope('email');
+    provider.addScope('profile');
     
-    if (e.toString().contains('popup-closed-by-user')) {
-      errorMsg = "Cerraste la ventana de inicio de sesión";
-    } else if (e.toString().contains('popup-blocked')) {
-      errorMsg = "El navegador bloqueó la ventana emergente";
+    // Forzar popup limpio
+    final result = await auth.signInWithPopup(provider);
+    
+    if (result.user == null) {
+      throw Exception("No se obtuvo información del usuario");
     }
     
-    if (!mounted) return;
+    // OBTENER ID TOKEN CON REFRESH FORZADO
+    idToken = await result.user!.getIdToken(true);
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(errorMsg),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
-    );
-  } finally {
-    if (mounted) setState(() => _loading = false);
+    if (idToken == null || idToken!.isEmpty) {
+      throw Exception("No se pudo obtener el ID Token de Firebase");
+    }
+    
+    debugPrint("✅ ID Token obtenido (longitud: ${idToken!.length})");
+    
+  } on firebase_auth.FirebaseAuthException catch (e) {
+    debugPrint("❌ Firebase Auth Error: ${e.code} - ${e.message}");
+    
+    if (e.code == 'popup-closed-by-user') {
+      setState(() => _loading = false);
+      return;
+    }
+    
+    throw Exception("Error de autenticación: ${e.message}");
   }
 }
 
+      if (idToken == null) {
+        throw Exception("No se pudo obtener el token de Google");
+      }
+
+      // LOGIN EN TU BACKEND
+      final loginRes = await scope.auth.loginGoogle(idToken);
+
+      await AuthScope.of(
+        context,
+      ).signIn(token: loginRes.token, userJson: jsonEncode(loginRes.user));
+
+      SessionTokenProvider.instance.clearCache();
+      await Permissions.of(context).refresh();
+
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        widget.redirectTo,
+        (_) => false,
+      );
+    } catch (e) {
+      debugPrint("GOOGLE LOGIN ERROR: $e");
+
+      String errorMsg = "Error al iniciar sesión con Google";
+
+      if (e.toString().contains('popup-closed-by-user')) {
+        errorMsg = "Cerraste la ventana de inicio de sesión";
+      } else if (e.toString().contains('popup-blocked')) {
+        errorMsg = "El navegador bloqueó la ventana emergente";
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -257,10 +275,21 @@ class _AuthCardState extends State<_AuthCard> {
 
   // --- VALIDACIONES (Mismo código de antes) ---
   final List<String> _dominiosProhibidos = const [
-    'tempmail', '10minutemail', 'mailinator', 'discard', 'guerrillamail', 'yopmail',
+    'tempmail',
+    '10minutemail',
+    'mailinator',
+    'discard',
+    'guerrillamail',
+    'yopmail',
   ];
   final List<String> _contrasenasProhibidas = const [
-    '12345678', 'password', 'qwerty123', 'abc12345', '123456789', 'porto123', 'admin123',
+    '12345678',
+    'password',
+    'qwerty123',
+    'abc12345',
+    '123456789',
+    'porto123',
+    'admin123',
   ];
 
   String? _validateEmail(String? v) {
@@ -281,7 +310,8 @@ class _AuthCardState extends State<_AuthCard> {
   String? _validateNombre(String? v) {
     final text = v?.trim() ?? '';
     if (text.isEmpty) return 'Ingresa tu nombre completo';
-    if (!RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑ ]+$').hasMatch(text)) return 'Solo letras y espacios';
+    if (!RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑ ]+$').hasMatch(text))
+      return 'Solo letras y espacios';
     if (!text.contains(' ')) return 'Incluye al menos un apellido';
     if (text.length < 5) return 'Nombre demasiado corto';
     return null;
@@ -294,14 +324,17 @@ class _AuthCardState extends State<_AuthCard> {
     if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Falta mayúscula';
     if (!RegExp(r'[a-z]').hasMatch(v)) return 'Falta minúscula';
     if (!RegExp(r'[0-9]').hasMatch(v)) return 'Falta número';
-    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v)) return 'Falta caracter especial';
-    if (_contrasenasProhibidas.contains(v.toLowerCase())) return 'Contraseña muy común';
+    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v))
+      return 'Falta caracter especial';
+    if (_contrasenasProhibidas.contains(v.toLowerCase()))
+      return 'Contraseña muy común';
     return null;
   }
 
   String? _validateConfirmPassword(String? _) {
     if (_confirmCtrl.text.isEmpty) return 'Confirma tu contraseña';
-    if (_confirmCtrl.text != _passCtrl.text) return 'Las contraseñas no coinciden';
+    if (_confirmCtrl.text != _passCtrl.text)
+      return 'Las contraseñas no coinciden';
     return null;
   }
 
@@ -327,11 +360,14 @@ class _AuthCardState extends State<_AuthCard> {
     try {
       final scope = AppScope.of(context);
       if (widget.mode == _AuthMode.register) {
-        await scope.http.post('/auth/register', body: {
-          'nombre': _nombreCtrl.text.trim(),
-          'correo': _correoCtrl.text.trim(),
-          'contrasena': _passCtrl.text.trim(),
-        });
+        await scope.http.post(
+          '/auth/register',
+          body: {
+            'nombre': _nombreCtrl.text.trim(),
+            'correo': _correoCtrl.text.trim(),
+            'contrasena': _passCtrl.text.trim(),
+          },
+        );
       }
 
       final loginRes = await scope.auth.login(
@@ -339,13 +375,14 @@ class _AuthCardState extends State<_AuthCard> {
         contrasena: _passCtrl.text.trim(),
       );
 
-      await AuthScope.of(context).signIn(
-        token: loginRes.token,
-        userJson: jsonEncode(loginRes.user),
-      );
+      await AuthScope.of(
+        context,
+      ).signIn(token: loginRes.token, userJson: jsonEncode(loginRes.user));
 
       SessionTokenProvider.instance.clearCache();
-      try { await Permissions.of(context).refresh(); } catch (_) {}
+      try {
+        await Permissions.of(context).refresh();
+      } catch (_) {}
 
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(
@@ -357,10 +394,11 @@ class _AuthCardState extends State<_AuthCard> {
       setState(() => _error = 'Sin conexión a internet.');
     } catch (e) {
       String msg = e.toString().replaceAll("Exception: ", "");
-      if (msg.toLowerCase().contains('connection refused') || msg.contains('unreachable')) {
+      if (msg.toLowerCase().contains('connection refused') ||
+          msg.contains('unreachable')) {
         msg = 'No se pudo conectar con el servidor.';
       } else if (msg.toLowerCase().contains("clientexception")) {
-         msg = "Error de conexión inesperado.";
+        msg = "Error de conexión inesperado.";
       }
       setState(() => _error = msg);
     } finally {
@@ -382,7 +420,10 @@ class _AuthCardState extends State<_AuthCard> {
           children: [
             Icon(Icons.sports_soccer, size: 22, color: cs.primary),
             const SizedBox(width: 8),
-            Text('PortoAmbato', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              'PortoAmbato',
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ],
         ),
 
@@ -403,7 +444,8 @@ class _AuthCardState extends State<_AuthCard> {
             },
             showSelectedIcon: false,
             style: ButtonStyle(
-              visualDensity: VisualDensity.compact, // Hace el botón un poco más denso
+              visualDensity:
+                  VisualDensity.compact, // Hace el botón un poco más denso
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ),
@@ -432,7 +474,10 @@ class _AuthCardState extends State<_AuthCard> {
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
                   inputFormatters: [LengthLimitingTextInputFormatter(40)],
-                  decoration: const InputDecoration(labelText: 'Nombre completo', prefixIcon: Icon(Icons.person)),
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre completo',
+                    prefixIcon: Icon(Icons.person),
+                  ),
                   validator: _validateNombre,
                 ),
                 const SizedBox(height: 10),
@@ -448,7 +493,10 @@ class _AuthCardState extends State<_AuthCard> {
                   LengthLimitingTextInputFormatter(60),
                   FilteringTextInputFormatter.deny(RegExp(r'\s')),
                 ],
-                decoration: const InputDecoration(labelText: 'Correo', prefixIcon: Icon(Icons.alternate_email)),
+                decoration: const InputDecoration(
+                  labelText: 'Correo',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
                 validator: _validateEmail,
               ),
 
@@ -460,7 +508,8 @@ class _AuthCardState extends State<_AuthCard> {
                 obscureText: _obscure,
                 autofillHints: const [AutofillHints.password],
                 onChanged: (_) {
-                  if (widget.mode == _AuthMode.register && _confirmCtrl.text.isNotEmpty) {
+                  if (widget.mode == _AuthMode.register &&
+                      _confirmCtrl.text.isNotEmpty) {
                     _form.currentState?.validate();
                   }
                   setState(() {});
@@ -469,7 +518,9 @@ class _AuthCardState extends State<_AuthCard> {
                   labelText: 'Contraseña',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                    icon: Icon(
+                      _obscure ? Icons.visibility : Icons.visibility_off,
+                    ),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                 ),
@@ -481,18 +532,38 @@ class _AuthCardState extends State<_AuthCard> {
                 LinearProgressIndicator(
                   value: strength / 5,
                   backgroundColor: cs.surfaceVariant,
-                  color: {0: Colors.red, 1: Colors.red, 2: Colors.orange, 3: Colors.yellow, 4: Colors.lightGreen, 5: Colors.green}[strength],
+                  color: {
+                    0: Colors.red,
+                    1: Colors.red,
+                    2: Colors.orange,
+                    3: Colors.yellow,
+                    4: Colors.lightGreen,
+                    5: Colors.green,
+                  }[strength],
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(['Muy débil', 'Débil', 'Regular', 'Buena', 'Fuerte', 'Excelente'][strength], style: t.bodySmall),
+                  child: Text(
+                    [
+                      'Muy débil',
+                      'Débil',
+                      'Regular',
+                      'Buena',
+                      'Fuerte',
+                      'Excelente',
+                    ][strength],
+                    style: t.bodySmall,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
                   controller: _confirmCtrl,
                   obscureText: _obscure,
                   textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(labelText: 'Confirmar contraseña', prefixIcon: Icon(Icons.lock_outline)),
+                  decoration: const InputDecoration(
+                    labelText: 'Confirmar contraseña',
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
                   validator: _validateConfirmPassword,
                 ),
               ],
@@ -504,8 +575,16 @@ class _AuthCardState extends State<_AuthCard> {
                 child: FilledButton(
                   onPressed: _loading ? null : _submit,
                   child: _loading
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(widget.mode == _AuthMode.login ? 'Ingresar' : 'Registrarme'),
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          widget.mode == _AuthMode.login
+                              ? 'Ingresar'
+                              : 'Registrarme',
+                        ),
                 ),
               ),
 
@@ -519,7 +598,10 @@ class _AuthCardState extends State<_AuthCard> {
                 const SizedBox(height: 10),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(_error!, style: t.bodySmall?.copyWith(color: cs.error)),
+                  child: Text(
+                    _error!,
+                    style: t.bodySmall?.copyWith(color: cs.error),
+                  ),
                 ),
               ],
             ],
@@ -531,7 +613,14 @@ class _AuthCardState extends State<_AuthCard> {
         Row(
           children: [
             TextButton.icon(
-              onPressed: _loading ? null : () => Navigator.of(context).canPop() ? Navigator.of(context).pop() : Navigator.pushReplacementNamed(context, RouteNames.root),
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context).canPop()
+                        ? Navigator.of(context).pop()
+                        : Navigator.pushReplacementNamed(
+                            context,
+                            RouteNames.root,
+                          ),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Volver'),
             ),
@@ -541,8 +630,15 @@ class _AuthCardState extends State<_AuthCard> {
                 context: context,
                 builder: (_) => AlertDialog(
                   title: const Text('Recuperar contraseña'),
-                  content: const Text('Muy pronto podrás recuperar tu contraseña desde aquí.'),
-                  actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Entendido'))],
+                  content: const Text(
+                    'Muy pronto podrás recuperar tu contraseña desde aquí.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Entendido'),
+                    ),
+                  ],
                 ),
               ),
               child: const Text('¿Olvidaste tu contraseña?'),
