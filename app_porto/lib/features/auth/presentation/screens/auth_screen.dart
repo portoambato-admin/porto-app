@@ -44,8 +44,6 @@ class _AuthScreenState extends State<AuthScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cs.surface,
-      // AGREGADO: Center + SingleChildScrollView para evitar errores de overflow
-      // si el teclado aparece o la pantalla es muy pequeña.
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
@@ -93,6 +91,7 @@ class _GoogleLoginButton extends StatefulWidget {
 
 class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
   bool _loading = false;
+
   Future<void> _loginGoogle() async {
     if (_loading) return;
 
@@ -116,55 +115,38 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
         final auth = await googleUser.authentication;
         idToken = auth.idToken;
       }
-      // WEB ✅ CORRECCIÓN AQUÍ
       // WEB
-else {
-  final auth = firebase_auth.FirebaseAuth.instance;
-  final provider = firebase_auth.GoogleAuthProvider();
-  
-  provider.addScope('email');
-  provider.addScope('profile');
-  
-  final result = await auth.signInWithPopup(provider);
-  
-  if (result.user == null) {
-    throw Exception("No se obtuvo información del usuario");
-  }
-  
-  idToken = await result.user!.getIdToken(true);
-  
-  if (idToken == null || idToken!.isEmpty) {
-    throw Exception("No se pudo obtener el ID Token de Firebase");
-  }
-  
-  // ✅ AGREGAR ESTE LOG
-  debugPrint("🔑 Token obtenido:");
-  debugPrint("   Longitud: ${idToken!.length}");
-  debugPrint("   Inicio: ${idToken!.substring(0, 50)}");
-  
-  // Decodificar el payload del token (solo para debugging)
-  try {
-    final parts = idToken!.split('.');
-    final payload = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
-    final json = jsonDecode(payload);
-    debugPrint("   AUD: ${json['aud']}");
-    debugPrint("   ISS: ${json['iss']}");
-    debugPrint("   EMAIL: ${json['email']}");
-  } catch (e) {
-    debugPrint("   No se pudo decodificar el payload");
-  }
-}
+      else {
+        final auth = firebase_auth.FirebaseAuth.instance;
+        final provider = firebase_auth.GoogleAuthProvider();
+
+        provider.addScope('email');
+        provider.addScope('profile');
+
+        final result = await auth.signInWithPopup(provider);
+
+        if (result.user == null) {
+          throw Exception("No se obtuvo información del usuario");
+        }
+
+        idToken = await result.user!.getIdToken(true);
+
+        if (idToken == null || idToken.isEmpty) {
+          throw Exception("No se pudo obtener el ID Token de Firebase");
+        }
+      }
 
       if (idToken == null) {
         throw Exception("No se pudo obtener el token de Google");
       }
 
-      // LOGIN EN TU BACKEND
+      // LOGIN EN BACKEND
       final loginRes = await scope.auth.loginGoogle(idToken);
 
-      await AuthScope.of(
-        context,
-      ).signIn(token: loginRes.token, userJson: jsonEncode(loginRes.user));
+      await AuthScope.of(context).signIn(
+        token: loginRes.token,
+        userJson: jsonEncode(loginRes.user),
+      );
 
       SessionTokenProvider.instance.clearCache();
       await Permissions.of(context).refresh();
@@ -177,8 +159,6 @@ else {
         (_) => false,
       );
     } catch (e) {
-      debugPrint("GOOGLE LOGIN ERROR: $e");
-
       String errorMsg = "Error al iniciar sesión con Google";
 
       if (e.toString().contains('popup-closed-by-user')) {
@@ -208,7 +188,6 @@ else {
       width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: _loading ? null : _loginGoogle,
-        // CORRECCIÓN: ErrorBuilder para que no explote si falta la imagen
         icon: _loading
             ? const SizedBox(
                 width: 20,
@@ -218,7 +197,6 @@ else {
             : Image.asset(
                 "assets/img/google.png",
                 height: 20,
-                // Si no encuentra la imagen, pone este icono automáticamente
                 errorBuilder: (context, error, stackTrace) =>
                     const Icon(Icons.g_mobiledata, size: 28),
               ),
@@ -275,7 +253,6 @@ class _AuthCardState extends State<_AuthCard> {
     super.dispose();
   }
 
-  // --- VALIDACIONES (Mismo código de antes) ---
   final List<String> _dominiosProhibidos = const [
     'tempmail',
     '10minutemail',
@@ -284,6 +261,7 @@ class _AuthCardState extends State<_AuthCard> {
     'guerrillamail',
     'yopmail',
   ];
+
   final List<String> _contrasenasProhibidas = const [
     '12345678',
     'password',
@@ -312,8 +290,9 @@ class _AuthCardState extends State<_AuthCard> {
   String? _validateNombre(String? v) {
     final text = v?.trim() ?? '';
     if (text.isEmpty) return 'Ingresa tu nombre completo';
-    if (!RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑ ]+$').hasMatch(text))
+    if (!RegExp(r'^[A-Za-zÁÉÍÓÚáéíóúñÑ ]+$').hasMatch(text)) {
       return 'Solo letras y espacios';
+    }
     if (!text.contains(' ')) return 'Incluye al menos un apellido';
     if (text.length < 5) return 'Nombre demasiado corto';
     return null;
@@ -326,17 +305,20 @@ class _AuthCardState extends State<_AuthCard> {
     if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Falta mayúscula';
     if (!RegExp(r'[a-z]').hasMatch(v)) return 'Falta minúscula';
     if (!RegExp(r'[0-9]').hasMatch(v)) return 'Falta número';
-    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v))
+    if (!RegExp(r'[!@#\$%^&*(),.?":{}|<>_\-]').hasMatch(v)) {
       return 'Falta caracter especial';
-    if (_contrasenasProhibidas.contains(v.toLowerCase()))
+    }
+    if (_contrasenasProhibidas.contains(v.toLowerCase())) {
       return 'Contraseña muy común';
+    }
     return null;
   }
 
   String? _validateConfirmPassword(String? _) {
     if (_confirmCtrl.text.isEmpty) return 'Confirma tu contraseña';
-    if (_confirmCtrl.text != _passCtrl.text)
+    if (_confirmCtrl.text != _passCtrl.text) {
       return 'Las contraseñas no coinciden';
+    }
     return null;
   }
 
@@ -377,9 +359,10 @@ class _AuthCardState extends State<_AuthCard> {
         contrasena: _passCtrl.text.trim(),
       );
 
-      await AuthScope.of(
-        context,
-      ).signIn(token: loginRes.token, userJson: jsonEncode(loginRes.user));
+      await AuthScope.of(context).signIn(
+        token: loginRes.token,
+        userJson: jsonEncode(loginRes.user),
+      );
 
       SessionTokenProvider.instance.clearCache();
       try {
@@ -428,16 +411,14 @@ class _AuthCardState extends State<_AuthCard> {
             ),
           ],
         ),
-
         const SizedBox(height: 16),
-
-        // CORRECCIÓN: Padding interno vertical reducido para que el texto no se corte
         SizedBox(
           width: double.infinity,
           child: SegmentedButton<_AuthMode>(
             segments: const [
               ButtonSegment(value: _AuthMode.login, label: Text('Ingresar')),
-              ButtonSegment(value: _AuthMode.register, label: Text('Registro')),
+              ButtonSegment(
+                  value: _AuthMode.register, label: Text('Registro')),
             ],
             selected: {widget.mode},
             onSelectionChanged: (s) {
@@ -446,15 +427,12 @@ class _AuthCardState extends State<_AuthCard> {
             },
             showSelectedIcon: false,
             style: ButtonStyle(
-              visualDensity:
-                  VisualDensity.compact, // Hace el botón un poco más denso
+              visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
           ),
         ),
-
         const SizedBox(height: 14),
-
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
@@ -462,9 +440,7 @@ class _AuthCardState extends State<_AuthCard> {
             style: t.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
-
         const SizedBox(height: 8),
-
         Form(
           key: _form,
           autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -484,7 +460,6 @@ class _AuthCardState extends State<_AuthCard> {
                 ),
                 const SizedBox(height: 10),
               ],
-
               TextFormField(
                 controller: _correoCtrl,
                 focusNode: _correoFocus,
@@ -501,9 +476,7 @@ class _AuthCardState extends State<_AuthCard> {
                 ),
                 validator: _validateEmail,
               ),
-
               const SizedBox(height: 10),
-
               TextFormField(
                 controller: _passCtrl,
                 focusNode: _passFocus,
@@ -528,7 +501,6 @@ class _AuthCardState extends State<_AuthCard> {
                 ),
                 validator: _validatePassword,
               ),
-
               if (widget.mode == _AuthMode.register) ...[
                 const SizedBox(height: 6),
                 LinearProgressIndicator(
@@ -569,9 +541,7 @@ class _AuthCardState extends State<_AuthCard> {
                   validator: _validateConfirmPassword,
                 ),
               ],
-
               const SizedBox(height: 18),
-
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -589,13 +559,10 @@ class _AuthCardState extends State<_AuthCard> {
                         ),
                 ),
               ),
-
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 12),
-
               _GoogleLoginButton(redirectTo: widget.redirectTo),
-
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Align(
@@ -609,42 +576,27 @@ class _AuthCardState extends State<_AuthCard> {
             ],
           ),
         ),
-
         const SizedBox(height: 10),
-
         Row(
           children: [
             TextButton.icon(
               onPressed: _loading
                   ? null
                   : () => Navigator.of(context).canPop()
-                        ? Navigator.of(context).pop()
-                        : Navigator.pushReplacementNamed(
-                            context,
-                            RouteNames.root,
-                          ),
+                      ? Navigator.of(context).pop()
+                      : Navigator.pushReplacementNamed(
+                          context,
+                          RouteNames.root,
+                        ),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Volver'),
             ),
             const Spacer(),
-            TextButton(
-              onPressed: () => showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Recuperar contraseña'),
-                  content: const Text(
-                    'Muy pronto podrás recuperar tu contraseña desde aquí.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Entendido'),
-                    ),
-                  ],
-                ),
-              ),
-              child: const Text('¿Olvidaste tu contraseña?'),
-            ),
+           TextButton(
+  onPressed: () => Navigator.pushNamed(context, RouteNames.forgotPassword),
+  child: const Text('¿Olvidaste tu contraseña?'),
+),
+
           ],
         ),
       ],

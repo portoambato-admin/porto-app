@@ -24,6 +24,10 @@ import '../features/public/presentation/screen/about_screen.dart'
 // Auth
 import '../features/auth/presentation/screens/auth_screen.dart';
 
+// 🔵 Recuperación de contraseña
+import '../features/auth/presentation/screens/forgot_password_screen.dart';
+import '../features/auth/presentation/screens/reset_password_screen.dart';
+
 // Perfil / Panel (NO diferido)
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/admin/presentation/panel/panel_screen.dart';
@@ -111,6 +115,19 @@ class AppRouter {
           builder: (_) => const AuthScreen(),
         );
 
+      // 🔵 Recuperar contraseña
+      case RouteNames.forgotPassword:
+        return MaterialPageRoute(
+          settings: s,
+          builder: (_) => const ForgotPasswordScreen(),
+        );
+
+      case RouteNames.resetPassword:
+        return MaterialPageRoute(
+          settings: s,
+          builder: (_) => const ResetPasswordScreen(),
+        );
+
       // ======= Protegidas (no lazy) ==========================================
       case RouteNames.perfil:
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
@@ -133,15 +150,11 @@ class AppRouter {
       case RouteNames.adminSistema:
         return _guardedPlain(s, builder: (_) => const SistemaHubScreen());
 
-      // 🔹 Hub de REPORTES independiente
+      // Hub REPORTES
       case RouteNames.adminReportes:
-        return _guardedPlain(
-          s,
-          builder: (_) => const ReportesHubScreen(),
-        );
+        return _guardedPlain(s, builder: (_) => const ReportesHubScreen());
 
-      // ======= Subrutas anidadas (NUEVAS) ====================================
-      // Personas
+      // ======= Subrutas de Personas ==========================================
       case RouteNames.adminPersonasUsuarios:
         return _guardedPlain(
           s,
@@ -164,7 +177,7 @@ class AppRouter {
           ),
         );
 
-      // Academia
+      // ======= Subrutas de Academia ==========================================
       case RouteNames.adminAcademiaCategorias:
         return _guardedPlain(
           s,
@@ -280,23 +293,17 @@ class AppRouter {
           int? id;
           if (args is Map && args['id'] != null) {
             final v = args['id'];
-            if (v is int) {
-              id = v;
-            } else if (v is num) {
-              id = v.toInt();
-            } else if (v is String) {
-              id = int.tryParse(v);
-            }
+            if (v is int) id = v;
+            else if (v is num) id = v.toInt();
+            else if (v is String) id = int.tryParse(v);
           }
           if (id == null) {
             return const _ArgsErrorPage('Falta argumento: id (int)');
           }
-          return AcademiaHubScreen(
-            child: EstudianteDetailScreen(id: id),
-          );
+          return AcademiaHubScreen(child: EstudianteDetailScreen(id: id));
         });
 
-      // Subcategoría → Estudiantes (detalle)
+      // Subcategoría → Estudiantes
       case RouteNames.adminSubcatEstudiantes:
         return _guardedPlain(s, builder: (_) {
           final args = s.arguments is Map
@@ -304,7 +311,7 @@ class AppRouter {
               : <String, dynamic>{};
           final idSubcat = _arg<int>(args, 'idSubcategoria');
           final nombre = _arg<String>(args, 'nombreSubcategoria');
-          final idCat = _arg<int>(args, 'idCategoria'); // opcional
+          final idCat = _arg<int>(args, 'idCategoria');
           if (idSubcat == null || nombre == null) {
             return const _ArgsErrorPage(
               'Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)',
@@ -353,7 +360,7 @@ class AppRouter {
     RouteSettings s, {
     required WidgetBuilder builder,
   }) {
-    final String redirectTo = s.name ?? RouteNames.root;
+    final redirectTo = s.name ?? RouteNames.root;
 
     return MaterialPageRoute(
       settings: s,
@@ -363,6 +370,7 @@ class AppRouter {
           if (tokenSnap.connectionState != ConnectionState.done) {
             return const _LoadingPage();
           }
+
           final token = tokenSnap.data;
 
           if (RouteNames.guarded.contains(redirectTo) && token == null) {

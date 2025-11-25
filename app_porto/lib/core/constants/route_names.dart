@@ -4,6 +4,9 @@ abstract class RouteNames {
   static const auth = '/auth';
   static const perfil = '/perfil';
   static const panel = '/panel';
+  static const forgotPassword = "/forgot-password";
+  static const resetPassword = "/reset-password";
+
 
   static const tienda = '/tienda';
   static const eventos = '/eventos';
