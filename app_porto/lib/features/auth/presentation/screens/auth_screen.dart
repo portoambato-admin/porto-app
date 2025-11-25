@@ -130,8 +130,7 @@ Future<void> _loginGoogle() async {
         // idToken = await result.user?.getIdToken();
 
         // ✅ AHORA (Token de Google - ESTO ES LO QUE TU BACKEND ESPERA):
-        final credential = result.credential as firebase_auth.OAuthCredential?;
-        idToken = credential?.idToken;
+        idToken = await result.user?.getIdToken(true);
       }
 
     if (idToken == null) {
