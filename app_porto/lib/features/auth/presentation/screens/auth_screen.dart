@@ -117,14 +117,22 @@ Future<void> _loginGoogle() async {
 
     // WEB ✅ CORRECCIÓN AQUÍ
     else {
-      final provider = firebase_auth.GoogleAuthProvider();
-      final auth = firebase_auth.FirebaseAuth.instance;
+        final auth = firebase_auth.FirebaseAuth.instance;
+        final provider = firebase_auth.GoogleAuthProvider();
 
-      // ✅ signInWithPopup es el método correcto
-      final cred = await auth.signInWithPopup(provider);
+        // Agregamos scopes para asegurar que nos devuelva el idToken
+        provider.addScope('email');
+        provider.addScope('profile');
 
-      idToken = await cred.user?.getIdToken();
-    }
+        final result = await auth.signInWithPopup(provider);
+        
+        // ❌ ANTES (Token de Firebase - ESTO DABA ERROR EN TU BACKEND):
+        // idToken = await result.user?.getIdToken();
+
+        // ✅ AHORA (Token de Google - ESTO ES LO QUE TU BACKEND ESPERA):
+        final credential = result.credential as firebase_auth.OAuthCredential?;
+        idToken = credential?.idToken;
+      }
 
     if (idToken == null) {
       throw Exception("No se pudo obtener el token de Google");
