@@ -1,29 +1,21 @@
-// lib/core/network/http_client.dart
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:http_parser/http_parser.dart'; 
+import 'package:flutter/foundation.dart';
 
 import '../config/app_env.dart';
+import '../services/session_token_provider.dart';
 import 'api_error.dart';
-
-abstract class TokenProvider {
-  Future<String?> getToken();
-  Future<String?> refreshToken() async => null;
-}
 
 class HttpClient {
   final http.Client _client;
   final String baseUrl;
-  final TokenProvider? tokenProvider;
 
   HttpClient({
     http.Client? client,
     String? baseUrl,
-    this.tokenProvider,
   })  : _client = client ?? http.Client(),
         baseUrl = (baseUrl ?? AppEnv.apiBase).replaceFirst(RegExp(r'\/$'), '');
 
@@ -37,16 +29,13 @@ class HttpClient {
   }
 
   Future<String?> _resolveToken() async {
-    String? t = await tokenProvider?.getToken();
-    if ((t == null || t.isEmpty) && kIsWeb) {
-      final s = html.window.localStorage;
-      t = s['auth_token'] ??
-          s['porto_token'] ??
-          s['token'] ??
-          s['jwt'] ??
-          s['access_token'];
+    final token = await SessionTokenProvider.instance.readToken();
+    if (token != null && token.isNotEmpty) {
+      debugPrint('[HttpClient] 🔑 Token resuelto: ${token.substring(0, 20)}...');
+    } else {
+      debugPrint('[HttpClient] ⚠️ No hay token disponible');
     }
-    return (t != null && t.isNotEmpty) ? t : null;
+    return token;
   }
 
   Future<Map<String, String>> _headers({
@@ -63,11 +52,22 @@ class HttpClient {
     if (extra == null || extra.isEmpty) return base;
 
     final ex = Map<String, String>.from(extra);
-    // si viene 'Authorization': '' lo quitamos para no romper el header
     if (ex['Authorization'] != null && ex['Authorization']!.trim().isEmpty) {
       ex.remove('Authorization');
     }
     return {...base, ...ex};
+  }
+
+  dynamic _checkResponse(http.Response r) {
+    if (r.statusCode == 401 || r.statusCode == 403) {
+      debugPrint('[HttpClient] 🔥 ${r.statusCode}: Sesión expirada');
+      throw UnauthorizedException("Sesión expirada");
+    }
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      debugPrint('[HttpClient] ❌ Error ${r.statusCode}: ${r.body}');
+      throw _err(r);
+    }
+    return _decode(r);
   }
 
   ApiError _err(http.Response r) {
@@ -75,7 +75,8 @@ class HttpClient {
       final b = r.body.isEmpty ? null : jsonDecode(r.body);
       final msg = (b is Map && (b['message'] ?? b['error']) != null)
           ? (b['message'] ?? b['error']).toString()
-          : r.reasonPhrase ?? 'Error';
+          : r.reasonPhrase ?? 'Error desconocido';
+      
       return ApiError(
         msg,
         status: r.statusCode,
@@ -89,29 +90,28 @@ class HttpClient {
   dynamic _decode(http.Response r) {
     if (r.body.isEmpty) return null;
     try {
-      return jsonDecode(r.body);
+      return jsonDecode(utf8.decode(r.bodyBytes));
     } catch (_) {
-      return r.body; // por si el backend respondió texto plano
+      try {
+        return jsonDecode(r.body);
+      } catch (e) {
+        return r.body; 
+      }
     }
   }
 
-  // --- evita doble jsonEncode ---
   dynamic _encodeJsonBodyOnce(dynamic body) {
     if (body == null) return null;
     if (body is Map || body is List) return jsonEncode(body);
     if (body is String) {
       try {
         final parsed = json.decode(body);
-        if (parsed is Map || parsed is List) {
-          // venía como string JSON; normalizamos a un único encode
-          return jsonEncode(parsed);
-        }
-        return body; // string plano
+        if (parsed is Map || parsed is List) return jsonEncode(parsed);
+        return body;
       } catch (_) {
-        return body; // string plano
+        return body;
       }
     }
-    // tipos primitivos u otros serializables
     return jsonEncode(body);
   }
 
@@ -122,107 +122,101 @@ class HttpClient {
     Map<String, String>? query,
     Map<String, String>? headers,
     bool json = true,
-    String? forcedToken,
   }) async {
-    final uri = _u(path, query);
-    final h = await _headers(json: json, extra: headers, overrideToken: forcedToken);
+    try {
+      final uri = _u(path, query);
+      final h = await _headers(json: json, extra: headers);
 
-    switch (method) {
-      case 'GET':
-        return _client.get(uri, headers: h);
-      case 'POST':
-        return _client.post(
-          uri,
-          headers: h,
-          body: json ? _encodeJsonBodyOnce(body) : body,
-        );
-      case 'PUT':
-        return _client.put(
-          uri,
-          headers: h,
-          body: json ? _encodeJsonBodyOnce(body) : body,
-        );
-      case 'PATCH':
-        return _client.patch(
-          uri,
-          headers: h,
-          body: json ? _encodeJsonBodyOnce(body) : body,
-        );
-      case 'DELETE':
-        return _client.delete(uri, headers: h);
-      default:
-        throw ApiError('Método HTTP no soportado: $method');
-    }
-  }
+      debugPrint('[HttpClient] 📤 $method $uri');
 
-  Future<http.Response> _sendWith401Retry(
-    String method,
-    String path, {
-    Object? body,
-    Map<String, String>? query,
-    Map<String, String>? headers,
-    bool json = true,
-  }) async {
-    var r = await _sendOnce(method, path, body: body, query: query, headers: headers, json: json);
-
-    if (r.statusCode == 401 && tokenProvider != null) {
-      final newTok = await tokenProvider!.refreshToken();
-      if (newTok != null && newTok.isNotEmpty) {
-        r = await _sendOnce(
-          method,
-          path,
-          body: body,
-          query: query,
-          headers: headers,
-          json: json,
-          forcedToken: newTok,
-        );
+      switch (method) {
+        case 'GET':
+          return await _client.get(uri, headers: h);
+        case 'POST':
+          return await _client.post(
+            uri,
+            headers: h,
+            body: json ? _encodeJsonBodyOnce(body) : body,
+          );
+        case 'PUT':
+          return await _client.put(
+            uri,
+            headers: h,
+            body: json ? _encodeJsonBodyOnce(body) : body,
+          );
+        case 'PATCH':
+          return await _client.patch(
+            uri,
+            headers: h,
+            body: json ? _encodeJsonBodyOnce(body) : body,
+          );
+        case 'DELETE':
+          return await _client.delete(uri, headers: h);
+        default:
+          throw ApiError('Método HTTP no soportado: $method');
       }
+    } on SocketException {
+      debugPrint('[HttpClient] 🌐 Sin conexión a internet');
+      throw ApiError('Sin conexión a internet.');
     }
-    return r;
   }
 
-  // ---------- JSON ----------
-  Future<dynamic> get(String path, {Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('GET', path, query: query, headers: headers, json: true);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
-    return _decode(r);
+  // --- MÉTODOS PÚBLICOS ---
+
+  Future<dynamic> get(String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('GET', path, query: query, headers: headers, json: true);
+    return _checkResponse(r);
   }
 
-  Future<Map<String, dynamic>> getWithHeaders(String path,
-      {Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('GET', path, query: query, headers: headers, json: true);
+  Future<Map<String, dynamic>> getWithHeaders(String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('GET', path, query: query, headers: headers, json: true);
+    if (r.statusCode == 401 || r.statusCode == 403) throw UnauthorizedException("Sesión expirada");
     if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
+    
     return {'data': _decode(r), 'headers': r.headers};
   }
 
-  Future<dynamic> post(String path,
-      {Object? body, Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('POST', path, body: body, query: query, headers: headers, json: true);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
-    return _decode(r);
+  Future<dynamic> post(String path, {
+    Object? body,
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('POST', path, body: body, query: query, headers: headers, json: true);
+    return _checkResponse(r);
   }
 
-  Future<dynamic> put(String path,
-      {Object? body, Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('PUT', path, body: body, query: query, headers: headers, json: true);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
-    return _decode(r);
+  Future<dynamic> put(String path, {
+    Object? body,
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('PUT', path, body: body, query: query, headers: headers, json: true);
+    return _checkResponse(r);
   }
 
-  Future<dynamic> patch(String path,
-      {Object? body, Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('PATCH', path, body: body, query: query, headers: headers, json: true);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
-    return _decode(r);
+  Future<dynamic> patch(String path, {
+    Object? body,
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('PATCH', path, body: body, query: query, headers: headers, json: true);
+    return _checkResponse(r);
   }
 
-  Future<void> delete(String path, {Map<String, String>? query, Map<String, String>? headers}) async {
-    final r = await _sendWith401Retry('DELETE', path, query: query, headers: headers, json: false);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
+  Future<void> delete(String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers
+  }) async {
+    final r = await _sendOnce('DELETE', path, query: query, headers: headers, json: false);
+    _checkResponse(r);
   }
 
-  // ---------- Multipart ----------
   Future<dynamic> uploadBytes(
     String path, {
     required Uint8List bytes,
@@ -232,13 +226,25 @@ class HttpClient {
     Map<String, String>? fields,
     Map<String, String>? headers,
   }) async {
-    final req = http.MultipartRequest('POST', _u(path));
-    req.headers.addAll(await _headers(json: false, extra: headers));
-    if (fields != null) req.fields.addAll(fields);
-    req.files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename, contentType: contentType));
-    final streamed = await req.send();
-    final r = await http.Response.fromStream(streamed);
-    if (r.statusCode < 200 || r.statusCode >= 300) throw _err(r);
-    return _decode(r);
+    try {
+      final req = http.MultipartRequest('POST', _u(path));
+      req.headers.addAll(await _headers(json: false, extra: headers));
+      
+      if (fields != null) req.fields.addAll(fields);
+      
+      req.files.add(http.MultipartFile.fromBytes(
+        field, 
+        bytes, 
+        filename: filename, 
+        contentType: contentType
+      ));
+      
+      final streamed = await req.send();
+      final r = await http.Response.fromStream(streamed);
+      
+      return _checkResponse(r);
+    } on SocketException {
+      throw ApiError('Sin conexión a internet.');
+    }
   }
 }

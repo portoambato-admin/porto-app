@@ -1,6 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../app/app_scope.dart';
-import '../../admin/data/usuarios_repository.dart';
+import '../data/usuarios_repository.dart';
+import '../models/usuario_model.dart';
+
+// --- Clase auxiliar para guardar el estado de CADA pestaña ---
+class _TabState {
+  List<Usuario> items = [];
+  int total = 0;
+  int page = 1;
+  int pageSize = 10;
+  String sort = 'creado_en';
+  bool asc = false;
+}
 
 class UsuariosScreen extends StatefulWidget {
   const UsuariosScreen({super.key});
@@ -9,45 +21,37 @@ class UsuariosScreen extends StatefulWidget {
   State<UsuariosScreen> createState() => _UsuariosScreenState();
 }
 
-class _UsuariosScreenState extends State<UsuariosScreen>
-    with SingleTickerProviderStateMixin {
+class _UsuariosScreenState extends State<UsuariosScreen> with SingleTickerProviderStateMixin {
   late UsuariosRepository _repo;
   late final TabController _tab;
-
+  
+  // Estado global de la UI
   bool _loading = false;
   String? _error;
-
-  List<Map<String, dynamic>> _activos = [];
-  int _activosTotal = 0;
-  int _activosPage = 1;
-  int _activosPageSize = 10;
-  String _activosSort = 'creado_en';
-  bool _activosAsc = false;
-
-  List<Map<String, dynamic>> _inactivos = [];
-  int _inactivosTotal = 0;
-  int _inactivosPage = 1;
-  int _inactivosPageSize = 10;
-  String _inactivosSort = 'creado_en';
-  bool _inactivosAsc = false;
-
-  List<Map<String, dynamic>> _todos = [];
-  int _todosTotal = 0;
-  int _todosPage = 1;
-  int _todosPageSize = 10;
-  String _todosSort = 'creado_en';
-  bool _todosAsc = false;
-
+  Timer? _debounce;
   final TextEditingController _searchCtrl = TextEditingController();
+
+  final List<_TabState> _tabsData = [
+    _TabState(), // Activos
+    _TabState(), // Inactivos
+    _TabState(), // Todos
+  ];
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 3, vsync: this)
       ..addListener(() {
-        if (!_tab.indexIsChanging) _loadCurrentTab();
+        if (!_tab.indexIsChanging) {
+          if (_tabsData[_tab.index].items.isEmpty) {
+            _loadData();
+          } else {
+            setState(() {});
+          }
+        }
       });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCurrentTab());
+      
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
   @override
@@ -60,78 +64,54 @@ class _UsuariosScreenState extends State<UsuariosScreen>
   void dispose() {
     _tab.dispose();
     _searchCtrl.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadCurrentTab() async {
-    switch (_tab.index) {
-      case 0:
-        return _loadActivos();
-      case 1:
-        return _loadInactivos();
-      case 2:
-        return _loadTodos();
-    }
-  }
-
-  Future<void> _loadActivos() async {
+  // --- Lógica de Carga Unificada ---
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    
     setState(() {
       _loading = true;
       _error = null;
     });
-    try {
-      final res = await _repo.pagedActivos(
-        page: _activosPage,
-        pageSize: _activosPageSize,
-        q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        sort: _activosSort,
-        order: _activosAsc ? 'asc' : 'desc',
-      );
-      setState(() {
-        _activos = List<Map<String, dynamic>>.from(res['items']);
-        _activosTotal = (res['total'] as num).toInt();
-      });
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
 
-  void _submitSearch() {
-    // Reinicia a página 1 en la pestaña actual y recarga
-    setState(() {
-      switch (_tab.index) {
-        case 0:
-          _activosPage = 1;
-          break;
-        case 1:
-          _inactivosPage = 1;
-          break;
-        case 2:
-          _todosPage = 1;
-          break;
+    try {
+      final index = _tab.index;
+      final state = _tabsData[index];
+
+      PagedResult<Usuario> res;
+
+      if (index == 0) {
+        res = await _repo.pagedActivos(
+          page: state.page,
+          pageSize: state.pageSize,
+          q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
+          sort: state.sort,
+          order: state.asc ? 'asc' : 'desc',
+        );
+      } else if (index == 1) {
+        res = await _repo.pagedInactivos(
+          page: state.page,
+          pageSize: state.pageSize,
+          q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
+          sort: state.sort,
+          order: state.asc ? 'asc' : 'desc',
+        );
+      } else {
+        res = await _repo.pagedTodos(
+          page: state.page,
+          pageSize: state.pageSize,
+          q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
+          sort: state.sort,
+          order: state.asc ? 'asc' : 'desc',
+        );
       }
-    });
-    _loadCurrentTab();
-  }
 
-  Future<void> _loadInactivos() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final res = await _repo.pagedInactivos(
-        page: _inactivosPage,
-        pageSize: _inactivosPageSize,
-        q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        sort: _inactivosSort,
-        order: _inactivosAsc ? 'asc' : 'desc',
-      );
       setState(() {
-        _inactivos = List<Map<String, dynamic>>.from(res['items']);
-        _inactivosTotal = (res['total'] as num).toInt();
+        state.items = res.items;
+        state.total = res.total;
       });
     } catch (e) {
       setState(() => _error = e.toString());
@@ -140,300 +120,433 @@ class _UsuariosScreenState extends State<UsuariosScreen>
     }
   }
 
-  Future<void> _loadTodos() async {
-    setState(() {
-      _loading = true;
-      _error = null;
+  void _onSearchChanged(String val) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), () {
+      _tabsData[_tab.index].page = 1;
+      _loadData();
     });
-    try {
-      final res = await _repo.pagedTodos(
-        page: _todosPage,
-        pageSize: _todosPageSize,
-        q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        sort: _todosSort,
-        order: _todosAsc ? 'asc' : 'desc',
-      );
-      setState(() {
-        _todos = List<Map<String, dynamic>>.from(res['items']);
-        _todosTotal = (res['total'] as num).toInt();
-      });
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
-  String _rolLabel(dynamic idRol) {
-    switch ((idRol as num?)?.toInt()) {
-      case 1:
-        return 'Admin';
-      case 2:
-        return 'Profesor';
-      case 3:
-        return 'Padre';
-      case 4:
-        return 'Usuario';
-      default:
-        return '—';
-    }
+  void _onSort(String field, bool asc) {
+    setState(() {
+      final state = _tabsData[_tab.index];
+      state.sort = field;
+      state.asc = asc;
+      state.page = 1; 
+    });
+    _loadData();
   }
 
+  void _onPageChange(int p) {
+    setState(() => _tabsData[_tab.index].page = p);
+    _loadData();
+  }
+
+  void _onPageSizeChange(int size) {
+    setState(() {
+      final state = _tabsData[_tab.index];
+      state.pageSize = size;
+      state.page = 1;
+    });
+    _loadData();
+  }
+
+  bool get _isCurrentUserAdmin {
+    // TODO: Conectar con Provider/Bloc real
+    return true; 
+  }
+
+  // --- ESTILOS COMPARTIDOS ---
+  InputDecoration _inputDeco(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, size: 22),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+    );
+  }
+
+  // --- DIÁLOGO CREAR USUARIO ---
+  Future<void> _openCreateUserDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final nombreCtrl = TextEditingController();
+    final correoCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    
+    int idRol = UserRole.usuario.id; 
+    bool obscurePass = true;
+    bool isSaving = false;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (innerContext, setStateDialog) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Column(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                  child: Icon(Icons.person_add, size: 30, color: Theme.of(context).primaryColor),
+                ),
+                const SizedBox(height: 16),
+                const Text('Nuevo Usuario', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: nombreCtrl,
+                        decoration: _inputDeco('Nombre completo', Icons.person_outline),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) {
+                          if (v == null || v.trim().length < 3) return 'Mínimo 3 caracteres';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: correoCtrl,
+                        decoration: _inputDeco('Correo electrónico', Icons.email_outlined),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          final regex = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+                          if (v == null || v.isEmpty) return 'Requerido';
+                          if (!regex.hasMatch(v)) return 'Correo inválido';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: passCtrl,
+                        obscureText: obscurePass,
+                        decoration: _inputDeco('Contraseña', Icons.lock_outline).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                            onPressed: () => setStateDialog(() => obscurePass = !obscurePass),
+                          ),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.length < 6) return 'Mínimo 6 caracteres';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        value: idRol,
+                        decoration: _inputDeco('Rol asignado', Icons.badge_outlined),
+                        items: UserRole.values.map((r) => 
+                          DropdownMenuItem(value: r.id, child: Text(r.label))
+                        ).toList(),
+                        onChanged: (v) => idRol = v ?? idRol,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceBetween,
+            actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext), 
+                child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: isSaving ? null : () async {
+                  if (!formKey.currentState!.validate()) return;
+                  
+                  setStateDialog(() => isSaving = true);
+                  
+                  try {
+                    await _repo.create(
+                      nombre: nombreCtrl.text.trim(),
+                      correo: correoCtrl.text.trim(),
+                      password: passCtrl.text,
+                      idRol: idRol,
+                    );
+                    
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('✅ Usuario registrado exitosamente'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      _loadData();
+                    }
+                  } catch (e) {
+                    setStateDialog(() => isSaving = false);
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                },
+                child: isSaving 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Registrar'),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  // --- DIÁLOGO EDITAR USUARIO ---
+  Future<void> _openEditUserDialog(Usuario u) async {
+    final formKey = GlobalKey<FormState>();
+    final nombreCtrl = TextEditingController(text: u.nombre);
+    final correoCtrl = TextEditingController(text: u.correo);
+    int idRol = u.rol.id;
+    bool isSaving = false;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (innerContext, setStateDialog) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Column(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Colors.blue.shade50,
+                  child: Icon(Icons.edit, size: 28, color: Colors.blue.shade700),
+                ),
+                const SizedBox(height: 16),
+                const Text('Editar Usuario', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: 400,
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: nombreCtrl,
+                        decoration: _inputDeco('Nombre completo', Icons.person_outline),
+                        textCapitalization: TextCapitalization.words,
+                        validator: (v) {
+                          if (v == null || v.trim().length < 3) return 'Mínimo 3 caracteres';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: correoCtrl,
+                        decoration: _inputDeco('Correo electrónico', Icons.email_outlined),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (v) {
+                          final regex = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+");
+                          if (v == null || v.isEmpty) return 'Requerido';
+                          if (!regex.hasMatch(v)) return 'Correo inválido';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        value: idRol,
+                        decoration: _inputDeco('Rol asignado', Icons.badge_outlined),
+                        items: UserRole.values.map((r) => 
+                          DropdownMenuItem(value: r.id, child: Text(r.label))
+                        ).toList(),
+                        onChanged: (v) => idRol = v ?? idRol,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceBetween,
+            actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext), 
+                child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: isSaving ? null : () async {
+                  if (!formKey.currentState!.validate()) return;
+                  
+                  setStateDialog(() => isSaving = true);
+                  
+                  try {
+                    await _repo.update(
+                      idUsuario: u.id, 
+                      nombre: nombreCtrl.text.trim(), 
+                      correo: correoCtrl.text.trim(), 
+                      idRol: idRol
+                    );
+                    
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    
+                    if (mounted) {
+                      messenger.showSnackBar(const SnackBar(content: Text('✅ Usuario actualizado')));
+                      _loadData();
+                    }
+                  } catch (e) {
+                    setStateDialog(() => isSaving = false);
+                    if (mounted) {
+                      messenger.showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
+                  }
+                },
+                child: isSaving 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Guardar Cambios'),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  // --- UI Principal ---
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final currentState = _tabsData[_tab.index]; 
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Usuarios'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
-          child: Material(
-            color: Colors.transparent,
-            child: TabBar(
-              controller: _tab,
-              onTap: (_) => _loadCurrentTab(),
-              tabs: const [
-                Tab(text: 'Activos'),
-                Tab(text: 'Inactivos'),
-                Tab(text: 'Todos'),
-              ],
-            ),
-          ),
+        title: const Text('Gestión de Usuarios'),
+        bottom: TabBar(
+          controller: _tab,
+          tabs: const [
+            Tab(text: 'Activos'),
+            Tab(text: 'Inactivos'),
+            Tab(text: 'Todos'),
+          ],
         ),
         actions: [
-          IconButton(
+            IconButton(
             tooltip: 'Refrescar',
-            onPressed: _loading ? null : _loadCurrentTab,
+            onPressed: _loading ? null : _loadData,
             icon: _loading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.refresh),
           ),
           const SizedBox(width: 8),
         ],
       ),
+      floatingActionButton: _isCurrentUserAdmin 
+        ? FloatingActionButton.extended(
+            onPressed: _openCreateUserDialog,
+            icon: const Icon(Icons.person_add),
+            label: const Text('Nuevo Usuario'),
+            backgroundColor: cs.primaryContainer,
+            foregroundColor: cs.onPrimaryContainer,
+          )
+        : null,
+      
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: LayoutBuilder(
-              builder: (ctx, c) {
-                final narrow = c.maxWidth < 600;
-
-                Widget perPageDropdown(
-                  int value,
-                  void Function(int) onChange,
-                ) {
-                  return DropdownButtonFormField<int>(
-                    value: value,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.format_list_numbered),
-                      labelText: 'Por página',
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 10, child: Text('10')),
-                      DropdownMenuItem(value: 20, child: Text('20')),
-                      DropdownMenuItem(value: 50, child: Text('50')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      onChange(v);
-                      _loadCurrentTab();
-                    },
-                  );
-                }
-
-                // ====== TextField con búsqueda por nombre/correo/cédula y botones Buscar/Limpiar ======
-                Widget searchField() {
-                  return TextField(
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
                     controller: _searchCtrl,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search),
-                      hintText: 'Buscar por nombre/correo/cédula…', // ✅ incluye cédula
-                      suffixIcon: SizedBox(
-                        width: _searchCtrl.text.isNotEmpty ? 96 : 48,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            IconButton(
-                              tooltip: 'Buscar',
-                              icon: const Icon(Icons.arrow_forward),
-                              onPressed: _submitSearch,
-                            ),
-                            if (_searchCtrl.text.isNotEmpty)
-                              IconButton(
-                                tooltip: 'Limpiar',
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  _submitSearch(); // recarga sin filtro
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
+                      hintText: 'Buscar por nombre, correo o cédula...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      suffixIcon: _searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              _onSearchChanged('');
+                            })
+                        : null,
                     ),
-                    onChanged: (_) => setState(() {}), // para refrescar el ícono de limpiar
-                    onSubmitted: (_) => _submitSearch(), // Enter dispara búsqueda
-                  );
-                }
-
-                if (narrow) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      searchField(),
-                      const SizedBox(height: 8),
-                      perPageDropdown(
-                        switch (_tab.index) {
-                          0 => _activosPageSize,
-                          1 => _inactivosPageSize,
-                          _ => _todosPageSize,
-                        },
-                        (v) {
-                          setState(() {
-                            if (_tab.index == 0) {
-                              _activosPageSize = v;
-                              _activosPage = 1;
-                            } else if (_tab.index == 1) {
-                              _inactivosPageSize = v;
-                              _inactivosPage = 1;
-                            } else {
-                              _todosPageSize = v;
-                              _todosPage = 1;
-                            }
-                          });
-                        },
-                      ),
-                    ],
-                  );
-                }
-
-                return Row(
-                  children: [
-                    Expanded(child: searchField()),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 160,
-                      child: perPageDropdown(
-                        switch (_tab.index) {
-                          0 => _activosPageSize,
-                          1 => _inactivosPageSize,
-                          _ => _todosPageSize,
-                        },
-                        (v) {
-                          setState(() {
-                            if (_tab.index == 0) {
-                              _activosPageSize = v;
-                              _activosPage = 1;
-                            } else if (_tab.index == 1) {
-                              _inactivosPageSize = v;
-                              _inactivosPage = 1;
-                            } else {
-                              _todosPageSize = v;
-                              _todosPage = 1;
-                            }
-                          });
-                        },
-                      ),
+                    onChanged: _onSearchChanged,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 100,
+                  child: DropdownButtonFormField<int>(
+                    value: currentState.pageSize,
+                    decoration: InputDecoration(
+                      labelText: 'Filas',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
-                  ],
-                );
-              },
+                    items: const [10, 20, 50, 100].map((s) => 
+                      DropdownMenuItem(value: s, child: Text('$s'))
+                    ).toList(),
+                    onChanged: (v) => _onPageSizeChange(v ?? 10),
+                  ),
+                ),
+              ],
             ),
           ),
+          
           if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(_error!, style: TextStyle(color: cs.error)),
-              ),
-            ),
+             Container(
+               padding: const EdgeInsets.all(8),
+               color: cs.errorContainer,
+               width: double.infinity,
+               child: Text(_error!, style: TextStyle(color: cs.onErrorContainer)),
+             ),
+
           Expanded(
-            child: TabBarView(
-              controller: _tab,
-              children: [
-                _UsersTable(
-                  rows: _activos,
-                  inactiveTable: false,
-                  sortField: _activosSort,
-                  sortAscending: _activosAsc,
-                  total: _activosTotal,
-                  page: _activosPage,
-                  pageSize: _activosPageSize,
-                  onSort: (field, asc) {
-                    setState(() {
-                      _activosSort = field;
-                      _activosAsc = asc;
-                      _activosPage = 1;
-                    });
-                    _loadActivos();
-                  },
-                  onPageChange: (p) {
-                    setState(() => _activosPage = p);
-                    _loadActivos();
-                  },
-                  onEdit: _openEditUserDialog,
-                  onDelete: _confirmDesactivar,
-                  onActivate: _activateUser,
-                  rolLabel: _rolLabel,
-                ),
-                _UsersTable(
-                  rows: _inactivos,
-                  inactiveTable: true,
-                  sortField: _inactivosSort,
-                  sortAscending: _inactivosAsc,
-                  total: _inactivosTotal,
-                  page: _inactivosPage,
-                  pageSize: _inactivosPageSize,
-                  onSort: (field, asc) {
-                    setState(() {
-                      _inactivosSort = field;
-                      _inactivosAsc = asc;
-                      _inactivosPage = 1;
-                    });
-                    _loadInactivos();
-                  },
-                  onPageChange: (p) {
-                    setState(() => _inactivosPage = p);
-                    _loadInactivos();
-                  },
-                  onEdit: _openEditUserDialog,
-                  onDelete: _confirmDesactivar,
-                  onActivate: _activateUser,
-                  rolLabel: _rolLabel,
-                ),
-                _UsersTable(
-                  rows: _todos,
-                  inactiveTable: false,
-                  sortField: _todosSort,
-                  sortAscending: _todosAsc,
-                  total: _todosTotal,
-                  page: _todosPage,
-                  pageSize: _todosPageSize,
-                  onSort: (field, asc) {
-                    setState(() {
-                      _todosSort = field;
-                      _todosAsc = asc;
-                      _todosPage = 1;
-                    });
-                    _loadTodos();
-                  },
-                  onPageChange: (p) {
-                    setState(() => _todosPage = p);
-                    _loadTodos();
-                  },
-                  onEdit: _openEditUserDialog,
-                  onDelete: _confirmDesactivar,
-                  onActivate: _activateUser,
-                  rolLabel: _rolLabel,
-                ),
-              ],
+            child: _UsersTable(
+              users: currentState.items,
+              total: currentState.total,
+              page: currentState.page,
+              pageSize: currentState.pageSize,
+              sortField: currentState.sort,
+              sortAscending: currentState.asc,
+              isInactiveTab: _tab.index == 1,
+              onSort: _onSort,
+              onPageChange: _onPageChange,
+              onEdit: _openEditUserDialog,
+              onToggleStatus: (u) => _toggleUserStatus(u, _tab.index == 1),
             ),
           ),
         ],
@@ -441,387 +554,337 @@ class _UsuariosScreenState extends State<UsuariosScreen>
     );
   }
 
-  Future<void> _openEditUserDialog(Map<String, dynamic> u) async {
-    final formKey = GlobalKey<FormState>();
-    final nombre = TextEditingController(text: u['nombre']?.toString() ?? '');
-    final correo = TextEditingController(text: u['correo']?.toString() ?? '');
-    int idRol = (u['id_rol'] as int?) ?? 3;
-
-    await showDialog<void>(
+  Future<void> _toggleUserStatus(Usuario u, bool isActivate) async {
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Editar usuario'),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nombre,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return 'Requerido';
-                    if (s.length > 40) return 'Máximo 40 caracteres';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: correo,
-                  decoration: const InputDecoration(labelText: 'Correo'),
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return 'Requerido';
-                    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$').hasMatch(s)) {
-                      return 'Correo inválido';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  value: idRol,
-                  decoration: const InputDecoration(labelText: 'Rol'),
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('Admin')),
-                    DropdownMenuItem(value: 2, child: Text('Profesor')),
-                    DropdownMenuItem(value: 3, child: Text('Padre')),
-                    DropdownMenuItem(value: 4, child: Text('Usuario')),
-                  ],
-                  onChanged: (v) => idRol = v ?? idRol,
-                ),
-              ],
-            ),
-          ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(isActivate ? Icons.check_circle : Icons.warning_amber_rounded, 
+                 color: isActivate ? Colors.green : Colors.orange),
+            const SizedBox(width: 10),
+            Text(isActivate ? 'Activar' : 'Desactivar'),
+          ],
         ),
+        content: Text('¿Confirmas ${isActivate ? 'activar' : 'desactivar'} a ${u.nombre}?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
           FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                await _repo.update(
-                  idUsuario: (u['id_usuario'] as num).toInt(),
-                  nombre: nombre.text.trim(),
-                  correo: correo.text.trim(),
-                  idRol: idRol,
-                );
-                if (!mounted) return;
-                Navigator.pop(context);
-                await _loadCurrentTab();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Usuario actualizado')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.toString())),
-                );
-              }
-            },
-            child: const Text('Guardar'),
+            style: FilledButton.styleFrom(
+              backgroundColor: isActivate ? Colors.green : Colors.redAccent
+            ),
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('Confirmar')
           ),
         ],
       ),
     );
-  }
 
-  Future<void> _confirmDesactivar(Map<String, dynamic> u) async {
-    final id = (u['id_usuario'] as num?)?.toInt();
-    if (id == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Desactivar usuario'),
-        content: Text('¿Seguro que deseas desactivar a "${u['nombre']}"?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Sí, desactivar')),
-        ],
-      ),
-    );
-    if (ok != true) return;
+    if (confirm != true) return;
 
     try {
-      await _repo.remove(id);
-      await _loadCurrentTab();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Usuario desactivado')),
-      );
+      if (isActivate) {
+        await _repo.activate(u.id);
+      } else {
+        await _repo.remove(u.id);
+      }
+      _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isActivate ? 'Usuario activado' : 'Usuario desactivado')));
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }
-  }
-
-  Future<void> _activateUser(Map<String, dynamic> u) async {
-    final id = (u['id_usuario'] as num?)?.toInt();
-    if (id == null) return;
-    try {
-      await _repo.activate(id);
-      await _loadCurrentTab();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Usuario activado')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 }
 
-class _UsersTable extends StatelessWidget {
-  const _UsersTable({
-    required this.rows,
-    required this.inactiveTable,
-    required this.sortField,
-    required this.sortAscending,
-    required this.total,
-    required this.page,
-    required this.pageSize,
-    required this.onSort,
-    required this.onPageChange,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onActivate,
-    required this.rolLabel,
-  });
+// --- Widget de Tabla Reutilizable y Responsive ---
 
-  final List<Map<String, dynamic>> rows;
-  final bool inactiveTable;
-  final String sortField;
-  final bool sortAscending;
+class _UsersTable extends StatelessWidget {
+  final List<Usuario> users;
   final int total;
   final int page;
   final int pageSize;
-  final void Function(String field, bool asc) onSort;
-  final void Function(int newPage) onPageChange;
-  final Future<void> Function(Map<String, dynamic>) onEdit;
-  final Future<void> Function(Map<String, dynamic>) onDelete;
-  final Future<void> Function(Map<String, dynamic>) onActivate;
-  final String Function(dynamic idRol) rolLabel;
+  final String sortField;
+  final bool sortAscending;
+  final bool isInactiveTab;
+  final Function(String, bool) onSort;
+  final Function(int) onPageChange;
+  final Function(Usuario) onEdit;
+  final Function(Usuario) onToggleStatus;
 
-  int get _sortColumnIndex {
+  const _UsersTable({
+    required this.users,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+    required this.sortField,
+    required this.sortAscending,
+    required this.isInactiveTab,
+    required this.onSort,
+    required this.onPageChange,
+    required this.onEdit,
+    required this.onToggleStatus,
+  });
+
+  int get _sortColIndex {
     switch (sortField) {
-      case 'cedula':
-        return 0; // ✅ ahora la 1ra columna ordena por cédula
-      case 'id_usuario':
-        return 0; // (por compat)
-      case 'nombre':
-        return 1;
-      case 'correo':
-        return 2;
-      default:
-        return 3; // creado_en
+      case 'cedula': return 0;
+      case 'nombre': return 1;
+      case 'correo': return 2;
+      case 'creado_en': return 3;
+      default: return 3;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      return const Center(child: Text('Sin resultados'));
+    if (users.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('No se encontraron usuarios', style: TextStyle(color: Colors.grey, fontSize: 16)),
+          ],
+        ),
+      );
     }
 
     final from = (total == 0) ? 0 : ((page - 1) * pageSize + 1);
     final to = ((page * pageSize) > total) ? total : (page * pageSize);
 
-    return LayoutBuilder(
-      builder: (ctx, c) {
-        final wide = c.maxWidth > 700;
-
-        if (!wide) {
-          final list = ListView.separated(
-            padding: const EdgeInsets.all(12),
-            itemCount: rows.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, i) {
-              final u = rows[i];
-              final name = (u['nombre'] ?? '').toString();
-              final email = (u['correo'] ?? '').toString();
-              final created = (u['creado_en'] ?? '').toString();
-              final avatar = (u['avatar_url'] ?? '').toString();
-              final doc = u['cedula'] ?? u['dni'] ?? u['numero_cedula'];
-
-              // ✅ Mostrar “Cédula: <num>” o “Sin identificar”
-              final docText =
-                  (doc != null && '$doc'.isNotEmpty) ? 'Cédula: $doc' : 'Sin identificar';
-
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-                        child: avatar.isEmpty ? const Icon(Icons.person) : null,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 2),
-                            Text(email, style: const TextStyle(fontSize: 12)),
-                            const SizedBox(height: 2),
-                            Text(
-                              '$docText  •  $created',
-                              style: const TextStyle(fontSize: 12, color: Colors.black54),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Editar',
-                        onPressed: () => onEdit(u),
-                        icon: const Icon(Icons.edit),
-                      ),
-                      if (inactiveTable)
-                        IconButton(
-                          tooltip: 'Activar',
-                          onPressed: () => onActivate(u),
-                          icon: const Icon(Icons.person_add_alt_1),
-                        )
-                      else
-                        IconButton(
-                          tooltip: 'Desactivar',
-                          onPressed: () => onDelete(u),
-                          icon: const Icon(Icons.person_off),
-                        ),
-                    ],
-                  ),
-                ),
-              );
+    return Column(
+      children: [
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 700) {
+                return _buildMobileList(context);
+              } else {
+                return _buildDesktopTable(context);
+              }
             },
-          );
-
-          final pager = Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Row(
-              children: [
-                Text('Mostrando $from–$to de $total'),
-                const Spacer(),
-                IconButton(
-                  tooltip: 'Anterior',
-                  onPressed: (page > 1) ? () => onPageChange(page - 1) : null,
-                  icon: const Icon(Icons.chevron_left),
+          ),
+        ),
+        
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Colors.black12)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  '$from - $to de $total',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
-                Text('$page'),
-                IconButton(
-                  tooltip: 'Siguiente',
-                  onPressed: (to < total) ? () => onPageChange(page + 1) : null,
-                  icon: const Icon(Icons.chevron_right),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: page > 1 ? () => onPageChange(page - 1) : null,
+                  ),
+                  Container(
+                    alignment: Alignment.center,
+                    constraints: const BoxConstraints(minWidth: 32),
+                    child: Text('$page', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: to < total ? () => onPageChange(page + 1) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopTable(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: DataTable(
+          sortColumnIndex: _sortColIndex,
+          sortAscending: sortAscending,
+          headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+          columns: [
+            DataColumn(label: const Text('Cédula'), onSort: (_, asc) => onSort('cedula', asc)),
+            DataColumn(label: const Text('Nombre'), onSort: (_, asc) => onSort('nombre', asc)),
+            DataColumn(label: const Text('Correo'), onSort: (_, asc) => onSort('correo', asc)),
+            DataColumn(label: const Text('Creado'), onSort: (_, asc) => onSort('creado_en', asc)),
+            const DataColumn(label: Text('Rol')),
+            const DataColumn(label: Text('Acciones')),
+          ],
+          rows: users.map((u) {
+            return DataRow(cells: [
+              DataCell(Text(u.cedula ?? '—', style: const TextStyle(fontFamily: 'Monospace', color: Colors.blueGrey))),
+              DataCell(Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundImage: (u.avatarUrl != null) ? NetworkImage(u.avatarUrl!) : null,
+                    backgroundColor: Colors.blue.shade50,
+                    child: (u.avatarUrl == null) ? const Icon(Icons.person, size: 16, color: Colors.blue) : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(u.nombre, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500))),
+                ],
+              )),
+              DataCell(Text(u.correo)),
+              DataCell(Text(u.creadoEn.toString().split(' ')[0])),
+              DataCell(_buildRoleBadge(u.rol)),
+              DataCell(Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20, color: Colors.blueGrey),
+                    tooltip: 'Editar',
+                    onPressed: () => onEdit(u),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      isInactiveTab ? Icons.check_circle_outline : Icons.block_outlined,
+                      color: isInactiveTab ? Colors.green : Colors.red[300],
+                      size: 20,
+                    ),
+                    tooltip: isInactiveTab ? 'Activar' : 'Desactivar',
+                    onPressed: () => onToggleStatus(u),
+                  ),
+                ],
+              )),
+            ]);
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileList(BuildContext context) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(12),
+      itemCount: users.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (ctx, i) {
+        final u = users[i];
+        return Card(
+          elevation: 0,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.grey.shade200)
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundImage: (u.avatarUrl != null) ? NetworkImage(u.avatarUrl!) : null,
+                      backgroundColor: Colors.blue.shade50,
+                      child: (u.avatarUrl == null) ? const Icon(Icons.person, color: Colors.blue) : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(u.nombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const SizedBox(height: 4),
+                          _buildRoleBadge(u.rol),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.blueGrey),
+                      onPressed: () => onEdit(u),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: Icon(
+                        isInactiveTab ? Icons.check_circle : Icons.block,
+                        color: isInactiveTab ? Colors.green : Colors.red[300],
+                      ),
+                      onPressed: () => onToggleStatus(u),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Divider(),
+                ),
+                _buildMobileInfoRow(Icons.email_outlined, u.correo),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: _buildMobileInfoRow(Icons.badge_outlined, u.cedula ?? 'Sin cédula')),
+                    Text(
+                      u.creadoEn.toString().split(' ')[0], 
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ),
               ],
             ),
-          );
-
-          return Column(children: [Expanded(child: list), pager]);
-        }
-
-        final table = SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: DataTable(
-            sortColumnIndex: _sortColumnIndex,
-            sortAscending: sortAscending,
-            columns: [
-              DataColumn(
-                label: const Text('Cédula'), // ✅ título más claro
-                onSort: (_, asc) => onSort('cedula', asc), // ✅ ordenar por cédula
-              ),
-              DataColumn(
-                label: const Text('Nombre'),
-                onSort: (_, asc) => onSort('nombre', asc),
-              ),
-              DataColumn(
-                label: const Text('Correo'),
-                onSort: (_, asc) => onSort('correo', asc),
-              ),
-              DataColumn(
-                label: const Text('Creado'),
-                onSort: (_, asc) => onSort('creado_en', asc),
-              ),
-              const DataColumn(label: Text('Rol')),
-              const DataColumn(label: Text('Acciones')),
-            ],
-            rows: rows.map((u) {
-              final doc = u['cedula'] ?? u['dni'] ?? u['numero_cedula'];
-              // ✅ “<cédula>” o “Sin identificar”
-              final docText = (doc != null && '$doc'.isNotEmpty) ? '$doc' : 'Sin identificar';
-
-              return DataRow(cells: [
-                DataCell(Text(docText)), // ✅
-                DataCell(Text(u['nombre'] ?? '')),
-                DataCell(Text(u['correo'] ?? '')),
-                DataCell(Text('${u['creado_en'] ?? ''}')),
-                DataCell(Text(rolLabel(u['id_rol']))),
-                DataCell(Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      tooltip: 'Editar',
-                      onPressed: () => onEdit(u),
-                      icon: const Icon(Icons.edit),
-                    ),
-                    if (inactiveTable)
-                      IconButton(
-                        tooltip: 'Activar',
-                        onPressed: () => onActivate(u),
-                        icon: const Icon(Icons.person_add_alt_1),
-                      )
-                    else
-                      IconButton(
-                        tooltip: 'Desactivar',
-                        onPressed: () => onDelete(u),
-                        icon: const Icon(Icons.person_off),
-                      ),
-                  ],
-                )),
-              ]);
-            }).toList(),
           ),
         );
-
-        final pager = Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: Row(
-            children: [
-              Text('Mostrando $from–$to de $total'),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Anterior',
-                onPressed: (page > 1) ? () => onPageChange(page - 1) : null,
-                icon: const Icon(Icons.chevron_left),
-              ),
-              Text('$page'),
-              IconButton(
-                tooltip: 'Siguiente',
-                onPressed: (to < total) ? () => onPageChange(page + 1) : null,
-                icon: const Icon(Icons.chevron_right),
-              ),
-            ],
-          ),
-        );
-
-        return Column(children: [Expanded(child: table), pager]);
       },
+    );
+  }
+
+  Widget _buildMobileInfoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[500]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text, 
+            style: TextStyle(color: Colors.grey[700], fontSize: 13),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoleBadge(UserRole rol) {
+    Color color;
+    switch (rol) {
+      case UserRole.admin: color = Colors.purple; break;
+      case UserRole.profesor: color = Colors.orange; break;
+      case UserRole.padre: color = Colors.blue; break;
+      default: color = Colors.grey;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Text(
+        rol.label,
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold),
+      ),
     );
   }
 }

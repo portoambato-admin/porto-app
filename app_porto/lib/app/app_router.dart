@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/state/auth_state.dart'; 
 
 // Roles
 import '../features/admin/sections/roles_screen.dart' show RolesScreen;
@@ -363,39 +364,42 @@ class AppRouter {
     );
   }
 
-  static Route<dynamic> _guardedPlain(
+ static Route<dynamic> _guardedPlain(
     RouteSettings s, {
     required WidgetBuilder builder,
   }) {
-    // También limpiamos el path aquí para verificar si está protegido
     final uri = Uri.parse(s.name ?? RouteNames.root);
     final redirectTo = uri.path;
 
     return MaterialPageRoute(
       settings: s,
-      builder: (ctx) => FutureBuilder<String?>(
-        future: Session.getToken(),
-        builder: (ctx, tokenSnap) {
-          if (tokenSnap.connectionState != ConnectionState.done) {
-            return const _LoadingPage();
-          }
-
-          final token = tokenSnap.data;
-
-          if (RouteNames.guarded.contains(redirectTo) && token == null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
+      builder: (ctx) {
+        // ✅ CORRECCIÓN: Usar AuthScope en lugar de Session
+        final auth = AuthScope.of(ctx);
+        
+        debugPrint('[_guardedPlain] Verificando ruta: $redirectTo');
+        debugPrint('[_guardedPlain] isLoggedIn: ${auth.isLoggedIn}');
+        
+        // Si la ruta requiere auth y NO está logueado
+        if (RouteNames.guarded.contains(redirectTo) && !auth.isLoggedIn) {
+          debugPrint('[_guardedPlain] ❌ No autenticado, redirigiendo a login');
+          
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (ctx.mounted) {
               Navigator.of(ctx).pushNamedAndRemoveUntil(
                 RouteNames.auth,
                 (r) => false,
                 arguments: {'redirectTo': redirectTo},
               );
-            });
-            return const _LoadingPage();
-          }
-
-          return builder(ctx);
-        },
-      ),
+            }
+          });
+          
+          return const _LoadingPage();
+        }
+        
+        debugPrint('[_guardedPlain] ✅ Acceso permitido a: $redirectTo');
+        return builder(ctx);
+      },
     );
   }
 

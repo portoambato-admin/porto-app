@@ -2,6 +2,7 @@
 // (Actualizado con funciones de exportación PDF/Excel y corrección de pageTheme)
 
 import 'dart:async';
+import 'package:app_porto/core/services/session_token_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:app_porto/app/app_scope.dart';
@@ -57,8 +58,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
 
   Future<void> _checkAuthAndLoad() async {
     try {
-      final tp = _scope.http.tokenProvider;
-      final t = await tp?.getToken();
+      final t = await SessionTokenProvider.instance.readToken();
 
       if (!mounted) return;
 

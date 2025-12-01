@@ -1,5 +1,6 @@
 // lib/features/admin/data/pagos_repository.dart
 import 'dart:math';
+import 'package:app_porto/core/services/session_token_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/constants/endpoints.dart';
 import '../../../core/network/http_client.dart';
@@ -20,8 +21,8 @@ class PagosRepository {
   /// Verifica que exista token antes de llamar al backend.
   /// Evita hacer requests que siempre devolverían 401.
   Future<void> _requireAuth() async {
-    final t = await _http.tokenProvider?.getToken();
-    if (t == null || t.isEmpty) {
+    final token = await SessionTokenProvider.instance.readToken();
+    if (token == null || token.isEmpty) {
       throw Exception('Debes iniciar sesión para gestionar pagos.');
     }
   }

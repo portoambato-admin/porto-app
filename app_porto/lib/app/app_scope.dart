@@ -1,6 +1,6 @@
+import 'package:app_porto/core/config/app_env.dart';
 import 'package:flutter/widgets.dart';
 import '../core/network/http_client.dart';
-import '../core/services/session_token_provider.dart';
 
 // Auth
 import '../features/auth/data/auth_repository.dart';
@@ -53,8 +53,12 @@ class AppScope extends InheritedWidget {
   });
 
   factory AppScope({required Widget child}) {
-    final tp   = SessionTokenProvider.instance;
-    final http = HttpClient(tokenProvider: tp);
+    
+    final http = HttpClient(
+      baseUrl: AppEnv.apiBase,
+    );
+
+    // 3. Inyectamos http en el repositorio
     final auth = AuthRepository(http);
 
     final usuarios          = UsuariosRepository(http);

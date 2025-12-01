@@ -1,47 +1,64 @@
 // lib/core/services/session_token_provider.dart
-import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../network/http_client.dart';
-import 'session.dart';
-
-class SessionTokenProvider implements TokenProvider {
+class SessionTokenProvider {
   SessionTokenProvider._();
   static final SessionTokenProvider instance = SessionTokenProvider._();
 
-  String? _cache;
+  final _storage = const FlutterSecureStorage();
+  
+  static const _keyToken = 'auth_token';
+  static const _keyUser  = 'auth_user_data';
 
-  void clearCache() => _cache = null;
-
-  @override
-  Future<String?> getToken() async {
-    if (_cache != null && _cache!.isNotEmpty) return _cache;
-
-    final fromSession = await Session.getToken();
-    if (fromSession != null && fromSession.isNotEmpty) {
-      _cache = fromSession;
-      return _cache;
-    }
-
+  // --- TOKEN ---
+  Future<String?> readToken() async {
     if (kIsWeb) {
-      try {
-        final s = html.window.localStorage;
-        _cache = s['auth_token'] ??
-                 s['porto_token'] ??
-                 s['token'] ??
-                 s['jwt'] ??
-                 s['access_token'];
-        if (_cache != null && _cache!.isNotEmpty) return _cache;
-      } catch (_) {}
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_keyToken);
+    } else {
+      return await _storage.read(key: _keyToken);
     }
-    return null;
   }
 
-  @override
-  Future<String?> refreshToken() async {
-    // Implementa refresh real si lo necesitas en el futuro
-    return null;
+  Future<void> saveToken(String token) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyToken, token);
+    } else {
+      await _storage.write(key: _keyToken, value: token);
+    }
+  }
+
+  // --- USUARIO (JSON) ---
+  Future<String?> readUser() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_keyUser);
+    } else {
+      return await _storage.read(key: _keyUser);
+    }
+  }
+
+  Future<void> saveUser(String json) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyUser, json);
+    } else {
+      await _storage.write(key: _keyUser, value: json);
+    }
+  }
+
+  // --- LIMPIEZA ---
+  Future<void> clearCache() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyToken);
+      await prefs.remove(_keyUser);
+    } else {
+      await _storage.delete(key: _keyToken);
+      await _storage.delete(key: _keyUser);
+    }
   }
 }

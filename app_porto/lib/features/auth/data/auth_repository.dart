@@ -1,14 +1,19 @@
 import '../../../core/constants/endpoints.dart';
 import '../../../core/network/http_client.dart';
+import '../../../features/admin/models/usuario_model.dart';
+
+class AuthResponse {
+  final String token;
+  final Usuario usuario; // Cambiado de User a Usuario
+  AuthResponse({required this.token, required this.usuario});
+}
 
 class AuthRepository {
   final HttpClient _http;
   const AuthRepository(this._http);
 
-  // =========================================
   // LOGIN NORMAL
-  // =========================================
-  Future<({String token, Map<String, dynamic> user})> login({
+  Future<AuthResponse> login({
     required String correo,
     required String contrasena,
   }) async {
@@ -23,11 +28,8 @@ class AuthRepository {
     return _extractAuth(res);
   }
 
-  // =========================================
-  // LOGIN CON GOOGLE (NUEVO)
-  // =========================================
-  Future<({String token, Map<String, dynamic> user})> loginGoogle(
-      String idToken) async {
+  // LOGIN CON GOOGLE
+  Future<AuthResponse> loginGoogle(String idToken) async {
     final res = await _http.post(
       Endpoints.authLoginGoogle,
       body: {'id_token': idToken},
@@ -36,42 +38,42 @@ class AuthRepository {
     return _extractAuth(res);
   }
 
-  // =========================================
-  // HELPER PARA EXTRAER AUTH (MEJORADO)
-  // =========================================
-  ({String token, Map<String, dynamic> user}) _extractAuth(dynamic res) {
-    // 1. Verificar si el backend nos mandó un mensaje de error explícito
-    if (res is Map && res['message'] != null && res['token'] == null) {
-      throw Exception(res['message']);
+  // Helper para procesar la respuesta del backend
+  AuthResponse _extractAuth(dynamic res) {
+    if (res is Map && (res['error'] != null || (res['message'] != null && res['token'] == null))) {
+      throw Exception(res['error'] ?? res['message']);
     }
 
-    final token = res['token'];
-    final usuario = (res["usuario"] ?? res["user"]) as Map?;
+    final token = res['token'] as String?;
+    final userData = res['usuario'] ?? res['user'] ?? res['data']?['user'];
 
-    if (token == null || usuario == null) {
-      throw Exception("Respuesta inválida del servidor");
+    if (token == null || userData == null) {
+      throw Exception("Respuesta inválida del servidor.");
     }
 
-    return (token: token, user: usuario.cast<String, dynamic>());
+    return AuthResponse(
+      token: token,
+      // Usamos tu clase Usuario
+      usuario: Usuario.fromJson(Map<String, dynamic>.from(userData)),
+    );
   }
-
-  // =========================================
   // LOGOUT
-  // =========================================
   Future<void> logout() async {
-    await _http.post(Endpoints.authLogout, body: {});
+    try {
+      await _http.post(Endpoints.authLogout, body: {});
+    } catch (_) {
+      // Ignoramos error en logout, lo prioritario es limpiar la sesión local
+    }
   }
 
-  // =========================================
-  // PERFIL
-  // =========================================
-  Future<Map<String, dynamic>> me() async {
+  // PERFIL (ME)
+  Future<Usuario> me() async {
     final res = await _http.get(Endpoints.me);
+    
+    final userData = (res is Map && res['usuario'] != null) 
+        ? res['usuario'] 
+        : res;
 
-    if (res is Map && res['usuario'] != null) {
-      return Map<String, dynamic>.from(res['usuario']);
-    }
-
-    return Map<String, dynamic>.from(res);
+    return Usuario.fromJson(Map<String, dynamic>.from(userData));
   }
 }

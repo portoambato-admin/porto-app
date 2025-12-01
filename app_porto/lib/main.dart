@@ -69,7 +69,7 @@ class PortoAmbatoApp extends StatelessWidget {
         builder: (ctx) {
           // Reutilizamos el MISMO HttpClient y el MISMO TokenProvider singleton
           final http = AppScope.of(ctx).http; // creado con SessionTokenProvider.instance
-          final auth = AuthState(http)..load();
+          final auth = AuthState(http);
 
           return AuthScope(
             controller: auth,
