@@ -4,13 +4,27 @@ import '../../../features/admin/models/usuario_model.dart';
 
 class AuthResponse {
   final String token;
-  final Usuario usuario; // Cambiado de User a Usuario
+  final Usuario usuario;
   AuthResponse({required this.token, required this.usuario});
 }
 
 class AuthRepository {
   final HttpClient _http;
   const AuthRepository(this._http);
+
+  // ✅ Helper para desenvolver { usuario: {...} } de forma consistente
+  Map<String, dynamic> _unwrapUser(dynamic payload) {
+    if (payload is Usuario) {
+      return payload.toJson(); // Si ya es un Usuario, convertir a JSON
+    }
+    if (payload is Map && payload['usuario'] is Map) {
+      return Map<String, dynamic>.from(payload['usuario'] as Map);
+    }
+    if (payload is Map) {
+      return Map<String, dynamic>.from(payload);
+    }
+    throw Exception('Formato de usuario inválido');
+  }
 
   // LOGIN NORMAL
   Future<AuthResponse> login({
@@ -51,12 +65,15 @@ class AuthRepository {
       throw Exception("Respuesta inválida del servidor.");
     }
 
+    // ✅ Asegurar que userData sea un Map antes de crear el Usuario
+    final userMap = _unwrapUser(userData);
+
     return AuthResponse(
       token: token,
-      // Usamos tu clase Usuario
-      usuario: Usuario.fromJson(Map<String, dynamic>.from(userData)),
+      usuario: Usuario.fromJson(userMap),
     );
   }
+
   // LOGOUT
   Future<void> logout() async {
     try {
@@ -70,10 +87,9 @@ class AuthRepository {
   Future<Usuario> me() async {
     final res = await _http.get(Endpoints.me);
     
-    final userData = (res is Map && res['usuario'] != null) 
-        ? res['usuario'] 
-        : res;
-
-    return Usuario.fromJson(Map<String, dynamic>.from(userData));
+    // ✅ Desenvolver correctamente
+    final userMap = _unwrapUser(res);
+    
+    return Usuario.fromJson(userMap);
   }
 }

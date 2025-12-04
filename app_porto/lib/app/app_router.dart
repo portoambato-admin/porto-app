@@ -63,7 +63,7 @@ import '../features/admin/sections/admin_subcategorias_screen.dart'
     show AdminSubcategoriasScreen;
 
 // Sesión
-import '../core/services/session.dart';
+
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings s) {
@@ -173,7 +173,7 @@ class AppRouter {
         return _guardedPlain(
           s,
           builder: (_) => PersonasHubScreen(
-            child: ProfesoresScreen(embedded: true),
+            child: ProfesoresScreen(),
           ),
         );
 
@@ -241,7 +241,7 @@ class AppRouter {
         return _guardedPlain(
           s,
           builder: (_) => PersonasHubScreen(
-            child: ProfesoresScreen(embedded: true),
+            child: ProfesoresScreen(),
           ),
         );
 
@@ -377,12 +377,11 @@ class AppRouter {
         // ✅ CORRECCIÓN: Usar AuthScope en lugar de Session
         final auth = AuthScope.of(ctx);
         
-        debugPrint('[_guardedPlain] Verificando ruta: $redirectTo');
-        debugPrint('[_guardedPlain] isLoggedIn: ${auth.isLoggedIn}');
+       
         
         // Si la ruta requiere auth y NO está logueado
         if (RouteNames.guarded.contains(redirectTo) && !auth.isLoggedIn) {
-          debugPrint('[_guardedPlain] ❌ No autenticado, redirigiendo a login');
+          
           
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (ctx.mounted) {
@@ -397,7 +396,6 @@ class AppRouter {
           return const _LoadingPage();
         }
         
-        debugPrint('[_guardedPlain] ✅ Acceso permitido a: $redirectTo');
         return builder(ctx);
       },
     );

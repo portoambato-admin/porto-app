@@ -111,8 +111,7 @@ class PagosRepository {
         return List<Map<String, dynamic>>.from(res).map(_mapPago).toList();
       }
       return const <Map<String, dynamic>>[];
-    } catch (e, st) {
-      debugPrint('PagosRepository.porMensualidad error: $e\n$st');
+    } catch (e) {
       _rethrowPretty(e);
     }
   }
@@ -141,8 +140,8 @@ class PagosRepository {
         };
       }
       return null;
-    } catch (e, st) {
-      debugPrint('PagosRepository.resumen error: $e\n$st');
+    } catch (e) {
+      
       _rethrowPretty(e);
     }
   }
@@ -203,8 +202,7 @@ class PagosRepository {
       }
 
       throw Exception('Respuesta inesperada del servidor.');
-    } catch (e, st) {
-      debugPrint('PagosRepository.crear error: $e\n$st');
+    } catch (e) {
       _rethrowPretty(e);
     }
   }
@@ -259,8 +257,7 @@ class PagosRepository {
       }
 
       throw Exception('Respuesta inesperada del servidor.');
-    } catch (e, st) {
-      debugPrint('PagosRepository.actualizar error: $e\n$st');
+    } catch (e) {
       _rethrowPretty(e);
     }
   }
@@ -280,8 +277,7 @@ class PagosRepository {
       await _http.delete(url, headers: _headers);
 
       return true; // si no lanzó excepción, OK
-    } catch (e, st) {
-      debugPrint('PagosRepository.anular error: $e\n$st');
+    } catch (e) {
       _rethrowPretty(e);
     }
   }

@@ -46,8 +46,7 @@ class CategoriasRepository {
       );
       final List data = (res is List) ? res : (res['data'] ?? []) as List;
       return data.cast<Map<String, dynamic>>().map(_catFromBackend).toList();
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.todos error: $e\n$st');
+    } catch (e) {
       rethrow;
     }
   }
@@ -149,8 +148,7 @@ class CategoriasRepository {
         'page': page,
         'pageSize': pageSize,
       };
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.paged error: $e\n$st');
+    } catch (e) {
       rethrow;
     }
   }
@@ -177,8 +175,7 @@ class CategoriasRepository {
       final Map<String, dynamic> data =
           (res is Map<String, dynamic>) ? res : (res['data'] as Map<String, dynamic>);
       return _catFromBackend(data);
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.crear error: $e\n$st');
+    } catch (e) {
       rethrow;
     }
   }
@@ -206,8 +203,7 @@ class CategoriasRepository {
       final Map<String, dynamic> data =
           (res is Map<String, dynamic>) ? res : (res['data'] as Map<String, dynamic>);
       return _catFromBackend(data);
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.update error: $e\n$st');
+    } catch (e) {
       rethrow;
     }
   }
@@ -218,8 +214,7 @@ class CategoriasRepository {
         Endpoints.categoriaId(idCategoria),
         headers: _headers,
       );
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.remove error: $e\n$st');
+    } catch (e) {
       rethrow;
     }
   }
@@ -230,8 +225,8 @@ class CategoriasRepository {
         Endpoints.categoriaActivar(idCategoria),
         headers: _headers,
       );
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.activate error: $e\n$st');
+    } catch (e) {
+      
       rethrow;
     }
   }
@@ -242,8 +237,8 @@ class CategoriasRepository {
         Endpoints.categoriaId(idCategoria),
         headers: _headers,
       );
-    } catch (e, st) {
-      debugPrint('CategoriasRepository.deactivate error: $e\n$st');
+    } catch (e) {
+      
       rethrow;
     }
   }

@@ -345,7 +345,6 @@ class _MensualidadCardState extends State<_MensualidadCard> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

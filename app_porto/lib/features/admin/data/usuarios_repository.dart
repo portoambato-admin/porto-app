@@ -51,7 +51,6 @@ class UsuariosRepository {
                 try {
                   return Usuario.fromJson(Map<String, dynamic>.from(e));
                 } catch (e) {
-                  debugPrint('[UsuariosRepository] Error parseando usuario: $e');
                   return null;
                 }
               })
@@ -305,4 +304,3 @@ class UsuariosRepository {
   }
 }
 
-// Import necesario para debugPrint

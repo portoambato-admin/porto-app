@@ -37,11 +37,10 @@ class PermissionsStore extends ChangeNotifier {
     try {
       // Verificar que haya token ANTES de hacer la petición
       final token = await SessionTokenProvider.instance.readToken();
-      debugPrint('[PermissionsStore] 🔄 Refrescando permisos...');
-      debugPrint('[PermissionsStore] 🔑 Token disponible: ${token?.substring(0, 20) ?? "null"}...');
+      
       
       if (token == null || token.isEmpty) {
-        debugPrint('[PermissionsStore] ⚠️ No hay token, limpiando permisos');
+        
         _role = null;
         _perms.clear();
         notifyListeners();
@@ -49,7 +48,7 @@ class PermissionsStore extends ChangeNotifier {
       }
 
       final data = await http.get(RbacEndpoints.mePermisos);
-      debugPrint('[PermissionsStore] 📦 Respuesta recibida: $data');
+    
 
       final m = Map<String, dynamic>.from(data as Map);
       _role = (m['rol'] as String?)?.toLowerCase();
@@ -57,36 +56,30 @@ class PermissionsStore extends ChangeNotifier {
         ..clear()
         ..addAll(((m['permisos'] as List?) ?? const []).map((e) => e.toString()));
 
-      debugPrint('[PermissionsStore] ✅ Rol: $_role');
-      debugPrint('[PermissionsStore] ✅ Permisos: ${_perms.length} permisos cargados');
-
     } on UnauthorizedException catch (e) {
-      debugPrint('[PermissionsStore] 🔥 Sesión expirada: $e');
       _role = null;
       _perms.clear();
 
     } on ApiError catch (e) {
       if (e.status == 401) {
-        debugPrint('[PermissionsStore] 🔥 API 401: ${e.message}');
+      
         _role = null;
         _perms.clear();
       } else {
-        debugPrint('[PermissionsStore] ❌ Error API ${e.status}: ${e.message}');
-        // Para otros errores, podríamos mantener los permisos existentes
-        // o limpiarlos dependiendo de la lógica de negocio
+      
       }
 
     } catch (e) {
-      debugPrint('[PermissionsStore] ❌ Error inesperado: $e');
-      debugPrint('[PermissionsStore] Stack trace: ${StackTrace.current}');
-      // No limpiamos los permisos en caso de error de red
+     
+      throw e;
+     // No limpiamos los permisos en caso de error de red
     } finally {
       notifyListeners();
     }
   }
 
   void clear() {
-    debugPrint('[PermissionsStore] 🧹 Limpiando permisos');
+    
     _role = null;
     _perms.clear();
     notifyListeners();

@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../app/app_scope.dart';
 import '../../../core/constants/endpoints.dart';
-
-// ===== IMPORTS AÑADIDOS =====
 import 'package:table_calendar/table_calendar.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -13,9 +11,8 @@ import 'package:file_selector/file_selector.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-
 import 'package:flutter/services.dart' show rootBundle;
-// ===========================================
+
 
 String _todayISO() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
@@ -2021,4 +2018,3 @@ Widget _rowsTable({
     ),
   );
 }
-// ========================================================

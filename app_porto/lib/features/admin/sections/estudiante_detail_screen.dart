@@ -2,6 +2,7 @@
 // (Corregido: Restaurado el método _exportInfoPdf)
 
 import 'dart:typed_data';
+import 'package:app_porto/core/services/session_token_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -25,7 +26,7 @@ import 'package:printing/printing.dart';
 // Import para cargar fuentes .ttf manualmente
 import 'package:flutter/services.dart' show rootBundle;
 // Import para las fuentes de Google (si usas el paquete)
-// import 'package:pdf_google_fonts/pdf_google_fonts.dart'; 
+// import 'package:pdf_google_fonts/pdf_google_fonts.dart';
 
 // =========================================================
 // ===== HELPER FUNCTIONS (Top-level) =====
@@ -36,8 +37,18 @@ double _asDouble(dynamic v) =>
 String _mesNombre(int? m) {
   const meses = [
     '',
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
   if (m == null || m < 1 || m > 12) return '-';
   return meses[m];
@@ -56,11 +67,11 @@ class EstudianteDetailScreen extends StatefulWidget {
 class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     with SingleTickerProviderStateMixin {
   // ===== Repos de Info =====
-  late final _est = AppScope.of(context).estudiantes;
-  late final _mat = AppScope.of(context).matriculas;
-  late final _asig = AppScope.of(context).subcatEst;
-  late final _cats = AppScope.of(context).categorias;
-  late final _subs = AppScope.of(context).subcategorias;
+  late dynamic _est;
+  late dynamic _mat;
+  late dynamic _asig;
+  late dynamic _cats;
+  late dynamic _subs;
 
   // ===== Repos de Pagos (NUEVO - traído de AdminPagosScreen) =====
   dynamic get _mensRepo => AppScope.of(context).mensualidades;
@@ -111,11 +122,25 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   @override
   void initState() {
     super.initState();
+
+    // ===== FIX DEFINITIVO =====
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final scope = AppScope.of(context);
+
+      _est = scope.estudiantes;
+      _mat = scope.matriculas;
+      _asig = scope.subcatEst;
+      _cats = scope.categorias;
+      _subs = scope.subcategorias;
+
+      _checkAuthAndLoad();
+    });
+    // ==========================
+
     _tab.addListener(() {
       setState(() {});
       if (_tab.index == 1) _cargarMensualidades();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkAuthAndLoad());
   }
 
   @override
@@ -128,8 +153,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   // ===== Lógica de Auth (NUEVO) =====
   Future<void> _checkAuthAndLoad() async {
     try {
-      final tp = _http.tokenProvider;
-      final t = await tp?.getToken();
+      final tp = SessionTokenProvider.instance;
+      final t = await tp.readToken();
 
       if (!mounted) return;
 
@@ -170,7 +195,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   // ===== Carga de Datos =====
 
   Future<void> _loadAll() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final info = await _est.byId(widget.id);
       final mats = await _mat.porEstudiante(widget.id);
@@ -236,10 +264,22 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   // ---------- Helpers repos (para Info) ----------
   Future<List<Map<String, dynamic>>> _fetchCategorias() async {
     final dyn = _cats as dynamic;
-    try { final r = await dyn.activas(); return List<Map<String, dynamic>>.from(r); } catch (_) {}
-    try { final r = await dyn.todas(); return List<Map<String, dynamic>>.from(r); } catch (_) {}
-    try { final r = await dyn.listar(); return List<Map<String, dynamic>>.from(r); } catch (_) {}
-    try { final r = await dyn.getAll(); return List<Map<String, dynamic>>.from(r); } catch (_) {}
+    try {
+      final r = await dyn.activas();
+      return List<Map<String, dynamic>>.from(r);
+    } catch (_) {}
+    try {
+      final r = await dyn.todas();
+      return List<Map<String, dynamic>>.from(r);
+    } catch (_) {}
+    try {
+      final r = await dyn.listar();
+      return List<Map<String, dynamic>>.from(r);
+    } catch (_) {}
+    try {
+      final r = await dyn.getAll();
+      return List<Map<String, dynamic>>.from(r);
+    } catch (_) {}
     return const <Map<String, dynamic>>[];
   }
 
@@ -247,7 +287,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     final dyn = _subs as dynamic;
     try {
       final r = await dyn.porCategoria(idCat);
-      setState(() { _subsDeCat = List<Map<String, dynamic>>.from(r); _subToAssign = null; });
+      setState(() {
+        _subsDeCat = List<Map<String, dynamic>>.from(r);
+        _subToAssign = null;
+      });
       return;
     } catch (_) {}
     try {
@@ -256,9 +299,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         final a = e['id_categoria'] ?? e['idCategoria'];
         return a?.toString() == '$idCat';
       }).toList();
-      setState(() { _subsDeCat = list; _subToAssign = null; });
+      setState(() {
+        _subsDeCat = list;
+        _subToAssign = null;
+      });
     } catch (_) {
-      setState(() { _subsDeCat = []; _subToAssign = null; });
+      setState(() {
+        _subsDeCat = [];
+        _subToAssign = null;
+      });
     }
   }
 
@@ -280,12 +329,35 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       if (fechaISO != null) 'fechaMatricula': fechaISO,
     };
 
-    try { await dyn.update(idMatricula: idMatricula, idCategoria: idCategoria, ciclo: ciclo, fechaISO: fechaISO); return; } catch (_) {}
-    try { await dyn.actualizar(idMatricula, dataSnake); return; } catch (_) {}
-    try { await dyn.patch(idMatricula, dataSnake); return; } catch (_) {}
-    try { await dyn.update(idMatricula, dataSnake); return; } catch (_) {}
-    try { await dyn.actualizar({'id_matricula': idMatricula, ...dataSnake}); return; } catch (_) {}
-    try { await dyn.actualizar({'idMatricula': idMatricula, ...dataCamel}); return; } catch (_) {}
+    try {
+      await dyn.update(
+        idMatricula: idMatricula,
+        idCategoria: idCategoria,
+        ciclo: ciclo,
+        fechaISO: fechaISO,
+      );
+      return;
+    } catch (_) {}
+    try {
+      await dyn.actualizar(idMatricula, dataSnake);
+      return;
+    } catch (_) {}
+    try {
+      await dyn.patch(idMatricula, dataSnake);
+      return;
+    } catch (_) {}
+    try {
+      await dyn.update(idMatricula, dataSnake);
+      return;
+    } catch (_) {}
+    try {
+      await dyn.actualizar({'id_matricula': idMatricula, ...dataSnake});
+      return;
+    } catch (_) {}
+    try {
+      await dyn.actualizar({'idMatricula': idMatricula, ...dataCamel});
+      return;
+    } catch (_) {}
     try {
       final payload = Map<String, dynamic>.from(dataSnake);
       payload['id_matricula'] = idMatricula;
@@ -304,11 +376,21 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }) async {
     final dyn = _mat as dynamic;
     try {
-      await dyn.crear(idEstudiante: idEstudiante, idCategoria: idCategoria, ciclo: ciclo, fechaISO: fechaISO);
+      await dyn.crear(
+        idEstudiante: idEstudiante,
+        idCategoria: idCategoria,
+        ciclo: ciclo,
+        fechaISO: fechaISO,
+      );
       return;
     } catch (_) {}
     try {
-      await dyn.crear(id_estudiante: idEstudiante, id_categoria: idCategoria, ciclo: ciclo, fecha_matricula: fechaISO);
+      await dyn.crear(
+        id_estudiante: idEstudiante,
+        id_categoria: idCategoria,
+        ciclo: ciclo,
+        fecha_matricula: fechaISO,
+      );
       return;
     } catch (_) {}
     final bodySnake = {
@@ -323,8 +405,14 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       if (ciclo != null && ciclo.isNotEmpty) 'ciclo': ciclo,
       if (fechaISO != null) 'fechaMatricula': fechaISO,
     };
-    try { await dyn.crear(bodySnake); return; } catch (_) {}
-    try { await dyn.crear(bodyCamel); return; } catch (_) {}
+    try {
+      await dyn.crear(bodySnake);
+      return;
+    } catch (_) {}
+    try {
+      await dyn.crear(bodyCamel);
+      return;
+    } catch (_) {}
 
     throw 'Tu MatriculasRepository no expone un método de creación compatible.';
   }
@@ -358,7 +446,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }) async {
     try {
       if (kIsWeb) {
-        final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+        final xf = XFile.fromData(
+          bytes,
+          name: defaultFileName,
+          mimeType: mimeType,
+        );
         await xf.saveTo(defaultFileName);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,24 +467,28 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
       if (path == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Guardado cancelado')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Guardado cancelado')));
         return;
       }
 
-      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+      final xf = XFile.fromData(
+        bytes,
+        name: defaultFileName,
+        mimeType: mimeType,
+      );
       await xf.saveTo(path);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Archivo guardado en: $path')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Archivo guardado en: $path')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo guardar: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
     }
   }
 
@@ -402,14 +498,17 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
   Future<Uint8List> _buildInfoPdfBytes() async {
     final doc = pw.Document();
-    
+
     // --- Cargar fuentes desde assets ---
     final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final robotoFont = pw.Font.ttf(robotoData);
-    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialData = await rootBundle.load(
+      'assets/fonts/MaterialIcons-Regular.ttf',
+    );
     final materialFont = pw.Font.ttf(materialData);
-    
-    final nombre = '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}'.trim();
+
+    final nombre = '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}'
+        .trim();
     final titulo = nombre.isEmpty ? 'Estudiante ${widget.id}' : nombre;
 
     // Colores profesionales
@@ -426,39 +525,55 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           theme: pw.ThemeData.withFont(base: robotoFont), // <-- Movido aquí
         ),
         // === Encabezado de Página ===
-        header: (context) => pw.Column(children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('FICHA DE ESTUDIANTE',
+        header: (context) => pw.Column(
+          children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'FICHA DE ESTUDIANTE',
                   style: pw.TextStyle(
-                      color: baseColor,
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.Text(titulo,
+                    color: baseColor,
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  titulo,
                   style: const pw.TextStyle(
-                      color: PdfColors.grey700, fontSize: 14)),
-            ],
-          ),
-          pw.Divider(color: PdfColors.grey400, height: 8),
-          pw.SizedBox(height: 10),
-        ]),
+                    color: PdfColors.grey700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            pw.Divider(color: PdfColors.grey400, height: 8),
+            pw.SizedBox(height: 10),
+          ],
+        ),
         // === Pie de Página ===
         footer: (context) => pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
             pw.Text(
-                'Página ${context.pageNumber} de ${context.pagesCount}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              'Generado el: ${_fmtDate(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              'Página ${context.pageNumber} de ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
           ],
         ),
         // === Contenido del Documento ===
         build: (context) => [
           // --- Sección 1: Datos Personales ---
           _buildSectionHeader(
-              'Datos Personales', Icons.person, baseColor, materialFont),
+            'Datos Personales',
+            Icons.person,
+            baseColor,
+            materialFont,
+          ),
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
             decoration: pw.BoxDecoration(
@@ -468,46 +583,78 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
             child: pw.Column(
               children: [
                 _buildInfoRow(
-                    Icons.badge,
-                    'Nombre:',
-                    '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}',
-                    materialFont),
+                  Icons.badge,
+                  'Nombre:',
+                  '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}',
+                  materialFont,
+                ),
                 _buildInfoRow(
-                    Icons.cake,
-                    'Nacimiento:',
-                    _fmtDate(_info?['fechaNacimiento'] ??
-                        _info?['fecha_nacimiento']),
-                    materialFont),
+                  Icons.cake,
+                  'Nacimiento:',
+                  _fmtDate(
+                    _info?['fechaNacimiento'] ?? _info?['fecha_nacimiento'],
+                  ),
+                  materialFont,
+                ),
                 _buildInfoRow(
-                    Icons.phone, 'Teléfono:', _fmt(_info?['telefono']), materialFont),
+                  Icons.phone,
+                  'Teléfono:',
+                  _fmt(_info?['telefono']),
+                  materialFont,
+                ),
                 _buildInfoRow(
-                    Icons.home, 'Dirección:', _fmt(_info?['direccion']), materialFont),
+                  Icons.home,
+                  'Dirección:',
+                  _fmt(_info?['direccion']),
+                  materialFont,
+                ),
               ],
             ),
           ),
           pw.SizedBox(height: 16),
 
           // --- Sección 2: Inscripción ---
-          _buildSectionHeader('Inscripción', Icons.assignment_turned_in,
-              baseColor, materialFont),
+          _buildSectionHeader(
+            'Inscripción',
+            Icons.assignment_turned_in,
+            baseColor,
+            materialFont,
+          ),
           pw.SizedBox(height: 6),
           if (_matricula == null)
-            pw.Text('Sin inscripción registrada.',
-                style: const pw.TextStyle(fontSize: 10))
+            pw.Text(
+              'Sin inscripción registrada.',
+              style: const pw.TextStyle(fontSize: 10),
+            )
           else
-            pw.Wrap(spacing: 8, runSpacing: 8, children: [
-              _buildChip('Categoría', _categoriaLabel(_matricula),
-                  Icons.category, accentColor, materialFont),
-              _buildChip('Ciclo', _fmt(_matricula?['ciclo']), Icons.repeat,
-                  accentColor, materialFont),
-              _buildChip(
+            pw.Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildChip(
+                  'Categoría',
+                  _categoriaLabel(_matricula),
+                  Icons.category,
+                  accentColor,
+                  materialFont,
+                ),
+                _buildChip(
+                  'Ciclo',
+                  _fmt(_matricula?['ciclo']),
+                  Icons.repeat,
+                  accentColor,
+                  materialFont,
+                ),
+                _buildChip(
                   'Fecha',
                   _fmtDate(
-                      _matricula?['fecha'] ?? _matricula?['fecha_matricula']),
+                    _matricula?['fecha'] ?? _matricula?['fecha_matricula'],
+                  ),
                   Icons.event,
                   accentColor,
-                  materialFont),
-              _buildChip(
+                  materialFont,
+                ),
+                _buildChip(
                   _matricula?['activo'] == true ? 'Activa' : 'Inactiva',
                   '',
                   _matricula?['activo'] == true
@@ -516,32 +663,43 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                   _matricula?['activo'] == true
                       ? PdfColors.green100
                       : PdfColors.red100,
-                  materialFont),
-            ]),
+                  materialFont,
+                ),
+              ],
+            ),
           pw.SizedBox(height: 16),
 
           // --- Sección 3: Subcategorías ---
-          _buildSectionHeader('Subcategorías Asignadas',
-              Icons.legend_toggle_outlined, baseColor, materialFont),
+          _buildSectionHeader(
+            'Subcategorías Asignadas',
+            Icons.legend_toggle_outlined,
+            baseColor,
+            materialFont,
+          ),
           pw.SizedBox(height: 6),
           if (_asignaciones.isEmpty)
-            pw.Text('Sin subcategorías asignadas.',
-                style: const pw.TextStyle(fontSize: 10))
+            pw.Text(
+              'Sin subcategorías asignadas.',
+              style: const pw.TextStyle(fontSize: 10),
+            )
           else
             pw.Table.fromTextArray(
               headers: ['Subcategoría', 'Categoría', 'Unión'],
               data: _asignaciones
-                  .map((r) => [
-                        _fmt(r['subcategoria']),
-                        _fmt(r['categoria']),
-                        _fmtDate(r['fechaUnion']),
-                      ])
+                  .map(
+                    (r) => [
+                      _fmt(r['subcategoria']),
+                      _fmt(r['categoria']),
+                      _fmtDate(r['fechaUnion']),
+                    ],
+                  )
                   .toList(),
               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
               headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                  fontSize: 10),
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                fontSize: 10,
+              ),
               headerDecoration: const pw.BoxDecoration(color: baseColor),
               cellStyle: const pw.TextStyle(fontSize: 10),
               cellAlignments: {
@@ -563,7 +721,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
   // --- Widget de Ayuda: Encabezado de Sección ---
   pw.Widget _buildSectionHeader(
-      String title, IconData icon, PdfColor color, pw.Font materialFont) {
+    String title,
+    IconData icon,
+    PdfColor color,
+    pw.Font materialFont,
+  ) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: color,
@@ -576,15 +738,20 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       margin: const pw.EdgeInsets.only(bottom: 4),
       child: pw.Row(
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, color: PdfColors.white, size: 16),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            color: PdfColors.white,
+            size: 16,
+          ),
           pw.SizedBox(width: 8),
           pw.Text(
             title,
             style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-                fontSize: 12),
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -593,20 +760,29 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
   // --- Widget de Ayuda: Fila de Información (para Datos Personales) ---
   pw.Widget _buildInfoRow(
-      IconData icon, String label, String value, pw.Font materialFont) {
+    IconData icon,
+    String label,
+    String value,
+    pw.Font materialFont,
+  ) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, color: PdfColors.grey600, size: 16),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            color: PdfColors.grey600,
+            size: 16,
+          ),
           pw.SizedBox(width: 12),
           pw.SizedBox(
             width: 80,
-            child: pw.Text(label,
-                style: pw.TextStyle(
-                    fontWeight: pw.FontWeight.bold, fontSize: 10)),
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+            ),
           ),
           pw.Expanded(
             child: pw.Text(value, style: const pw.TextStyle(fontSize: 10)),
@@ -617,8 +793,13 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }
 
   // --- Widget de Ayuda: Chip (para Inscripción) ---
-  pw.Widget _buildChip(String label, String? value, IconData icon,
-      PdfColor color, pw.Font materialFont) {
+  pw.Widget _buildChip(
+    String label,
+    String? value,
+    IconData icon,
+    PdfColor color,
+    pw.Font materialFont,
+  ) {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: pw.BoxDecoration(
@@ -628,13 +809,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       child: pw.Row(
         mainAxisSize: pw.MainAxisSize.min,
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, size: 12, color: PdfColors.black),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            size: 12,
+            color: PdfColors.black,
+          ),
           pw.SizedBox(width: 6),
           pw.Text(
-            value == null || value.isEmpty
-                ? label
-                : '$label: ${value.trim()}',
+            value == null || value.isEmpty ? label : '$label: ${value.trim()}',
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.black),
           ),
         ],
@@ -659,7 +842,13 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   // **********************************
 
   // ======== Helper para getters opcionales ========
-  T? _maybe<T>(T Function() fn) { try { return fn(); } catch (_) { return null; } }
+  T? _maybe<T>(T Function() fn) {
+    try {
+      return fn();
+    } catch (_) {
+      return null;
+    }
+  }
 
   // ======== COMIENZA CÓDIGO DE PAGOS ========
 
@@ -670,11 +859,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }
 
   Future<dynamic> _safePost(String url, Map<String, dynamic> body) async {
-    final res = await _http.post(
-      url,
-      body: body,
-      headers: const {},
-    );
+    final res = await _http.post(url, body: body, headers: const {});
     return res;
   }
 
@@ -692,7 +877,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       }
       if (res['items'] is List) {
         return List<Map<String, dynamic>>.from(
-          (res['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)),
+          (res['items'] as List).map(
+            (e) => Map<String, dynamic>.from(e as Map),
+          ),
         );
       }
       if (res['rows'] is List) {
@@ -707,15 +894,30 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   // ===== Mensualidades =====
   Future<void> _cargarMensualidades() async {
     if (_blocked) return;
-    setState(() { _loadingMens = true; _pagosError = null; });
+    setState(() {
+      _loadingMens = true;
+      _pagosError = null;
+    });
 
     try {
       final idEst = widget.id;
       dynamic list;
 
-      try { list = await _mensRepo.porEstudiante(idEst); } catch (_) {}
-      list ??= await (() async { try { return await _mensRepo.listar(estudianteId: idEst); } catch (_) {} return null; })();
-      list ??= await (() async { try { return await _mensRepo.listarPorEstudiante(idEst); } catch (_) {} return null; })();
+      try {
+        list = await _mensRepo.porEstudiante(idEst);
+      } catch (_) {}
+      list ??= await (() async {
+        try {
+          return await _mensRepo.listar(estudianteId: idEst);
+        } catch (_) {}
+        return null;
+      })();
+      list ??= await (() async {
+        try {
+          return await _mensRepo.listarPorEstudiante(idEst);
+        } catch (_) {}
+        return null;
+      })();
 
       if (list == null) {
         final base = Endpoints.mensualidades;
@@ -727,12 +929,16 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         ];
         for (final u in urls) {
           final res = _coerceList(await _safeGet(u));
-          if (res.isNotEmpty) { list = res; break; }
+          if (res.isNotEmpty) {
+            list = res;
+            break;
+          }
         }
       }
 
-      List<Map<String, dynamic>> data =
-          List<Map<String, dynamic>>.from((list ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
+      List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(
+        (list ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
+      );
 
       for (final m in data) {
         m['id'] = m['id'] ?? m['id_mensualidad'] ?? m['mensualidad_id'];
@@ -759,9 +965,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _pagosError = e.toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _loadingMens = false);
@@ -818,7 +1024,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }
 
   Future<void> _registrarPago(Map<String, dynamic> m) async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     final resumen = await _cargarResumen(m['id'] as int);
     final restante = _asDouble(resumen?['pendiente'] ?? m['valor']);
 
@@ -838,8 +1047,14 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     }
   }
 
-  Future<void> _editarPago(Map<String, dynamic> mensualidad, Map<String, dynamic> pago) async {
-    if (_blocked) { _showLoginSnack(); return; }
+  Future<void> _editarPago(
+    Map<String, dynamic> mensualidad,
+    Map<String, dynamic> pago,
+  ) async {
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     final resumen = await _cargarResumen(mensualidad['id'] as int);
     final ok = await showDialog<bool>(
       context: context,
@@ -858,7 +1073,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   }
 
   Future<void> _anularPago(int idPago, int idMens) async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     final motivoCtl = TextEditingController();
 
     final confirm = await showDialog<String?>(
@@ -927,7 +1145,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al anular: ${e.toString().replaceFirst('Exception: ', '')}'),
+            content: Text(
+              'Error al anular: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -937,7 +1157,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
   // ===== Acciones para generar mensualidades =====
   Future<void> _onTapGenerarHastaDiciembre() async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
 
     final anioSugerido = _anioFiltro ?? DateTime.now().year;
 
@@ -961,7 +1184,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       final idEst = widget.id;
 
       List<Map<String, dynamic>> mats = [];
-      try { mats = await _matriculasRepo.porEstudiante(idEst); } catch (_) {}
+      try {
+        mats = await _matriculasRepo.porEstudiante(idEst);
+      } catch (_) {}
       if (mats.isEmpty) {
         final base = Endpoints.matriculas;
         final urls = [
@@ -971,7 +1196,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         ];
         for (final u in urls) {
           final res = _coerceList(await _safeGet(u));
-          if (res.isNotEmpty) { mats = res; break; }
+          if (res.isNotEmpty) {
+            mats = res;
+            break;
+          }
         }
       }
 
@@ -991,7 +1219,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         DateTime parseDate(dynamic v) {
           if (v is DateTime) return v;
           if (v is String && v.isNotEmpty) {
-            try { return DateTime.parse(v); } catch (_) {}
+            try {
+              return DateTime.parse(v);
+            } catch (_) {}
           }
           return DateTime.fromMillisecondsSinceEpoch(0);
         }
@@ -1001,7 +1231,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         return db.compareTo(da);
       });
 
-      final int? idMatricula = (mats.first['id'] as num?)?.toInt() ??
+      final int? idMatricula =
+          (mats.first['id'] as num?)?.toInt() ??
           (mats.first['id_matricula'] as num?)?.toInt();
 
       if (idMatricula == null) {
@@ -1025,7 +1256,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
       if (mesesObjetivo.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay meses faltantes hasta diciembre.')),
+          const SnackBar(
+            content: Text('No hay meses faltantes hasta diciembre.'),
+          ),
         );
         return;
       }
@@ -1061,7 +1294,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               } catch (_) {}
             }
           }
-          if (ok) { creados++; } else { fallidos++; }
+          if (ok) {
+            creados++;
+          } else {
+            fallidos++;
+          }
         } catch (_) {
           fallidos++;
         }
@@ -1072,9 +1309,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       final total = cfg.valorMensual * creados;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✓ Generadas $creados mensualidades ' +
-              (fallidos > 0 ? '($fallidos fallidas) ' : '') +
-              '· Total: ${_fmtMoney.format(total)}'),
+          content: Text(
+            '✓ Generadas $creados mensualidades ' +
+                (fallidos > 0 ? '($fallidos fallidas) ' : '') +
+                '· Total: ${_fmtMoney.format(total)}',
+          ),
         ),
       );
     } finally {
@@ -1098,30 +1337,68 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     ].whereType<dynamic>().toList();
 
     for (final repo in repos) {
-      try { final r = await repo.porEstudiante(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.por_estudiante(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.listarPorEstudiante(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.byEstudiante(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.byStudent(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.listByStudent(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
-      try { final r = await repo.estadoPorEstudiante(widget.id); return List<Map<String,dynamic>>.from(r); } catch (_) {}
+      try {
+        final r = await repo.porEstudiante(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.por_estudiante(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.listarPorEstudiante(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.byEstudiante(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.byStudent(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.listByStudent(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
+      try {
+        final r = await repo.estadoPorEstudiante(widget.id);
+        return List<Map<String, dynamic>>.from(r);
+      } catch (_) {}
     }
     return _mensualidades;
   }
 
   int? _extractYear(Map r) {
-    final yearStr = _pickStr(r, ['anio','año','anio_pago','ano','year','Year']);
+    final yearStr = _pickStr(r, [
+      'anio',
+      'año',
+      'anio_pago',
+      'ano',
+      'year',
+      'Year',
+    ]);
     final y1 = int.tryParse(yearStr);
     if (y1 != null && y1 >= 1900 && y1 <= 2100) return y1;
 
-    final f = _pickStr(r, ['fechaPago','fecha_pago','pagado_en','fecha','Fecha']);
+    final f = _pickStr(r, [
+      'fechaPago',
+      'fecha_pago',
+      'pagado_en',
+      'fecha',
+      'Fecha',
+    ]);
     if (f.isNotEmpty) {
-      try { return DateTime.parse(f).year; } catch (_) {}
+      try {
+        return DateTime.parse(f).year;
+      } catch (_) {}
     }
     return null;
   }
 
-  List<Map<String, dynamic>> _rowsFilteredByOpenYears(List<Map<String, dynamic>> all) {
+  List<Map<String, dynamic>> _rowsFilteredByOpenYears(
+    List<Map<String, dynamic>> all,
+  ) {
     if (_openYears.isEmpty) return all;
     return all.where((r) {
       final y = _extractYear(r);
@@ -1162,15 +1439,29 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       xls.TextCellValue('Observación'),
     ]);
     for (final r in rows) {
-      final mes = _mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes']))); // <-- Mes en letras
-      final anio = _pickStr(r, ['anio','año','anio_pago','ano','year']);
-      final est = _pickStr(r, ['estado','status']);
-      final monto = _pickStr(r, ['monto','valor','importe','total','pago']);
-      final fpago = _fmtDate(_pickStr(r, ['fechaPago','fecha_pago','pagado_en','fecha']));
-      final obs = _pickStr(r, ['observacion','observación','nota','comentario']);
+      final mes = _mesNombre(
+        int.tryParse(_pickStr(r, ['mes', 'Mes'])),
+      ); // <-- Mes en letras
+      final anio = _pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']);
+      final est = _pickStr(r, ['estado', 'status']);
+      final monto = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
+      final fpago = _fmtDate(
+        _pickStr(r, ['fechaPago', 'fecha_pago', 'pagado_en', 'fecha']),
+      );
+      final obs = _pickStr(r, [
+        'observacion',
+        'observación',
+        'nota',
+        'comentario',
+      ]);
 
       sheet.appendRow([
-        _cv(mes), _cv(anio), _cv(est), _cv(monto), _cv(fpago), _cv(obs),
+        _cv(mes),
+        _cv(anio),
+        _cv(est),
+        _cv(monto),
+        _cv(fpago),
+        _cv(obs),
       ]);
     }
     final encoded = book.encode()!;
@@ -1179,7 +1470,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       bytes,
       defaultFileName: 'estudiante_${widget.id}_pagos.xlsx',
       extensions: const ['xlsx'],
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }
 
@@ -1195,16 +1487,19 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     // --- 1. Obtener Datos y Fuente ---
     final allPagos = await _fetchPagosData();
     final rows = _rowsFilteredByOpenYears(allPagos);
-    
+
     // --- Cargar fuentes desde assets ---
     final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final robotoFont = pw.Font.ttf(robotoData);
-    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialData = await rootBundle.load(
+      'assets/fonts/MaterialIcons-Regular.ttf',
+    );
     final materialFont = pw.Font.ttf(materialData);
 
     // --- 2. Definiciones de Documento y Estilo ---
     final doc = pw.Document();
-    final nombre = '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}'.trim();
+    final nombre = '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}'
+        .trim();
     final titulo = nombre.isEmpty ? 'Estudiante ${widget.id}' : nombre;
 
     const baseColor = PdfColors.blueGrey800;
@@ -1213,15 +1508,22 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     // --- 3. Calcular Total ---
     double totalFiltrado = 0.0;
     for (final r in rows) {
-      final montoStr = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
+      final montoStr = _pickStr(r, [
+        'monto',
+        'valor',
+        'importe',
+        'total',
+        'pago',
+      ]);
       final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
       if (estado != 'anulado') {
-         totalFiltrado += _asDouble(montoStr);
+        totalFiltrado += _asDouble(montoStr);
       }
     }
 
     // --- 4. Helper para celda de tabla ---
-    pw.Widget buildCell(String text, {
+    pw.Widget buildCell(
+      String text, {
       pw.Alignment alignment = pw.Alignment.centerLeft,
       bool isHeader = false,
       PdfColor? background,
@@ -1234,7 +1536,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           text,
           style: isHeader
               ? pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10)
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                  fontSize: 10,
+                )
               : const pw.TextStyle(fontSize: 10),
         ),
       );
@@ -1244,17 +1549,27 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     final List<pw.TableRow> tableRows = [];
 
     // Fila de Encabezado
-    tableRows.add(pw.TableRow(
-      decoration: const pw.BoxDecoration(color: baseColor),
-      children: [
-        buildCell('Mes', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Año', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Estado', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Monto', isHeader: true, alignment: pw.Alignment.centerRight),
-        buildCell('Fecha pago', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Observación', isHeader: true),
-      ],
-    ));
+    tableRows.add(
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: baseColor),
+        children: [
+          buildCell('Mes', isHeader: true, alignment: pw.Alignment.center),
+          buildCell('Año', isHeader: true, alignment: pw.Alignment.center),
+          buildCell('Estado', isHeader: true, alignment: pw.Alignment.center),
+          buildCell(
+            'Monto',
+            isHeader: true,
+            alignment: pw.Alignment.centerRight,
+          ),
+          buildCell(
+            'Fecha pago',
+            isHeader: true,
+            alignment: pw.Alignment.center,
+          ),
+          buildCell('Observación', isHeader: true),
+        ],
+      ),
+    );
 
     // Filas de Datos
     for (int i = 0; i < rows.length; i++) {
@@ -1262,7 +1577,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       final background = i % 2 == 0 ? lightColor : null;
       final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
       final monto = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
-          
+
       PdfColor statusColor;
       IconData statusIcon;
       switch (estado) {
@@ -1279,28 +1594,52 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           statusIcon = Icons.pending;
       }
 
-      tableRows.add(pw.TableRow(
-        decoration: pw.BoxDecoration(color: background),
-        children: [
-          // Mes (en letras)
-          buildCell(_mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes']))), alignment: pw.Alignment.center),
-          // Año
-          buildCell(_pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']), alignment: pw.Alignment.center),
-          // Estado (Widget Chip)
-          pw.Container(
-            padding: const pw.EdgeInsets.all(6),
-            color: background,
-            alignment: pw.Alignment.center,
-            child: _buildChip(estado, '', statusIcon, statusColor, materialFont),
-          ),
-          // Monto
-          buildCell(_fmtMoney.format(_asDouble(monto)), alignment: pw.Alignment.centerRight),
-          // Fecha
-          buildCell(_fmtDate(_pickStr(r, ['fechaPago', 'fecha_pago', 'pagado_en', 'fecha'])), alignment: pw.Alignment.center),
-          // Observación
-          buildCell(_pickStr(r, ['observacion', 'observación', 'nota', 'comentario'])),
-        ],
-      ));
+      tableRows.add(
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: background),
+          children: [
+            // Mes (en letras)
+            buildCell(
+              _mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes']))),
+              alignment: pw.Alignment.center,
+            ),
+            // Año
+            buildCell(
+              _pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']),
+              alignment: pw.Alignment.center,
+            ),
+            // Estado (Widget Chip)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(6),
+              color: background,
+              alignment: pw.Alignment.center,
+              child: _buildChip(
+                estado,
+                '',
+                statusIcon,
+                statusColor,
+                materialFont,
+              ),
+            ),
+            // Monto
+            buildCell(
+              _fmtMoney.format(_asDouble(monto)),
+              alignment: pw.Alignment.centerRight,
+            ),
+            // Fecha
+            buildCell(
+              _fmtDate(
+                _pickStr(r, ['fechaPago', 'fecha_pago', 'pagado_en', 'fecha']),
+              ),
+              alignment: pw.Alignment.center,
+            ),
+            // Observación
+            buildCell(
+              _pickStr(r, ['observacion', 'observación', 'nota', 'comentario']),
+            ),
+          ],
+        ),
+      );
     }
 
     // --- 6. Construir la Página ---
@@ -1312,37 +1651,54 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           theme: pw.ThemeData.withFont(base: robotoFont), // <-- Movido aquí
         ),
         // Encabezado
-        header: (context) => pw.Column(children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('REPORTE DE PAGOS',
+        header: (context) => pw.Column(
+          children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'REPORTE DE PAGOS',
                   style: pw.TextStyle(
-                      color: baseColor,
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.Text(titulo,
+                    color: baseColor,
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  titulo,
                   style: const pw.TextStyle(
-                      color: PdfColors.grey700, fontSize: 14)),
-            ],
-          ),
-          pw.Divider(color: PdfColors.grey400, height: 8),
-          pw.SizedBox(height: 10),
-        ]),
+                    color: PdfColors.grey700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            pw.Divider(color: PdfColors.grey400, height: 8),
+            pw.SizedBox(height: 10),
+          ],
+        ),
         // Pie de página
         footer: (context) => pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
             pw.Text(
-                'Página ${context.pageNumber} de ${context.pagesCount}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              'Generado el: ${_fmtDate(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              'Página ${context.pageNumber} de ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
           ],
         ),
         build: (context) => [
           // Encabezado de sección
-          _buildSectionHeader('Pagos Filtrados', Icons.receipt_long, baseColor, materialFont),
+          _buildSectionHeader(
+            'Pagos Filtrados',
+            Icons.receipt_long,
+            baseColor,
+            materialFont,
+          ),
           pw.SizedBox(height: 6),
           // Tabla Manual
           pw.Table(
@@ -1366,33 +1722,36 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                   pw.Text(
+                  pw.Text(
                     'TOTAL (SEGÚN FILTRO)',
                     style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 10,
-                        color: PdfColors.grey700),
-                   ),
-                   pw.SizedBox(height: 4),
-                   pw.Text(
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
                     _fmtMoney.format(totalFiltrado),
                     style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 18,
-                        color: baseColor),
-                   ),
-                   pw.SizedBox(height: 8),
-                   pw.Text(
-                    _openYears.isEmpty 
-                      ? 'Mostrando todos los registros.'
-                      : 'Mostrando años: ${_openYears.join(', ')}',
-                    style:  pw.TextStyle(
-                        fontSize: 9,
-                        fontStyle: pw.FontStyle.italic,
-                        color: PdfColors.grey600),
-                   )
-                ]
-              )
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 18,
+                      color: baseColor,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    _openYears.isEmpty
+                        ? 'Mostrando todos los registros.'
+                        : 'Mostrando años: ${_openYears.join(', ')}',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontStyle: pw.FontStyle.italic,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1401,11 +1760,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
     return doc.save();
   }
-  
+
   // =====================================================================
   // ===== FIN: MÉTODO _buildPagosPdfBytes (CORREGIDO) =====
   // =====================================================================
-  
+
   // =====================================================================
   // ===== FIN: MÉTODO _buildPagosPdfBytes (VERSIÓN MANUAL DE FUENTES) =====
   // =====================================================================
@@ -1472,7 +1831,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         title: Text(title.isEmpty ? 'Estudiante' : title),
         bottom: TabBar(
           controller: _tab,
-          tabs: const [Tab(text: 'Información'), Tab(text: 'Pagos')],
+          tabs: const [
+            Tab(text: 'Información'),
+            Tab(text: 'Pagos'),
+          ],
         ),
         actions: [
           // ... dentro de tu Scaffold/AppBar
@@ -1482,7 +1844,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               // =================== AÑADIDO ===================
               // Añadimos un try-catch para que no falle en silencio
               try {
-              // ===============================================
+                // ===============================================
                 switch (v) {
                   case 'info.pdf':
                     await _exportInfoPdf();
@@ -1502,7 +1864,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                     await Printing.layoutPdf(onLayout: (_) async => b);
                     break;
                 }
-              // =================== AÑADIDO ===================
+                // =================== AÑADIDO ===================
               } catch (e) {
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1547,7 +1909,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                 value: enInfo ? 'preview.info' : 'preview.pagos',
                 child: ListTile(
                   leading: const Icon(Icons.print),
-                  title: Text(enInfo ? 'Vista previa Info' : 'Vista previa Pagos'),
+                  title: Text(
+                    enInfo ? 'Vista previa Info' : 'Vista previa Pagos',
+                  ),
                 ),
               ),
             ],
@@ -1561,7 +1925,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
             tooltip: 'Refrescar',
             onPressed: _loading ? null : _loadAll,
             icon: _loading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(Icons.refresh),
           ),
         ],
@@ -1569,154 +1937,487 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null)
-              ? Center(child: Text(_error!))
-              : TabBarView(
-                  controller: _tab,
-                  children: [
-                    _tabInformacion(),
-                    _buildMensPane(),
-                  ],
-                ),
+          ? Center(child: Text(_error!))
+          : TabBarView(
+              controller: _tab,
+              children: [_tabInformacion(), _buildMensPane()],
+            ),
     );
   }
 
   // ---------- UI Tab Información (Sin cambios) ----------
+
   Widget _tabInformacion() {
     final cs = Theme.of(context).colorScheme;
     final txt = Theme.of(context).textTheme;
 
-    Widget _row(IconData ic, String label, Object? v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(ic, size: 18, color: cs.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: txt.bodyMedium,
+    // Helper para filas de datos
+    Widget _dataRow(String label, String value, IconData icon) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 20, color: cs.primary),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: txt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                  Text(
+                    value,
+                    style: txt.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // --- Tarjeta de Perfil Principal ---
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [cs.primary, cs.primary.withOpacity(0.7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.primary.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -20,
+                  top: -20,
+                  child: Icon(
+                    Icons.person,
+                    size: 150,
+                    color: Colors.white.withOpacity(0.1),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  child: Column(
                     children: [
-                      TextSpan(text: '$label: ', style: txt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                      TextSpan(text: _fmt(v)),
+                      Hero(
+                        tag: 'avatar_${widget.id}',
+                        child: CircleAvatar(
+                          radius: 28, // antes 40
+                          backgroundColor: Colors.white,
+                          child: Text(
+                            (_info?['nombres'] ?? 'E')[0].toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 22, // antes 32
+                              color: cs.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10), // antes 16
+                      Text(
+                        '${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18, // antes 22
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(16), // antes 20
+                        ),
+                        child: Text(
+                          'Cédula: ${_fmt(_info?['cedula'] ?? _info?['id_doc'])}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // --- Bloque 1: Información Personal ---
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DATOS DE CONTACTO',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _dataRow(
+                    'Fecha de Nacimiento',
+                    _fmtDate(
+                      _info?['fechaNacimiento'] ?? _info?['fecha_nacimiento'],
+                    ),
+                    Icons.cake_rounded,
+                  ),
+                  _dataRow(
+                    'Teléfono',
+                    _fmt(_info?['telefono']),
+                    Icons.phone_rounded,
+                  ),
+                  _dataRow(
+                    'Dirección',
+                    _fmt(_info?['direccion']),
+                    Icons.location_on_rounded,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // --- Bloque 2: Matrícula ---
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'INSCRIPCIÓN ACTUAL',
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      if (_matricula != null)
+                        SizedBox(
+                          height: 32,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _editarInscripcionDialog,
+                            icon: const Icon(Icons.edit, size: 16),
+                            label: const Text('Editar'),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          height: 32,
+                          child: FilledButton.icon(
+                            onPressed: _crearInscripcionDialog,
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Crear'),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (_matricula == null)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'No hay información de matrícula registrada.',
+                        textAlign: TextAlign.center,
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _infoChip(
+                          Icons.category_outlined,
+                          'Categoría',
+                          _categoriaLabel(_matricula),
+                          Colors.blue,
+                        ),
+                        _infoChip(
+                          Icons.repeat,
+                          'Ciclo',
+                          _fmt(_matricula?['ciclo']),
+                          Colors.purple,
+                        ),
+                        _infoChip(
+                          Icons.event_available,
+                          'Fecha',
+                          _fmtDate(
+                            _matricula?['fecha'] ??
+                                _matricula?['fecha_matricula'],
+                          ),
+                          Colors.orange,
+                        ),
+                        _statusChip(_matricula?['activo'] == true),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // --- Bloque 3: Subcategorías ---
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ASIGNACIONES DE ENTRENAMIENTO',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildAsignacionUI(txt),
+                  const Divider(height: 32),
+                  if (_asignaciones.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          'No está asignado a ninguna subcategoría.',
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _asignaciones.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        final r = _asignaciones[i];
+                        final idSub = (r['idSubcategoria'] as num?)?.toInt();
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: cs.outline.withOpacity(0.1),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.class_outlined,
+                                  color: Colors.deepPurple.shade700,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _fmt(r['subcategoria']),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Categoría: ${_fmt(r['categoria'])}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (idSub != null)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () async {
+                                    try {
+                                      await _asig.eliminar(
+                                        idEstudiante: widget.id,
+                                        idSubcategoria: idSub,
+                                      );
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Asignación eliminada'),
+                                        ),
+                                      );
+                                      await _loadAll();
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(content: Text('Error: $e')),
+                                      );
+                                    }
+                                  },
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoChip(IconData icon, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: TextStyle(fontSize: 10, color: color)),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-        );
+        ],
+      ),
+    );
+  }
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Card(
-          elevation: 0.5,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  child: Text((_info?['nombres'] ?? 'E')[0].toString().toUpperCase(), style: const TextStyle(fontSize: 22)),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${_fmt(_info?['nombres'])} ${_fmt(_info?['apellidos'])}',
-                        style: txt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      _row(Icons.cake, 'Nacimiento', _fmtDate(_info?['fechaNacimiento'] ?? _info?['fecha_nacimiento'])),
-                      _row(Icons.phone, 'Teléfono', _info?['telefono']),
-                      _row(Icons.home, 'Dirección', _info?['direccion']),
-                    ],
-                  ),
-                ),
-              ],
+  Widget _statusChip(bool active) {
+    final color = active ? Colors.green : Colors.red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            active ? Icons.check_circle : Icons.cancel,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            active ? 'ACTIVA' : 'INACTIVA',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: color,
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0.5,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.assignment_turned_in),
-                    const SizedBox(width: 8),
-                    Text('Inscripción', style: txt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    if (_matricula != null)
-                      FilledButton.tonalIcon(
-                        onPressed: _editarInscripcionDialog,
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Editar'),
-                      )
-                    else
-                      FilledButton.icon(
-                        onPressed: _crearInscripcionDialog,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Crear'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (_matricula == null)
-                  Row(
-                    children: const [
-                      Icon(Icons.info_outline),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('Sin inscripción registrada.')),
-                    ],
-                  )
-                else
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      Chip(avatar: const Icon(Icons.category, size: 18), label: Text(_categoriaLabel(_matricula))),
-                      Chip(avatar: const Icon(Icons.repeat, size: 18), label: Text('Ciclo: ${_fmt(_matricula?['ciclo'])}')),
-                      Chip(avatar: const Icon(Icons.event, size: 18), label: Text('Fecha: ${_fmtDate(_matricula?['fecha'] ?? _matricula?['fecha_matricula'])}')),
-                      Chip(
-                        avatar: Icon(_matricula?['activo'] == true ? Icons.check_circle : Icons.cancel, size: 18),
-                        label: Text(_matricula?['activo'] == true ? 'Activa' : 'Inactiva'),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          elevation: 0.5,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.legend_toggle_outlined),
-                    const SizedBox(width: 8),
-                    Text('Subcategorías asignadas', style: txt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _buildAsignacionUI(txt),
-              ],
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1730,13 +2431,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         ),
       );
     }
-    
+
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: _buildFilters(),
-        ),
+        Padding(padding: const EdgeInsets.all(12.0), child: _buildFilters()),
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -1752,23 +2450,20 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           child: _loadingMens
               ? const Center(child: CircularProgressIndicator())
               : _mensualidades.isEmpty
-                  ? const Center(child: Text('Sin mensualidades'))
-                  : Scrollbar(
-                      controller: _rightScrollCtl,
-                      child: _buildAgrupadoPorAnio(),
-                    ),
+              ? const Center(child: Text('Sin mensualidades'))
+              : Scrollbar(
+                  controller: _rightScrollCtl,
+                  child: _buildAgrupadoPorAnio(),
+                ),
         ),
       ],
     );
   }
 
   Widget _buildFilters() {
-    final anios = _mensualidades
-        .map((m) => m['anio'])
-        .whereType<int>()
-        .toSet()
-        .toList()
-      ..sort();
+    final anios =
+        _mensualidades.map((m) => m['anio']).whereType<int>().toSet().toList()
+          ..sort();
 
     return Wrap(
       spacing: 12,
@@ -1789,7 +2484,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               DropdownMenuItem(value: 'anulado', child: Text('Anulado')),
             ],
             onChanged: (v) async {
-              if (_blocked) { _showLoginSnack(); return; }
+              if (_blocked) {
+                _showLoginSnack();
+                return;
+              }
               setState(() => _estado = v ?? 'Todos');
               await _cargarMensualidades();
             },
@@ -1805,10 +2503,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
             ),
             items: [
               const DropdownMenuItem<int?>(value: null, child: Text('Todos')),
-              ...anios.map((a) => DropdownMenuItem<int?>(value: a, child: Text('$a'))),
+              ...anios.map(
+                (a) => DropdownMenuItem<int?>(value: a, child: Text('$a')),
+              ),
             ],
             onChanged: (v) async {
-              if (_blocked) { _showLoginSnack(); return; }
+              if (_blocked) {
+                _showLoginSnack();
+                return;
+              }
               setState(() => _anioFiltro = v);
               await _cargarMensualidades();
             },
@@ -1821,7 +2524,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
             Switch(
               value: _soloPendiente,
               onChanged: (v) async {
-                if (_blocked) { _showLoginSnack(); return; }
+                if (_blocked) {
+                  _showLoginSnack();
+                  return;
+                }
                 setState(() => _soloPendiente = v);
                 await _cargarMensualidades();
               },
@@ -1832,7 +2538,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           message: 'Limpiar filtros',
           child: IconButton(
             onPressed: () async {
-              if (_blocked) { _showLoginSnack(); return; }
+              if (_blocked) {
+                _showLoginSnack();
+                return;
+              }
               setState(() {
                 _estado = 'Todos';
                 _anioFiltro = null;
@@ -1855,7 +2564,12 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         runSpacing: 8,
         children: [
           _chip('Total', _fmtMoney.format(_totValor), Icons.attach_money),
-          _chip('Pagado', _fmtMoney.format(_totPagado), Icons.check_circle, Colors.green),
+          _chip(
+            'Pagado',
+            _fmtMoney.format(_totPagado),
+            Icons.check_circle,
+            Colors.green,
+          ),
           _chip(
             'Pendiente',
             _fmtMoney.format(_totPendiente),
@@ -1902,18 +2616,33 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       itemBuilder: (_, idx) {
         final anio = anios[idx];
         final ms = porAnio[anio]!
-          ..sort((a, b) => ((b['mes'] as int?) ?? 0).compareTo((a['mes'] as int?) ?? 0));
+          ..sort(
+            (a, b) =>
+                ((b['mes'] as int?) ?? 0).compareTo((a['mes'] as int?) ?? 0),
+          );
 
-        final total = ms.fold<double>(0, (acc, e) => acc + _asDouble(e['valor']));
+        final total = ms.fold<double>(
+          0,
+          (acc, e) => acc + _asDouble(e['valor']),
+        );
         final pagados = ms.where((e) => (e['estado'] ?? '') == 'pagado').length;
 
         return Card(
           child: ExpansionTile(
-            title: Text('Año $anio', style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('$pagados/${ms.length} pagados · ${_fmtMoney.format(total)}'),
+            title: Text(
+              'Año $anio',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              '$pagados/${ms.length} pagados · ${_fmtMoney.format(total)}',
+            ),
             initiallyExpanded: _openYears.contains(anio),
             onExpansionChanged: (v) => setState(() {
-              if (v) { _openYears.add(anio); } else { _openYears.remove(anio); }
+              if (v) {
+                _openYears.add(anio);
+              } else {
+                _openYears.remove(anio);
+              }
             }),
             children: ms.map((m) => _mensTile(m)).toList(),
           ),
@@ -1929,9 +2658,14 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
     Color estadoColor;
     switch (estado) {
-      case 'pagado': estadoColor = cs.primaryContainer; break;
-      case 'anulado': estadoColor = cs.errorContainer; break;
-      default: estadoColor = cs.secondaryContainer;
+      case 'pagado':
+        estadoColor = cs.primaryContainer;
+        break;
+      case 'anulado':
+        estadoColor = cs.errorContainer;
+        break;
+      default:
+        estadoColor = cs.secondaryContainer;
     }
 
     return Card(
@@ -1947,7 +2681,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         subtitle: Text('Valor: ${_fmtMoney.format(valor)}'),
-        trailing: Chip(label: Text(estado.toUpperCase()), backgroundColor: estadoColor),
+        trailing: Chip(
+          label: Text(estado.toUpperCase()),
+          backgroundColor: estadoColor,
+        ),
         children: [
           FutureBuilder<Map<String, dynamic>?>(
             future: _cargarResumen(m['id'] as int),
@@ -1966,17 +2703,32 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       spacing: 12,
                       runSpacing: 8,
                       children: [
-                        _chip('Valor', _fmtMoney.format(valorR), Icons.attach_money),
-                        _chip('Pagado', _fmtMoney.format(pagado), Icons.check_circle, Colors.green),
-                        _chip('Pendiente', _fmtMoney.format(pendiente), Icons.pending,
-                            pendiente > 0 ? Colors.orange : Colors.grey),
+                        _chip(
+                          'Valor',
+                          _fmtMoney.format(valorR),
+                          Icons.attach_money,
+                        ),
+                        _chip(
+                          'Pagado',
+                          _fmtMoney.format(pagado),
+                          Icons.check_circle,
+                          Colors.green,
+                        ),
+                        _chip(
+                          'Pendiente',
+                          _fmtMoney.format(pendiente),
+                          Icons.pending,
+                          pendiente > 0 ? Colors.orange : Colors.grey,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         FilledButton.icon(
-                          onPressed: pendiente > 0 ? () => _registrarPago(m) : null,
+                          onPressed: pendiente > 0
+                              ? () => _registrarPago(m)
+                              : null,
                           icon: const Icon(Icons.add),
                           label: const Text('Registrar pago'),
                         ),
@@ -1984,7 +2736,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                         IconButton(
                           tooltip: 'Refrescar',
                           onPressed: () async {
-                            if (_blocked) { _showLoginSnack(); return; }
+                            if (_blocked) {
+                              _showLoginSnack();
+                              return;
+                            }
                             _resumenCache.remove(m['id']);
                             _pagosCache.remove(m['id']);
                             setState(() {});
@@ -1994,7 +2749,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       ],
                     ),
                     const Divider(height: 24),
-                    Text('Historial de pagos', style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      'Historial de pagos',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 8),
                     FutureBuilder<List<Map<String, dynamic>>>(
                       future: _cargarPagos(m['id'] as int),
@@ -2011,7 +2769,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                             final activo = p['activo'] == true;
                             final monto = _asDouble(p['monto']);
                             return Card(
-                              color: activo ? null : cs.errorContainer.withOpacity(0.25),
+                              color: activo
+                                  ? null
+                                  : cs.errorContainer.withOpacity(0.25),
                               child: ListTile(
                                 dense: true,
                                 leading: Icon(
@@ -2024,7 +2784,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                                       _fmtMoney.format(monto),
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        decoration: activo ? null : TextDecoration.lineThrough,
+                                        decoration: activo
+                                            ? null
+                                            : TextDecoration.lineThrough,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -2038,14 +2800,24 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text('Fecha: ${p['fecha'] ?? ''}'),
-                                    if ((p['referencia'] ?? '').toString().isNotEmpty)
+                                    if ((p['referencia'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
                                       Text('Ref: ${p['referencia']}'),
-                                    if ((p['notas'] ?? '').toString().isNotEmpty)
+                                    if ((p['notas'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
                                       Text('Notas: ${p['notas']}'),
-                                    if (!activo && (p['motivoAnulacion'] ?? '').toString().isNotEmpty)
+                                    if (!activo &&
+                                        (p['motivoAnulacion'] ?? '')
+                                            .toString()
+                                            .isNotEmpty)
                                       Text(
                                         'Anulado: ${p['motivoAnulacion']}',
-                                        style: TextStyle(color: cs.error, fontStyle: FontStyle.italic),
+                                        style: TextStyle(
+                                          color: cs.error,
+                                          fontStyle: FontStyle.italic,
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -2060,9 +2832,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                                       ),
                                     if (activo)
                                       IconButton(
-                                        icon: const Icon(Icons.close, color: Colors.red),
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: Colors.red,
+                                        ),
                                         tooltip: 'Anular',
-                                        onPressed: () => _anularPago(p['id'] as int, m['id'] as int),
+                                        onPressed: () => _anularPago(
+                                          p['id'] as int,
+                                          m['id'] as int,
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -2111,7 +2889,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               child: DropdownButtonFormField<int>(
                 value: _catForAssign,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Categoría', prefixIcon: Icon(Icons.category)),
+                decoration: const InputDecoration(
+                  labelText: 'Categoría',
+                  prefixIcon: Icon(Icons.category),
+                ),
                 items: _categorias.map((c) {
                   final id = c['id_categoria'] ?? c['id'];
                   final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
@@ -2121,7 +2902,11 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                   );
                 }).toList(),
                 onChanged: (v) {
-                  setState(() { _catForAssign = v; _subsDeCat = []; _subToAssign = null; });
+                  setState(() {
+                    _catForAssign = v;
+                    _subsDeCat = [];
+                    _subToAssign = null;
+                  });
                   if (v != null) _loadSubsForCat(v);
                 },
               ),
@@ -2131,7 +2916,10 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               child: DropdownButtonFormField<int>(
                 value: _subToAssign,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Subcategoría', prefixIcon: Icon(Icons.label)),
+                decoration: const InputDecoration(
+                  labelText: 'Subcategoría',
+                  prefixIcon: Icon(Icons.label),
+                ),
                 items: _subsDeCat.map((s) {
                   final id = s['id_subcategoria'] ?? s['id'];
                   final nombre = s['nombre_subcategoria'] ?? s['nombre'] ?? '—';
@@ -2148,13 +2936,22 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                   ? null
                   : () async {
                       try {
-                        await _asig.asignar(idEstudiante: widget.id, idSubcategoria: _subToAssign!);
+                        await _asig.asignar(
+                          idEstudiante: widget.id,
+                          idSubcategoria: _subToAssign!,
+                        );
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Subcategoría asignada')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Subcategoría asignada'),
+                          ),
+                        );
                         await _loadAll();
                       } catch (e) {
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text('Error: $e')));
                       }
                     },
               icon: const Icon(Icons.add),
@@ -2184,7 +2981,9 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                 dense: true,
                 leading: const Icon(Icons.label_important_outline),
                 title: Text(_fmt(r['subcategoria'])),
-                subtitle: Text('Categoría: ${_fmt(r['categoria'])}    •    Unión: ${_fmtDate(r['fechaUnion'])}'),
+                subtitle: Text(
+                  'Categoría: ${_fmt(r['categoria'])}    •    Unión: ${_fmtDate(r['fechaUnion'])}',
+                ),
                 trailing: (idSub == null)
                     ? null
                     : IconButton(
@@ -2192,13 +2991,22 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
                           try {
-                            await _asig.eliminar(idEstudiante: widget.id, idSubcategoria: idSub);
+                            await _asig.eliminar(
+                              idEstudiante: widget.id,
+                              idSubcategoria: idSub,
+                            );
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Asignación eliminada')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Asignación eliminada'),
+                              ),
+                            );
                             await _loadAll();
                           } catch (e) {
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
                           }
                         },
                       ),
@@ -2214,12 +3022,20 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     if (_matricula == null) return;
 
     final formKey = GlobalKey<FormState>();
-    int? idCategoria = (_matricula?['idCategoria'] ?? _matricula?['id_categoria']) as int?;
-    final cicloCtl = TextEditingController(text: _matricula?['ciclo']?.toString() ?? '');
+    int? idCategoria =
+        (_matricula?['idCategoria'] ?? _matricula?['id_categoria']) as int?;
+    final cicloCtl = TextEditingController(
+      text: _matricula?['ciclo']?.toString() ?? '',
+    );
     DateTime? fechaSel;
 
-    String? fechaStr = (_matricula?['fecha'] ?? _matricula?['fecha_matricula'])?.toString();
-    if (fechaStr != null && fechaStr.isNotEmpty) { try { fechaSel = DateTime.parse(fechaStr); } catch (_) {} }
+    String? fechaStr = (_matricula?['fecha'] ?? _matricula?['fecha_matricula'])
+        ?.toString();
+    if (fechaStr != null && fechaStr.isNotEmpty) {
+      try {
+        fechaSel = DateTime.parse(fechaStr);
+      } catch (_) {}
+    }
 
     final ok = await showDialog<bool>(
       context: context,
@@ -2243,11 +3059,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       child: Text('$nombre'),
                     );
                   }).toList(),
-                  validator: (v) => (v == null) ? 'Seleccione una categoría' : null,
+                  validator: (v) =>
+                      (v == null) ? 'Seleccione una categoría' : null,
                   onChanged: (v) => idCategoria = v,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(controller: cicloCtl, decoration: const InputDecoration(labelText: 'Ciclo')),
+                TextFormField(
+                  controller: cicloCtl,
+                  decoration: const InputDecoration(labelText: 'Ciclo'),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -2278,9 +3098,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
-            onPressed: () { if (formKey.currentState?.validate() ?? false) Navigator.pop(context, true); },
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false)
+                Navigator.pop(context, true);
+            },
             child: const Text('Guardar'),
           ),
         ],
@@ -2301,11 +3127,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         fechaISO: fechaISO,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inscripción actualizada')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Inscripción actualizada')));
       await _loadAll();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -2337,11 +3167,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       child: Text('$nombre'),
                     );
                   }).toList(),
-                  validator: (v) => (v == null) ? 'Seleccione una categoría' : null,
+                  validator: (v) =>
+                      (v == null) ? 'Seleccione una categoría' : null,
                   onChanged: (v) => idCategoria = v,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(controller: cicloCtl, decoration: const InputDecoration(labelText: 'Ciclo')),
+                TextFormField(
+                  controller: cicloCtl,
+                  decoration: const InputDecoration(labelText: 'Ciclo'),
+                ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -2371,9 +3205,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
-            onPressed: () { if (formKey.currentState?.validate() ?? false) Navigator.pop(context, true); },
+            onPressed: () {
+              if (formKey.currentState?.validate() ?? false)
+                Navigator.pop(context, true);
+            },
             child: const Text('Guardar'),
           ),
         ],
@@ -2394,11 +3234,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         fechaISO: fechaISO,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Inscripción creada')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Inscripción creada')));
       await _loadAll();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 }
@@ -2432,7 +3276,9 @@ class _PagoDialogState extends State<_PagoDialog> {
   String? _montoError;
 
   final _fmtInput = NumberFormat.simpleCurrency(
-    locale: 'es_EC', name: '', decimalDigits: 2,
+    locale: 'es_EC',
+    name: '',
+    decimalDigits: 2,
   );
 
   @override
@@ -2446,7 +3292,9 @@ class _PagoDialogState extends State<_PagoDialog> {
       _referencia = p['referencia']?.toString();
       _notas = p['notas']?.toString();
     } else {
-      _montoCtl.text = _fmtInput.format(widget.restante.clamp(0, double.infinity));
+      _montoCtl.text = _fmtInput.format(
+        widget.restante.clamp(0, double.infinity),
+      );
     }
   }
 
@@ -2534,7 +3382,9 @@ class _PagoDialogState extends State<_PagoDialog> {
             children: [
               TextFormField(
                 controller: _montoCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Monto *',
                   helperText: isEdit
@@ -2564,7 +3414,10 @@ class _PagoDialogState extends State<_PagoDialog> {
                 ),
                 items: const [
                   DropdownMenuItem(value: 'efectivo', child: Text('Efectivo')),
-                  DropdownMenuItem(value: 'transferencia', child: Text('Transferencia')),
+                  DropdownMenuItem(
+                    value: 'transferencia',
+                    child: Text('Transferencia'),
+                  ),
                   DropdownMenuItem(value: 'tarjeta', child: Text('Tarjeta')),
                 ],
                 onChanged: (v) => setState(() => _metodo = v ?? 'efectivo'),
@@ -2576,7 +3429,8 @@ class _PagoDialogState extends State<_PagoDialog> {
                   labelText: 'Referencia (opcional)',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (v) => _referencia = v.trim().isEmpty ? null : v.trim(),
+                onChanged: (v) =>
+                    _referencia = v.trim().isEmpty ? null : v.trim(),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -2600,7 +3454,11 @@ class _PagoDialogState extends State<_PagoDialog> {
         FilledButton(
           onPressed: _saving ? null : _onSubmit,
           child: _saving
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : Text(isEdit ? 'Guardar cambios' : 'Registrar'),
         ),
       ],
@@ -2626,10 +3484,12 @@ class _GenerarMensualidadesDialog extends StatefulWidget {
   });
 
   @override
-  State<_GenerarMensualidadesDialog> createState() => _GenerarMensualidadesDialogState();
+  State<_GenerarMensualidadesDialog> createState() =>
+      _GenerarMensualidadesDialogState();
 }
 
-class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog> {
+class _GenerarMensualidadesDialogState
+    extends State<_GenerarMensualidadesDialog> {
   late int _anio;
   final _valorCtl = TextEditingController(text: '40.00'); // por defecto
   String? _error;
@@ -2678,21 +3538,32 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(children: [
-              const Text('Año:'), const SizedBox(width: 12),
-              DropdownButton<int>(
-                value: _anio,
-                items: [
-                  for (final y in [DateTime.now().year - 1, DateTime.now().year, DateTime.now().year + 1])
-                    DropdownMenuItem(value: y, child: Text('$y')),
-                ],
-                onChanged: (v) => setState(() { _anio = v ?? _anio; }),
-              ),
-            ]),
+            Row(
+              children: [
+                const Text('Año:'),
+                const SizedBox(width: 12),
+                DropdownButton<int>(
+                  value: _anio,
+                  items: [
+                    for (final y in [
+                      DateTime.now().year - 1,
+                      DateTime.now().year,
+                      DateTime.now().year + 1,
+                    ])
+                      DropdownMenuItem(value: y, child: Text('$y')),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _anio = v ?? _anio;
+                  }),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _valorCtl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Valor mensual (USD) *',
                 border: OutlineInputBorder(),
@@ -2716,7 +3587,10 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
         FilledButton(
           onPressed: () {
             final v = _toDouble(_valorCtl.text);
@@ -2724,7 +3598,10 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
               setState(() => _error = 'Ingresa un valor válido (> 0)');
               return;
             }
-            Navigator.pop(context, _GenMensConfig(anio: _anio, valorMensual: v));
+            Navigator.pop(
+              context,
+              _GenMensConfig(anio: _anio, valorMensual: v),
+            );
           },
           child: const Text('Generar'),
         ),

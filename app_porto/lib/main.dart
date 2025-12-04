@@ -40,15 +40,11 @@ Future<void> main() async {
       await Firebase.initializeApp();
     }
     
-    debugPrint("✅ Firebase inicializado correctamente");
-  } catch (e) {
-    debugPrint("⚠️ Error inicializando Firebase: $e");
-    // Continúa la app aunque Firebase falle (puedes manejarlo según tu necesidad)
+    
+  }catch(e){
+    throw e;
   }
 
-  // =========================================
-  // OTRAS INICIALIZACIONES
-  // =========================================
   await initializeDateFormatting('es', null);
   Intl.defaultLocale = 'es';
   setAppUrlStrategy();

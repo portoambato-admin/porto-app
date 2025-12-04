@@ -1,67 +1,130 @@
-// lib/features/admin/sections/admin_pagos_screen.dart
-// (Actualizado con funciones de exportación PDF/Excel y corrección de pageTheme)
-
 import 'dart:async';
-import 'package:app_porto/core/services/session_token_provider.dart';
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:app_porto/app/app_scope.dart';
-import '../data/pagos_repository.dart';
-import '../../../core/constants/endpoints.dart';
-
-// ===== IMPORTS AÑADIDOS PARA EXPORTACIÓN =====
 import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:intl/intl.dart';
+
+// Paquetes externos
 import 'package:cross_file/cross_file.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart' show rootBundle;
-// ===========================================
 
-// ==== utils ====
+import 'package:app_porto/app/app_scope.dart';
+import 'package:app_porto/core/services/session_token_provider.dart';
+import '../data/pagos_repository.dart';
+import '../../../core/constants/endpoints.dart';
+
+// ======================= HELPERS GLOBALES =======================
+
 double _asDouble(dynamic v) =>
     (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0.0;
 
 String _mesNombre(int? m) {
   const meses = [
     '',
-    'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
   ];
   if (m == null || m < 1 || m > 12) return '-';
   return meses[m];
 }
 
+final _fmtMoney = NumberFormat.currency(locale: 'es_EC', symbol: r'$');
+
+// ======================= PANTALLA PRINCIPAL =======================
+
 class AdminPagosScreen extends StatefulWidget {
   final bool embedded;
   const AdminPagosScreen({super.key, this.embedded = false});
+
   @override
   State<AdminPagosScreen> createState() => _AdminPagosScreenState();
 }
 
 class _AdminPagosScreenState extends State<AdminPagosScreen> {
-  // ===== Repos desde AppScope =====
+  // --- Repos desde AppScope ---
   AppScope get _scope => AppScope.of(context);
   dynamic get _mensRepo => _scope.mensualidades;
   PagosRepository get _pagosRepo => _scope.pagos;
   dynamic get _estRepo => _scope.estudiantes;
   dynamic get _matriculasRepo => _scope.matriculas;
 
-  final _fmtMoney = NumberFormat.currency(locale: 'es_EC', symbol: r'$');
-
-  // ===== Auth gate =====
+  // --- Estado Auth ---
   bool _authChecked = false;
   bool _isAuth = false;
+
+  // --- Estado UI / Estudiantes ---
+  final _qCtl = TextEditingController();
+  final _leftScrollCtl = ScrollController();
+  final _rightScrollCtl = ScrollController();
+  Timer? _debounce;
+
+  bool _loadingEsts = true;
+  String? _errorEsts;
+
+  List<Map<String, dynamic>> _estudiantes = [];
+  Map<String, dynamic>? _estudiante;
+  static const _MAX_FETCH = 1000;
+
+  // --- Filtros Mensualidades ---
+  String _estado = 'Todos'; // Todos | pendiente | pagado | anulado
+  int? _anioFiltro;
+  bool _soloPendiente = false;
+
+  // --- Datos Mensualidades ---
+  bool _loadingMens = false;
+  List<Map<String, dynamic>> _mensualidades = [];
+  bool _generandoMens = false;
+
+  // --- Totales globales ---
+  double _totValor = 0, _totPagado = 0, _totPendiente = 0;
+
+  // --- Cache ---
+  final Map<int, Map<String, dynamic>> _resumenCache = {};
+  final Map<int, List<Map<String, dynamic>>> _pagosCache = {};
+
+  // init seguro para InheritedWidgets
+  bool _didInitDeps = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitDeps) return;
+    _didInitDeps = true;
+    _checkAuthAndLoad();
+  }
+
+  @override
+  void dispose() {
+    _qCtl.dispose();
+    _leftScrollCtl.dispose();
+    _rightScrollCtl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  // ======================= AUTH & HELPERS HTTP =======================
 
   Future<void> _checkAuthAndLoad() async {
     try {
       final t = await SessionTokenProvider.instance.readToken();
 
       if (!mounted) return;
-
       setState(() {
         _authChecked = true;
         _isAuth = (t != null && t.isNotEmpty);
@@ -94,83 +157,26 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     }
   }
 
-  // ===== Estado Estudiantes (panel/selector) =====
-  final _qCtl = TextEditingController();
-  final _leftScrollCtl = ScrollController();
-  final _rightScrollCtl = ScrollController();
-  Timer? _debounce;
-  bool _loadingEsts = true;
-  String? _errorEsts;
-  List<Map<String, dynamic>> _estudiantes = [];
-  Map<String, dynamic>? _estudiante;
-  static const _MAX_FETCH = 1000;
-
-  // ===== Filtros =====
-  String _estado = 'Todos'; // Todos | pendiente | pagado | anulado
-  int? _anioFiltro; // null = todos
-  bool _soloPendiente = false;
-
-  // mensualidades
-  bool _loadingMens = false;
-  List<Map<String, dynamic>> _mensualidades = [];
-
-  // NUEVO: estado generación
-  bool _generandoMens = false;
-
-  // cache
-  final Map<int, Map<String, dynamic>> _resumenCache = {};
-  final Map<int, List<Map<String, dynamic>>> _pagosCache = {};
-
-  // totales globales
-  double _totValor = 0, _totPagado = 0, _totPendiente = 0;
-
-  // init seguro para InheritedWidgets
-  bool _didInitDeps = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _qCtl.addListener(() {
-      _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 250), () async {
-        if (!mounted) return;
-        setState(() {});
-        final q = _filtro;
-        if (q.isEmpty || _blocked) return;
-        final anyLocal = _filtrarEstudiantes().take(1).isNotEmpty;
-        if (!anyLocal) await _cargarEstudiantes(query: q);
-      });
-    });
+  Future<Map<String, String>> _buildAuthHeaders() async {
+    final token = await SessionTokenProvider.instance.readToken();
+    if (token != null && token.isNotEmpty) {
+      return {'Authorization': 'Bearer $token'};
+    }
+    return {};
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_didInitDeps) return;
-    _didInitDeps = true;
-    _checkAuthAndLoad();
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _qCtl.dispose();
-    _leftScrollCtl.dispose();
-    _rightScrollCtl.dispose();
-    super.dispose();
-  }
-
-  // ==== helpers HTTP (fallbacks) ====
   Future<dynamic> _safeGet(String url) async {
-    final res = await _scope.http.get(url, headers: const {});
+    final headers = await _buildAuthHeaders();
+    final res = await _scope.http.get(url, headers: headers);
     return res;
   }
 
   Future<dynamic> _safePost(String url, Map<String, dynamic> body) async {
+    final headers = await _buildAuthHeaders();
     final res = await _scope.http.post(
       url,
       body: body,
-      headers: const {},
+      headers: headers,
     );
     return res;
   }
@@ -201,18 +207,38 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     return const [];
   }
 
-  // ===== Estudiantes =====
+  // ======================= ESTUDIANTES =======================
+
   String get _filtro => _qCtl.text.trim().toLowerCase();
 
-  Iterable<Map<String, dynamic>> _filtrarEstudiantes() sync* {
+  void _onSearchChanged(String v) {
+    if (_blocked) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () async {
+      if (!mounted || _blocked) return;
+      final q = v.trim();
+      if (q.isEmpty || q.length >= 2) {
+        await _cargarEstudiantes(query: q);
+      }
+    });
+  }
+
+  Iterable<Map<String, dynamic>> _filtrarEstudiantesLocal() sync* {
     if (_filtro.isEmpty) {
       yield* _estudiantes;
       return;
     }
     for (final e in _estudiantes) {
-      final nombre = (e['nombreCompleto'] ?? '').toString().toLowerCase();
+      final nombre =
+          (e['nombreCompleto'] ?? '').toString().toLowerCase();
       final id = '${e['id'] ?? ''}';
-      if (nombre.contains(_filtro) || id.contains(_filtro)) yield e;
+      final cedula =
+          '${e['cedula'] ?? e['dni'] ?? e['documento'] ?? ''}';
+      if (nombre.contains(_filtro) ||
+          id.contains(_filtro) ||
+          cedula.contains(_filtro)) {
+        yield e;
+      }
     }
   }
 
@@ -228,14 +254,48 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     dynamic res;
     try {
       if (q.isEmpty) {
-        try { res = await _estRepo.paged(page: 1, pageSize: _MAX_FETCH); } catch (_) {}
-        res ??= await (() async { try { return await _estRepo.listar(); } catch (_) {} return null; })();
-        res ??= await (() async { try { return await _estRepo.list(); } catch (_) {} return null; })();
-        res ??= await (() async { try { return await _estRepo.getAll(); } catch (_) {} return null; })();
-        res ??= await (() async { try { return await _estRepo.activos(); } catch (_) {} return null; })();
-        res ??= await (() async { try { return await _estRepo.listarActivos(); } catch (_) {} return null; })();
-        res ??= await (() async { try { return await _estRepo.page(1, _MAX_FETCH); } catch (_) {} return null; })();
+        // Intentos usando el repo
+        try {
+          res = await _estRepo.paged(page: 1, pageSize: _MAX_FETCH);
+        } catch (_) {}
+        res ??= await (() async {
+          try {
+            return await _estRepo.listar();
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.list();
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.getAll();
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.activos();
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.listarActivos();
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.page(1, _MAX_FETCH);
+          } catch (_) {}
+          return null;
+        })();
 
+        // Fallback HTTP
         if (res == null) {
           final base = Endpoints.estudiantes;
           final urls = [
@@ -246,15 +306,37 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           for (final u in urls) {
             final r = await _safeGet(u);
             final list = _coerceList(r);
-            if (list.isNotEmpty) { res = list; break; }
+            if (list.isNotEmpty) {
+              res = list;
+              break;
+            }
           }
         }
       } else {
-        try { res = await _estRepo.buscar(q); } catch (_) {}
-        res ??= await (() async { try { return await _estRepo.search(q); } catch (_) {} return null; })();
-        res ??= await (() async { return await _estRepo.find(q); } )().catchError((_) => null);
-        res ??= await (() async { try { return await _estRepo.autocomplete(q); } catch (_) {} return null; })();
+        // Búsqueda por texto
+        try {
+          res = await _estRepo.buscar(q);
+        } catch (_) {}
+        res ??= await (() async {
+          try {
+            return await _estRepo.search(q);
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.find(q);
+          } catch (_) {}
+          return null;
+        })();
+        res ??= await (() async {
+          try {
+            return await _estRepo.autocomplete(q);
+          } catch (_) {}
+          return null;
+        })();
 
+        // Fallback HTTP
         if (res == null) {
           final base = Endpoints.estudiantes;
           final urls = [
@@ -266,7 +348,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           for (final u in urls) {
             final r = await _safeGet(u);
             final list = _coerceList(r);
-            if (list.isNotEmpty) { res = list; break; }
+            if (list.isNotEmpty) {
+              res = list;
+              break;
+            }
           }
         }
       }
@@ -278,11 +363,13 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         );
       } else if (res is Map && res['items'] is List) {
         items = List<Map<String, dynamic>>.from(
-          (res['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)),
+          (res['items'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map)),
         );
       } else if (res is Map && res['rows'] is List) {
         items = List<Map<String, dynamic>>.from(
-          (res['rows'] as List).map((e) => Map<String, dynamic>.from(e as Map)),
+          (res['rows'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map)),
         );
       }
 
@@ -290,13 +377,15 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         s['id'] = s['id'] ?? s['id_estudiante'] ?? s['estudiante_id'];
         final n = (s['nombres'] ?? '').toString();
         final a = (s['apellidos'] ?? '').toString();
-        s['nombreCompleto'] = s['nombreCompleto'] ?? ('$n $a').trim();
+        s['nombreCompleto'] =
+            s['nombreCompleto'] ?? ('$n $a').trim();
       }
 
       items.sort((a, b) => (a['nombreCompleto'] ?? '')
           .toString()
           .toLowerCase()
-          .compareTo((b['nombreCompleto'] ?? '').toString().toLowerCase()));
+          .compareTo(
+              (b['nombreCompleto'] ?? '').toString().toLowerCase()));
 
       if (!mounted) return;
       setState(() {
@@ -313,16 +402,21 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
   }
 
   Future<void> _seleccionarEst(Map<String, dynamic> est) async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     setState(() {
       _estudiante = est;
-      _anioFiltro = null;
       _estado = 'Todos';
+      _anioFiltro = null;
       _soloPendiente = false;
       _mensualidades = [];
       _resumenCache.clear();
       _pagosCache.clear();
-      _totValor = _totPagado = _totPendiente = 0;
+      _totValor = 0;
+      _totPagado = 0;
+      _totPendiente = 0;
     });
     await _cargarMensualidades();
   }
@@ -330,11 +424,14 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
   void _showLoginSnack() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Debes iniciar sesión para usar Finanzas.')),
+      const SnackBar(
+        content: Text('Debes iniciar sesión para usar Finanzas.'),
+      ),
     );
   }
 
-  // ===== Mensualidades =====
+  // ======================= MENSUALIDADES & TOTALES =======================
+
   Future<void> _cargarMensualidades() async {
     if (_estudiante == null || _blocked) return;
     setState(() => _loadingMens = true);
@@ -343,9 +440,21 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       final idEst = (_estudiante!['id'] as num).toInt();
       dynamic list;
 
-      try { list = await _mensRepo.porEstudiante(idEst); } catch (_) {}
-      list ??= await (() async { try { return await _mensRepo.listar(estudianteId: idEst); } catch (_) {} return null; })();
-      list ??= await (() async { try { return await _mensRepo.listarPorEstudiante(idEst); } catch (_) {} return null; })();
+      try {
+        list = await _mensRepo.porEstudiante(idEst);
+      } catch (_) {}
+      list ??= await (() async {
+        try {
+          return await _mensRepo.listar(estudianteId: idEst);
+        } catch (_) {}
+        return null;
+      })();
+      list ??= await (() async {
+        try {
+          return await _mensRepo.listarPorEstudiante(idEst);
+        } catch (_) {}
+        return null;
+      })();
 
       if (list == null) {
         final base = Endpoints.mensualidades;
@@ -357,12 +466,17 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         ];
         for (final u in urls) {
           final res = _coerceList(await _safeGet(u));
-          if (res.isNotEmpty) { list = res; break; }
+          if (res.isNotEmpty) {
+            list = res;
+            break;
+          }
         }
       }
 
-      List<Map<String, dynamic>> data =
-          List<Map<String, dynamic>>.from((list ?? []).map((e) => Map<String, dynamic>.from(e as Map)));
+      List<Map<String, dynamic>> data = List<Map<String, dynamic>>.from(
+        (list ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map)),
+      );
 
       for (final m in data) {
         m['id'] = m['id'] ?? m['id_mensualidad'] ?? m['mensualidad_id'];
@@ -373,13 +487,19 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       }
 
       if (_estado != 'Todos') {
-        data = data.where((m) => (m['estado'] ?? '') == _estado).toList();
+        data = data
+            .where((m) => (m['estado'] ?? '') == _estado)
+            .toList();
       }
       if (_anioFiltro != null) {
-        data = data.where((m) => m['anio'] == _anioFiltro).toList();
+        data = data
+            .where((m) => m['anio'] == _anioFiltro)
+            .toList();
       }
       if (_soloPendiente) {
-        data = data.where((m) => (m['estado'] ?? '') != 'pagado').toList();
+        data = data
+            .where((m) => (m['estado'] ?? '') != 'pagado')
+            .toList();
       }
 
       if (!mounted) return;
@@ -401,23 +521,31 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     if (_mensualidades.isEmpty || _blocked) {
       if (!mounted) return;
       setState(() {
-        _totValor = _totPagado = _totPendiente = 0;
+        _totValor = 0;
+        _totPagado = 0;
+        _totPendiente = 0;
       });
       return;
     }
 
     try {
-      final futures = _mensualidades.map((m) => _cargarResumen(m['id'] as int));
+      final futures = _mensualidades
+          .map((m) => _cargarResumen(m['id'] as int));
       final res = await Future.wait(futures);
+
       double v = 0, p = 0, pe = 0;
       for (var i = 0; i < res.length; i++) {
         final r = res[i];
         final local = _mensualidades[i];
         final valor = _asDouble(r?['valor'] ?? local['valor']);
         final pagado = _asDouble(r?['pagado'] ?? 0);
-        final pendiente = _asDouble(r?['pendiente'] ?? (valor - pagado));
-        v += valor; p += pagado; pe += pendiente;
+        final pendiente =
+            _asDouble(r?['pendiente'] ?? (valor - pagado));
+        v += valor;
+        p += pagado;
+        pe += pendiente;
       }
+
       if (!mounted) return;
       setState(() {
         _totValor = v;
@@ -427,27 +555,40 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     } catch (_) {}
   }
 
-  // ===== Helpers por mensualidad =====
   Future<Map<String, dynamic>?> _cargarResumen(int idM) async {
     if (_blocked) return null;
     if (_resumenCache.containsKey(idM)) return _resumenCache[idM];
-    final r = await _pagosRepo.resumen(idM);
-    if (r != null) _resumenCache[idM] = r;
-    return r;
+    try {
+      final r = await _pagosRepo.resumen(idM);
+      if (r != null) _resumenCache[idM] = r;
+      return r;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<Map<String, dynamic>>> _cargarPagos(int idM) async {
-    if (_blocked) return const [];
+    if (_blocked) return [];
     if (_pagosCache.containsKey(idM)) return _pagosCache[idM]!;
-    final list = await _pagosRepo.porMensualidad(idM);
-    _pagosCache[idM] = list;
-    return list;
+    try {
+      final l = await _pagosRepo.porMensualidad(idM);
+      _pagosCache[idM] = l;
+      return l;
+    } catch (_) {
+      return [];
+    }
   }
 
+  // ======================= ACCIONES PAGOS =======================
+
   Future<void> _registrarPago(Map<String, dynamic> m) async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     final resumen = await _cargarResumen(m['id'] as int);
-    final restante = _asDouble(resumen?['pendiente'] ?? m['valor']);
+    final restante =
+        _asDouble(resumen?['pendiente'] ?? m['valor']);
 
     final ok = await showDialog<bool>(
       context: context,
@@ -465,15 +606,24 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     }
   }
 
-  Future<void> _editarPago(Map<String, dynamic> mensualidad, Map<String, dynamic> pago) async {
-    if (_blocked) { _showLoginSnack(); return; }
-    final resumen = await _cargarResumen(mensualidad['id'] as int);
+  Future<void> _editarPago(
+    Map<String, dynamic> mensualidad,
+    Map<String, dynamic> pago,
+  ) async {
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
+    final resumen =
+        await _cargarResumen(mensualidad['id'] as int);
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => _PagoDialog(
         pagosRepo: _pagosRepo,
         idMensualidad: mensualidad['id'] as int,
-        restante: _asDouble(resumen?['pendiente'] ?? mensualidad['valor']),
+        restante: _asDouble(
+          resumen?['pendiente'] ?? mensualidad['valor'],
+        ),
         pagoExistente: pago,
       ),
     );
@@ -485,7 +635,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
   }
 
   Future<void> _anularPago(int idPago, int idMens) async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     final motivoCtl = TextEditingController();
 
     final confirm = await showDialog<String?>(
@@ -495,14 +648,16 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('⚠️ Esta acción no se puede deshacer'),
+            const Text(
+              'Esta acción no se puede deshacer. El pago quedará marcado como anulado.',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: motivoCtl,
               decoration: const InputDecoration(
-                labelText: 'Motivo *',
+                labelText: 'Motivo de anulación *',
                 border: OutlineInputBorder(),
-                hintText: 'Ej: Pago duplicado, Error en el monto',
+                hintText: 'Ej: Pago duplicado, error en el monto...',
               ),
               maxLines: 2,
               autofocus: true,
@@ -515,12 +670,16 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
             onPressed: () {
               final motivo = motivoCtl.text.trim();
               if (motivo.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('El motivo es obligatorio')),
+                  const SnackBar(
+                    content: Text('El motivo es obligatorio'),
+                  ),
                 );
                 return;
               }
@@ -535,7 +694,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     if (confirm == null || confirm.isEmpty) return;
 
     try {
-      final ok = await _pagosRepo.anular(idPago: idPago, motivo: confirm);
+      final ok = await _pagosRepo.anular(
+        idPago: idPago,
+        motivo: confirm,
+      );
 
       if (ok) {
         _resumenCache.remove(idMens);
@@ -554,7 +716,9 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al anular: ${e.toString().replaceFirst('Exception: ', '')}'),
+            content: Text(
+              'Error al anular: ${e.toString().replaceFirst('Exception: ', '')}',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -562,425 +726,13 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     }
   }
 
-  // ===== UI =====
-  @override
-  Widget build(BuildContext context) {
-    if (!_authChecked) {
-      return Scaffold(
-        appBar: widget.embedded ? null : AppBar(title: const Text('Gestión de Pagos')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (!_isAuth) {
-      return Scaffold(
-        appBar: widget.embedded ? null : AppBar(title: const Text('Gestión de Pagos')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.lock_outline, size: 42),
-                const SizedBox(height: 12),
-                const Text(
-                  'Debes iniciar sesión para acceder a Finanzas.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _goToLogin,
-                  icon: const Icon(Icons.login),
-                  label: const Text('Iniciar sesión'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: widget.embedded
-          ? null
-          : AppBar(
-              title: const Text('Gestión de Pagos'),
-              actions: [
-                PopupMenuButton<String>(
-                  tooltip: 'Exportar',
-                  enabled: _estudiante != null,
-                  onSelected: (v) async {
-                    if (_estudiante == null) {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                         const SnackBar(content: Text('Selecciona un estudiante primero')),
-                       );
-                       return;
-                    }
-                    // --- AÑADIDO TRY-CATCH ---
-                    try {
-                      switch (v) {
-                        case 'pagos.xlsx':
-                          await _exportPagosExcel();
-                          break;
-                        case 'pagos.pdf':
-                          await _exportPagosPdf();
-                          break;
-                        case 'preview.pagos':
-                          final b = await _buildPagosPdfBytes();
-                          await Printing.layoutPdf(onLayout: (_) async => b);
-                          break;
-                      }
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error al exportar: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                    // --- FIN TRY-CATCH ---
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'pagos.xlsx',
-                      enabled: _estudiante != null,
-                      child: const ListTile(
-                        leading: Icon(Icons.grid_on),
-                        title: Text('Exportar pagos (Excel)'),
-                        subtitle: Text('Usa los filtros activos'),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'pagos.pdf',
-                      enabled: _estudiante != null,
-                      child: const ListTile(
-                        leading: Icon(Icons.picture_as_pdf),
-                        title: Text('Exportar pagos (PDF)'),
-                        subtitle: Text('Usa los filtros activos'),
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: 'preview.pagos',
-                      enabled: _estudiante != null,
-                      child: const ListTile(
-                        leading: Icon(Icons.print),
-                        title: Text('Vista previa / Imprimir'),
-                      ),
-                    ),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Icon(Icons.download),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () async {
-                    if (_blocked) { _showLoginSnack(); return; }
-                    await _cargarEstudiantes(query: _qCtl.text);
-                    if (_estudiante != null) await _cargarMensualidades();
-                  },
-                ),
-              ],
-            ),
-      body: LayoutBuilder(
-        builder: (context, c) {
-          final isNarrow = c.maxWidth < 700;
-          return isNarrow ? _buildMobile() : _buildWide();
-        },
-      ),
-    );
-  }
-
-  // ----- Layout ancho (dos paneles) -----
-  Widget _buildWide() {
-    return Row(
-      children: [
-        SizedBox(
-          width: 340,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: _buildStudentPane(),
-          ),
-        ),
-        const VerticalDivider(width: 1),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: _buildMensPane(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ----- Layout móvil (selector en modal) -----
-  Widget _buildMobile() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _estudiante == null
-                      ? 'Sin estudiante'
-                      : '${_estudiante!['nombreCompleto']}',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _blocked ? _showLoginSnack : _openStudentModal,
-                icon: const Icon(Icons.person_search),
-                label: Text(_estudiante == null ? 'Seleccionar' : 'Cambiar'),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: _buildMensPane(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ----- Panel: estudiantes -----
-  Widget _buildStudentPane() {
-    final showHint = !_loadingEsts &&
-        _estudiantes.isEmpty &&
-        (_qCtl.text.trim().isEmpty);
-
-    return Column(
-      children: [
-        TextField(
-          controller: _qCtl,
-          decoration: InputDecoration(
-            labelText: 'Buscar estudiante',
-            hintText: 'Nombre o ID',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () {
-                if (_blocked) { _showLoginSnack(); return; }
-                _cargarEstudiantes(query: _qCtl.text);
-              },
-            ),
-          ),
-          onChanged: (v) {
-            if (_blocked) return;
-            if (v.trim().isEmpty || v.trim().length >= 2) {
-              _cargarEstudiantes(query: v);
-            }
-          },
-          onSubmitted: (v) {
-            if (_blocked) return;
-            _cargarEstudiantes(query: v);
-          },
-        ),
-        const SizedBox(height: 8),
-        if (_errorEsts != null)
-          Text(_errorEsts!, style: const TextStyle(color: Colors.red)),
-        if (showHint)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8.0),
-            child: Text('Escribe un nombre (ej. "jordan") y selecciona un estudiante.'),
-          ),
-        Expanded(
-          child: _loadingEsts
-              ? const Center(child: CircularProgressIndicator())
-              : _estudiantes.isEmpty
-                  ? const Center(child: Text('Sin estudiantes'))
-                  : Scrollbar(
-                      controller: _leftScrollCtl,
-                      child: Builder(
-                        builder: (_) {
-                          final lista = _filtrarEstudiantes().toList();
-                          return ListView.separated(
-                            controller: _leftScrollCtl,
-                            itemCount: lista.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
-                            itemBuilder: (_, i) {
-                              final e = lista[i];
-                              final sel = _estudiante != null && _estudiante!['id'] == e['id'];
-                              final n = (e['nombreCompleto'] ?? '').toString();
-                              return ListTile(
-                                dense: true,
-                                leading: CircleAvatar(child: Text(n.isNotEmpty ? n[0] : 'E')),
-                                title: Text(n),
-                                subtitle: Text('ID: ${e['id']}'),
-                                selected: sel,
-                                onTap: () => _seleccionarEst(e),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-        ),
-      ],
-    );
-  }
-
-  // ----- Pane mensualidades -----
-  Widget _buildMensPane() {
-    return Column(
-      children: [
-        _buildFilters(),
-        const SizedBox(height: 12),
-        if (_estudiante != null) _buildResumen(),
-        if (_estudiante != null) const SizedBox(height: 8),
-        if (_estudiante != null) _buildAccionesGeneracion(),
-        if (_estudiante != null) const SizedBox(height: 8),
-        Expanded(
-          child: _estudiante == null
-              ? const Center(child: Text('👈 Selecciona un estudiante para ver su historial'))
-              : _loadingMens
-                  ? const Center(child: CircularProgressIndicator())
-                  : _mensualidades.isEmpty
-                      ? const Center(child: Text('Sin mensualidades'))
-                      : Scrollbar(
-                          controller: _rightScrollCtl,
-                          child: _buildAgrupadoPorAnio(),
-                        ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilters() {
-    final anios = _mensualidades
-        .map((m) => m['anio'])
-        .whereType<int>()
-        .toSet()
-        .toList()
-      ..sort();
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
-      children: [
-        SizedBox(
-          width: 180,
-          child: DropdownButtonFormField<String>(
-            value: _estado,
-            decoration: const InputDecoration(
-              labelText: 'Estado',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-              DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
-              DropdownMenuItem(value: 'pagado', child: Text('Pagado')),
-              DropdownMenuItem(value: 'anulado', child: Text('Anulado')),
-            ],
-            onChanged: (v) async {
-              if (_blocked) { _showLoginSnack(); return; }
-              setState(() => _estado = v ?? 'Todos');
-              await _cargarMensualidades();
-            },
-          ),
-        ),
-        SizedBox(
-          width: 140,
-          child: DropdownButtonFormField<int?>(
-            value: _anioFiltro,
-            decoration: const InputDecoration(
-              labelText: 'Año',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('Todos')),
-              ...anios.map((a) => DropdownMenuItem<int?>(value: a, child: Text('$a'))),
-            ],
-            onChanged: (v) async {
-              if (_blocked) { _showLoginSnack(); return; }
-              setState(() => _anioFiltro = v);
-              await _cargarMensualidades();
-            },
-          ),
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Solo pendientes'),
-            Switch(
-              value: _soloPendiente,
-              onChanged: (v) async {
-                if (_blocked) { _showLoginSnack(); return; }
-                setState(() => _soloPendiente = v);
-                await _cargarMensualidades();
-              },
-            ),
-          ],
-        ),
-        Tooltip(
-          message: 'Limpiar filtros',
-          child: IconButton(
-            onPressed: () async {
-              if (_blocked) { _showLoginSnack(); return; }
-              setState(() {
-                _estado = 'Todos';
-                _anioFiltro = null;
-                _soloPendiente = false;
-              });
-              await _cargarMensualidades();
-            },
-            icon: const Icon(Icons.filter_alt_off),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildResumen() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
-          _chip('Total', _fmtMoney.format(_totValor), Icons.attach_money),
-          _chip('Pagado', _fmtMoney.format(_totPagado), Icons.check_circle, Colors.green),
-          _chip(
-            'Pendiente',
-            _fmtMoney.format(_totPendiente),
-            Icons.pending,
-            _totPendiente > 0 ? Colors.orange : Colors.grey,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===== Acciones para generar mensualidades =====
-  Widget _buildAccionesGeneracion() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          ElevatedButton.icon(
-            onPressed: _generandoMens ? null : _onTapGenerarHastaDiciembre,
-            icon: const Icon(Icons.calendar_month),
-            label: _generandoMens
-                ? const Text('Generando...')
-                : const Text('Generar hasta diciembre'),
-          ),
-        ],
-      ),
-    );
-  }
+  // ======================= GENERAR MENSUALIDADES =======================
 
   Future<void> _onTapGenerarHastaDiciembre() async {
-    if (_blocked) { _showLoginSnack(); return; }
+    if (_blocked) {
+      _showLoginSnack();
+      return;
+    }
     if (_estudiante == null) return;
 
     final anioSugerido = _anioFiltro ?? DateTime.now().year;
@@ -992,7 +744,9 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         fmtMoney: _fmtMoney,
         mesesYa: _mensualidades
             .where((m) => m['anio'] == anioSugerido)
-            .map<int>((m) => (m['mes'] as num?)?.toInt() ?? 0)
+            .map<int>(
+              (m) => (m['mes'] as num?)?.toInt() ?? 0,
+            )
             .where((m) => m >= 1 && m <= 12)
             .toSet(),
       ),
@@ -1005,7 +759,9 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       final idEst = (_estudiante!['id'] as num).toInt();
 
       List<Map<String, dynamic>> mats = [];
-      try { mats = await _matriculasRepo.porEstudiante(idEst); } catch (_) {}
+      try {
+        mats = await _matriculasRepo.porEstudiante(idEst);
+      } catch (_) {}
       if (mats.isEmpty) {
         final base = Endpoints.matriculas;
         final urls = [
@@ -1015,13 +771,18 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         ];
         for (final u in urls) {
           final res = _coerceList(await _safeGet(u));
-          if (res.isNotEmpty) { mats = res; break; }
+          if (res.isNotEmpty) {
+            mats = res;
+            break;
+          }
         }
       }
 
       if (mats.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('El estudiante no tiene matrícula.')),
+          const SnackBar(
+            content: Text('El estudiante no tiene matrícula.'),
+          ),
         );
         return;
       }
@@ -1035,7 +796,9 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         DateTime parseDate(dynamic v) {
           if (v is DateTime) return v;
           if (v is String && v.isNotEmpty) {
-            try { return DateTime.parse(v); } catch (_) {}
+            try {
+              return DateTime.parse(v);
+            } catch (_) {}
           }
           return DateTime.fromMillisecondsSinceEpoch(0);
         }
@@ -1045,34 +808,40 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         return db.compareTo(da);
       });
 
-      final int? idMatricula = (mats.first['id'] as num?)?.toInt()
-          ?? (mats.first['id_matricula'] as num?)?.toInt();
+      final int? idMatricula = (mats.first['id'] as num?)?.toInt() ??
+          (mats.first['id_matricula'] as num?)?.toInt();
 
       if (idMatricula == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No pude identificar la matrícula.')),
+          const SnackBar(
+            content: Text('No pude identificar la matrícula.'),
+          ),
         );
         return;
       }
 
-      final ahora = DateTime.now();
-      final mesDesde = (cfg.anio == ahora.year) ? ahora.month : 1;
+      // Evitar meses ya existentes para ese año
       final existentes = _mensualidades
           .where((m) => m['anio'] == cfg.anio)
           .map<int>((m) => (m['mes'] as num?)?.toInt() ?? 0)
           .toSet();
 
-      final mesesObjetivo = <int>[];
-      for (int m = mesDesde; m <= 12; m++) {
-        if (!existentes.contains(m)) mesesObjetivo.add(m);
-      }
+      final mesesObjetivo = cfg.meses
+          .where((m) => m >= 1 && m <= 12 && !existentes.contains(m))
+          .toList()
+        ..sort();
 
       if (mesesObjetivo.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay meses faltantes hasta diciembre.')),
+          const SnackBar(
+            content: Text('Los meses seleccionados ya tienen mensualidades generadas.'),
+          ),
         );
         return;
       }
+
+      final valorMensualRedondeado =
+          double.parse(cfg.valorMensual.toStringAsFixed(2));
 
       int creados = 0, fallidos = 0;
       for (final mes in mesesObjetivo) {
@@ -1083,7 +852,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
               idMatricula: idMatricula,
               mes: mes,
               anio: cfg.anio,
-              valor: cfg.valorMensual,
+              valor: valorMensualRedondeado,
               estado: 'pendiente',
             );
             ok = true;
@@ -1092,7 +861,7 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
               'id_matricula': idMatricula,
               'mes': mes,
               'anio': cfg.anio,
-              'valor': cfg.valorMensual,
+              'valor': valorMensualRedondeado,
               'estado': 'pendiente',
             };
             final base = Endpoints.mensualidades;
@@ -1105,7 +874,11 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
               } catch (_) {}
             }
           }
-          if (ok) { creados++; } else { fallidos++; }
+          if (ok) {
+            creados++;
+          } else {
+            fallidos++;
+          }
         } catch (_) {
           fallidos++;
         }
@@ -1113,12 +886,14 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
 
       await _cargarMensualidades();
 
-      final total = cfg.valorMensual * creados;
+      final total = valorMensualRedondeado * creados;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✓ Generadas $creados mensualidades ' +
-              (fallidos > 0 ? '($fallidos fallidas) ' : '') +
-              '· Total: ${_fmtMoney.format(total)}'),
+          content: Text(
+            '✓ Generadas $creados mensualidades '
+            '${fallidos > 0 ? '($fallidos fallidas) ' : ''}'
+            '· Total generado: ${_fmtMoney.format(total)}',
+          ),
         ),
       );
     } finally {
@@ -1126,270 +901,869 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     }
   }
 
-  Widget _buildAgrupadoPorAnio() {
-    final porAnio = <int, List<Map<String, dynamic>>>{};
-    for (final m in _mensualidades) {
-      final a = (m['anio'] as num?)?.toInt() ?? 0;
-      porAnio.putIfAbsent(a, () => []).add(m);
+  // ======================= UI: BUILD =======================
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_authChecked) {
+      return Scaffold(
+        appBar: widget.embedded
+            ? null
+            : AppBar(
+                title: const Text('Gestión de Pagos'),
+              ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
-    final anios = porAnio.keys.toList()..sort((a, b) => b.compareTo(a)); // años desc
 
-    return ListView.separated(
-      controller: _rightScrollCtl,
-      padding: const EdgeInsets.all(12), // Añadido padding
-      itemCount: anios.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, idx) {
-        final anio = anios[idx];
-        final ms = porAnio[anio]!
-          ..sort((a, b) => ((b['mes'] as int?) ?? 0).compareTo((a['mes'] as int?) ?? 0)); // meses desc
+    if (!_isAuth) {
+      return Scaffold(
+        appBar: widget.embedded
+            ? null
+            : AppBar(
+                title: const Text('Gestión de Pagos'),
+              ),
+        body: _buildLoginRequest(),
+      );
+    }
 
-        final total = ms.fold<double>(0, (acc, e) => acc + _asDouble(e['valor']));
-        final pagados = ms.where((e) => (e['estado'] ?? '') == 'pagado').length;
-
-        return Card(
-          child: ExpansionTile(
-            title: Text('Año $anio', style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text('$pagados/${ms.length} pagados · ${_fmtMoney.format(total)}'),
-            children: ms.map((m) => _mensTile(m)).toList(),
-          ),
-        );
-      },
+    return Scaffold(
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text(
+                'Gestión de Pagos',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              elevation: 0,
+              backgroundColor:
+                  Theme.of(context).colorScheme.surface,
+              actions: [
+                PopupMenuButton<String>(
+                  tooltip: 'Exportar',
+                  enabled: _estudiante != null,
+                  onSelected: (v) async {
+                    if (_estudiante == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Selecciona un estudiante primero',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    try {
+                      switch (v) {
+                        case 'pagos.xlsx':
+                          await _exportPagosExcel();
+                          break;
+                        case 'pagos.pdf':
+                          await _exportPagosPdf();
+                          break;
+                        case 'preview.pagos':
+                          final b =
+                              await _buildPagosPdfBytes();
+                          await Printing.layoutPdf(
+                            onLayout: (_) async => b,
+                          );
+                          break;
+                      }
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Error al exportar: $e',
+                          ),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'pagos.xlsx',
+                      child: ListTile(
+                        leading: Icon(Icons.grid_on),
+                        title: Text('Exportar pagos (Excel)'),
+                        subtitle:
+                            Text('Usa los filtros activos'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'pagos.pdf',
+                      child: ListTile(
+                        leading: Icon(Icons.picture_as_pdf),
+                        title: Text('Exportar pagos (PDF)'),
+                        subtitle:
+                            Text('Usa los filtros activos'),
+                      ),
+                    ),
+                    PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'preview.pagos',
+                      child: ListTile(
+                        leading: Icon(Icons.print),
+                        title: Text('Vista previa / Imprimir'),
+                      ),
+                    ),
+                  ],
+                  icon: const Icon(Icons.download),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () async {
+                    if (_blocked) {
+                      _showLoginSnack();
+                      return;
+                    }
+                    await _cargarEstudiantes(query: _qCtl.text);
+                    if (_estudiante != null) {
+                      await _cargarMensualidades();
+                    }
+                  },
+                ),
+              ],
+            ),
+      body: LayoutBuilder(
+        builder: (ctx, constraints) {
+          if (constraints.maxWidth > 900) {
+            return Row(
+              children: [
+                SizedBox(
+                  width: 350,
+                  child: _buildStudentListPanel(),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: _buildDetailPanel()),
+              ],
+            );
+          } else {
+            if (_estudiante == null) {
+              return _buildStudentListPanel();
+            }
+            return PopScope(
+              canPop: false,
+              onPopInvoked: (didPop) {
+                if (!didPop) {
+                  setState(() => _estudiante = null);
+                }
+              },
+              child: _buildDetailPanel(showBack: true),
+            );
+          }
+        },
+      ),
     );
   }
 
-  Widget _mensTile(Map<String, dynamic> m) {
-    final cs = Theme.of(context).colorScheme;
-    final estado = (m['estado'] ?? 'pendiente').toString();
-    final valor = _asDouble(m['valor']);
+  // ======================= UI: LOGIN REQUEST =======================
 
-    Color estadoColor;
-    switch (estado) {
-      case 'pagado':  estadoColor = cs.primaryContainer; break;
-      case 'anulado': estadoColor = cs.errorContainer;   break;
-      default:        estadoColor = cs.secondaryContainer;
+  Widget _buildLoginRequest() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              'Debes iniciar sesión para acceder a Finanzas.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _goToLogin,
+              icon: const Icon(Icons.login),
+              label: const Text('Ir al Login'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ======================= UI: PANEL IZQUIERDO (ESTUDIANTES) =======================
+
+  Widget _buildStudentListPanel() {
+    final showHint = !_loadingEsts &&
+        _estudiantes.isEmpty &&
+        _qCtl.text.trim().isEmpty;
+
+    final lista = _filtrarEstudiantesLocal().toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: TextField(
+            controller: _qCtl,
+            onChanged: _onSearchChanged,
+            onSubmitted: (v) {
+              if (_blocked) return;
+              _cargarEstudiantes(query: v);
+            },
+            decoration: InputDecoration(
+              hintText: 'Buscar estudiante...',
+              labelText: 'Buscar estudiante',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () {
+                  if (_blocked) {
+                    _showLoginSnack();
+                    return;
+                  }
+                  _cargarEstudiantes(query: _qCtl.text);
+                },
+              ),
+              filled: true,
+              fillColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withOpacity(0.3),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        if (_errorEsts != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              _errorEsts!,
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        if (showHint)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Escribe un nombre, cédula o ID y selecciona un estudiante.',
+            ),
+          ),
+        Expanded(
+          child: _loadingEsts
+              ? const Center(child: CircularProgressIndicator())
+              : _estudiantes.isEmpty
+                  ? const Center(
+                      child: Text('Sin estudiantes'),
+                    )
+                  : lista.isEmpty && _qCtl.text.isNotEmpty
+                      ? const Center(
+                          child: Text('Sin resultados'),
+                        )
+                      : ListView.separated(
+                          controller: _leftScrollCtl,
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: lista.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, i) {
+                            final e = lista[i];
+                            final selected = _estudiante != null &&
+                                _estudiante!['id'] == e['id'];
+                            final nombre =
+                                (e['nombreCompleto'] ?? '').toString();
+                            final cedula = e['cedula'] ??
+                                e['dni'] ??
+                                'Sin documento';
+
+                            return Card(
+                              elevation: 0,
+                              color: selected
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .primaryContainer
+                                  : null,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: Theme.of(context)
+                                      .dividerColor,
+                                ),
+                              ),
+                              child: ListTile(
+                                title: Text(
+                                  nombre,
+                                  style: TextStyle(
+                                    fontWeight: selected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                subtitle: Text('C.I.: $cedula'),
+                                leading: CircleAvatar(
+                                  backgroundColor: selected
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                  foregroundColor: selected
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                  child: Text(
+                                    nombre.isNotEmpty
+                                        ? nombre[0]
+                                        : 'E',
+                                  ),
+                                ),
+                                onTap: () => _seleccionarEst(e),
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
+    );
+  }
+
+  // ======================= UI: PANEL DERECHO (DETALLE) =======================
+
+  Widget _buildDetailPanel({bool showBack = false}) {
+    if (_estudiante == null) {
+      return const Center(
+        child: Text('Selecciona un estudiante'),
+      );
     }
 
+    final anios = _mensualidades
+        .map((m) => m['anio'])
+        .whereType<int>()
+        .toSet()
+        .toList()
+      ..sort();
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Theme.of(context).colorScheme.surface,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  if (showBack)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () =>
+                          setState(() => _estudiante = null),
+                    ),
+                  CircleAvatar(
+                    radius: 24,
+                    child: Text(
+                      (_estudiante!['nombreCompleto'] ?? 'E')
+                          .toString()
+                          .substring(0, 1),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _estudiante!['nombreCompleto'] ??
+                              'Estudiante',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _estudiante!['cedula'] ??
+                              'Sin documento',
+                          style: TextStyle(
+                            color:
+                                Theme.of(context).hintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _generandoMens
+                        ? null
+                        : _onTapGenerarHastaDiciembre,
+                    icon: _generandoMens
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.calendar_month),
+                    label: const Text('Generar meses'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildKPI(
+                    'Total',
+                    _totValor,
+                    Icons.monetization_on,
+                    Colors.blue,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildKPI(
+                    'Pagado',
+                    _totPagado,
+                    Icons.check_circle,
+                    Colors.green,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildKPI(
+                    'Pendiente',
+                    _totPendiente,
+                    Icons.warning,
+                    _totPendiente > 0
+                        ? Colors.orange
+                        : Colors.grey,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // Filtro Estado
+              DropdownButton<String>(
+                value: _estado,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Todos',
+                    child: Text('Todos'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'pendiente',
+                    child: Text('Pendiente'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'pagado',
+                    child: Text('Pagado'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'anulado',
+                    child: Text('Anulado'),
+                  ),
+                ],
+                onChanged: (v) async {
+                  if (_blocked) {
+                    _showLoginSnack();
+                    return;
+                  }
+                  setState(() => _estado = v ?? 'Todos');
+                  await _cargarMensualidades();
+                },
+              ),
+              const SizedBox(width: 12),
+              // Filtro Año
+              DropdownButton<int?>(
+                value: _anioFiltro,
+                underline: const SizedBox.shrink(),
+                hint: const Text('Año'),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Todos'),
+                  ),
+                  ...anios.map(
+                    (a) => DropdownMenuItem<int?>(
+                      value: a,
+                      child: Text('$a'),
+                    ),
+                  ),
+                ],
+                onChanged: (v) async {
+                  if (_blocked) {
+                    _showLoginSnack();
+                    return;
+                  }
+                  setState(() => _anioFiltro = v);
+                  await _cargarMensualidades();
+                },
+              ),
+              const SizedBox(width: 12),
+              FilterChip(
+                label: const Text('Solo pendientes'),
+                selected: _soloPendiente,
+                onSelected: (v) async {
+                  if (_blocked) {
+                    _showLoginSnack();
+                    return;
+                  }
+                  setState(() => _soloPendiente = v);
+                  await _cargarMensualidades();
+                },
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refrescar mensualidades',
+                onPressed: _cargarMensualidades,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loadingMens
+              ? const Center(child: CircularProgressIndicator())
+              : _mensualidades.isEmpty
+                  ? const Center(
+                      child: Text('Sin mensualidades'),
+                    )
+                  : ListView.builder(
+                      controller: _rightScrollCtl,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _mensualidades.length,
+                      itemBuilder: (ctx, i) =>
+                          _buildMensualidadCard(
+                        _mensualidades[i],
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKPI(
+    String label,
+    double value,
+    IconData icon,
+    Color color,
+  ) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withOpacity(0.2),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _fmtMoney.format(value),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMensualidadCard(Map<String, dynamic> m) {
+    final estado = (m['estado'] ?? 'pendiente').toString();
+    final esPagado = estado == 'pagado';
+    final esAnulado = estado == 'anulado';
+
+    Color color;
+    if (esPagado) {
+      color = Colors.green;
+    } else if (esAnulado) {
+      color = Colors.red;
+    } else {
+      color = Colors.orange;
+    }
+
+    final valor = _asDouble(m['valor']);
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: estadoColor,
-          child: Text('${m['mes'] ?? ''}'),
+          backgroundColor: color.withOpacity(0.15),
+          child: Icon(
+            esPagado ? Icons.check : Icons.attach_money,
+            color: color,
+          ),
         ),
         title: Text(
           '${_mesNombre(m['mes'])} ${m['anio']}',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text('Valor: ${_fmtMoney.format(valor)}'),
-        trailing: Chip(label: Text(estado.toUpperCase()), backgroundColor: estadoColor),
+        subtitle: Text(
+          esPagado
+              ? 'Pagado'
+              : 'Pendiente: ${_fmtMoney.format(valor)}',
+        ),
+        trailing: Chip(
+          label: Text(
+            estado.toUpperCase(),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 10,
+            ),
+          ),
+          backgroundColor: color.withOpacity(0.1),
+          side: BorderSide.none,
+        ),
         children: [
-          FutureBuilder<Map<String, dynamic>?>(  // resumen
-            future: _cargarResumen(m['id'] as int),
-            builder: (context, snapR) {
-              final r = snapR.data;
-              final valorR   = _asDouble(r?['valor'] ?? valor);
-              final pagado   = _asDouble(r?['pagado'] ?? 0);
-              final pendiente= _asDouble(r?['pendiente'] ?? (valorR - pagado));
+          _buildDetallePagos(m),
+        ],
+      ),
+    );
+  }
 
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildDetallePagos(Map<String, dynamic> m) {
+    return FutureBuilder<Map<String, dynamic>?>(
+
+      future: _cargarResumen(m['id'] as int),
+      builder: (context, snapR) {
+        final r = snapR.data;
+        final valor = _asDouble(r?['valor'] ?? m['valor']);
+        final pagado = _asDouble(r?['pagado'] ?? 0);
+        final pendiente =
+            _asDouble(r?['pendiente'] ?? (valor - pagado));
+        final progress =
+            valor > 0 ? (pagado / valor).clamp(0.0, 1.0) : 0.0;
+
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              if (valor > 0) ...[
+                LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor:
+                      Colors.grey.shade200,
+                  color: Colors.green,
+                  minHeight: 8,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                   children: [
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        _chip('Valor', _fmtMoney.format(valorR), Icons.attach_money),
-                        _chip('Pagado', _fmtMoney.format(pagado), Icons.check_circle, Colors.green),
-                        _chip('Pendiente', _fmtMoney.format(pendiente), Icons.pending,
-                            pendiente > 0 ? Colors.orange : Colors.grey),
-                      ],
+                    Text(
+                      'Pagado: ${_fmtMoney.format(pagado)}',
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        FilledButton.icon(
-                          onPressed: pendiente > 0 ? () => _registrarPago(m) : null,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Registrar pago'),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Refrescar',
-                          onPressed: () async {
-                            if (_blocked) { _showLoginSnack(); return; }
-                            _resumenCache.remove(m['id']);
-                            _pagosCache.remove(m['id']);
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                    Text('Historial de pagos', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    FutureBuilder<List<Map<String, dynamic>>>(    // pagos
-                      future: _cargarPagos(m['id'] as int),
-                      builder: (context, snapP) {
-                        final pagos = snapP.data ?? [];
-                        if (snapP.connectionState == ConnectionState.waiting) {
-                          return const LinearProgressIndicator();
-                        }
-                        if (pagos.isEmpty) {
-                          return const Text('Sin pagos registrados');
-                        }
-                        return Column(
-                          children: pagos.map((p) {
-                            final activo = p['activo'] == true;
-                            final monto  = _asDouble(p['monto']);
-                            return Card(
-                              color: activo ? null : cs.errorContainer.withOpacity(0.25),
-                              child: ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  activo ? Icons.check_circle : Icons.cancel,
-                                  color: activo ? Colors.green : Colors.red,
-                                ),
-                                title: Row(
-                                  children: [
-                                    Text(
-                                      _fmtMoney.format(monto),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        decoration: activo ? null : TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Chip(
-                                      label: Text(p['metodo'] ?? ''),
-                                      labelStyle: const TextStyle(fontSize: 11),
-                                    ),
-                                  ],
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Fecha: ${p['fecha'] ?? ''}'),
-                                    if ((p['referencia'] ?? '').toString().isNotEmpty)
-                                      Text('Ref: ${p['referencia']}'),
-                                    if ((p['notas'] ?? '').toString().isNotEmpty)
-                                      Text('Notas: ${p['notas']}'),
-                                    if (!activo && (p['motivoAnulacion'] ?? '').toString().isNotEmpty)
-                                      Text(
-                                        'Anulado: ${p['motivoAnulacion']}',
-                                        style: TextStyle(color: cs.error, fontStyle: FontStyle.italic),
-                                      ),
-                                  ],
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (activo)
-                                      IconButton(
-                                        tooltip: 'Editar',
-                                        icon: const Icon(Icons.edit),
-                                        onPressed: () => _editarPago(m, p),
-                                      ),
-                                    if (activo)
-                                      IconButton(
-                                        icon: const Icon(Icons.close, color: Colors.red),
-                                        tooltip: 'Anular',
-                                        onPressed: () => _anularPago(p['id'] as int, m['id'] as int),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        );
-                      },
+                    Text(
+                      'Restante: ${_fmtMoney.format(pendiente)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===== Helpers UI =====
-  Widget _chip(String label, String value, IconData icon, [Color? color]) {
-    return Chip(
-      avatar: Icon(icon, size: 18, color: color),
-      label: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  // ===== Selector modal en móvil =====
-  Future<void> _openStudentModal() async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (ctx) {
-        final modalCtl = ScrollController();
-        return SizedBox(
-          height: MediaQuery.of(ctx).size.height * 0.85,
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: TextField(
-                  controller: _qCtl,
-                  decoration: const InputDecoration(
-                    labelText: 'Buscar',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
+                const Divider(),
+              ],
+              Text(
+                'Historial de pagos',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium,
               ),
               const SizedBox(height: 8),
-              Expanded(
-                child: _loadingEsts
-                    ? const Center(child: CircularProgressIndicator())
-                    : Scrollbar(
-                        controller: modalCtl,
-                        child: Builder(
-                          builder: (_) {
-                            final lista = _filtrarEstudiantes().toList();
-                            if (lista.isEmpty) {
-                              return const Center(child: Text('Sin resultados'));
-                            }
-                            return ListView.separated(
-                              controller: modalCtl,
-                              itemCount: lista.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
-                              itemBuilder: (_, i) {
-                                final e = lista[i];
-                                final n = (e['nombreCompleto'] ?? '').toString();
-                                return ListTile(
-                                  leading: CircleAvatar(child: Text(n.isNotEmpty ? n[0] : 'E')),
-                                  title: Text(n),
-                                  subtitle: Text('ID: ${e['id']}'),
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    _seleccionarEst(e);
-                                  },
-                                );
-                              },
-                            );
-                          },
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _cargarPagos(m['id'] as int),
+                builder: (context, snapP) {
+                  if (snapP.connectionState ==
+                      ConnectionState.waiting) {
+                    return const LinearProgressIndicator();
+                  }
+                  final pagos = snapP.data ?? [];
+                  if (pagos.isEmpty) {
+                    return const Padding(
+                      padding:
+                          EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Sin pagos registrados',
+                        style: TextStyle(
+                          fontStyle: FontStyle.italic,
                         ),
                       ),
+                    );
+                  }
+                  return Column(
+                    children: pagos.map((p) {
+                      final activo = p['activo'] == true;
+                      final monto = _asDouble(p['monto']);
+                      String fechaStr =
+                          (p['fecha'] ?? '').toString();
+                      if (fechaStr.isNotEmpty) {
+                        try {
+                          final d =
+                              DateTime.parse(fechaStr);
+                          fechaStr =
+                              DateFormat('dd/MM/yyyy HH:mm')
+                                  .format(d);
+                        } catch (_) {}
+                      }
+
+                      return Card(
+                        color: activo
+                            ? null
+                            : Theme.of(context)
+                                .colorScheme
+                                .errorContainer
+                                .withOpacity(0.25),
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            activo
+                                ? Icons.check_circle
+                                : Icons.cancel,
+                            color: activo
+                                ? Colors.green
+                                : Colors.red,
+                          ),
+                          title: Row(
+                            children: [
+                              Text(
+                                _fmtMoney.format(monto),
+                                style: TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
+                                  decoration: activo
+                                      ? null
+                                      : TextDecoration
+                                          .lineThrough,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Chip(
+                                label: Text(
+                                  p['metodo'] ?? '',
+                                ),
+                                labelStyle:
+                                    const TextStyle(
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              if (fechaStr.isNotEmpty)
+                                Text('Fecha: $fechaStr'),
+                              if ((p['referencia'] ?? '')
+                                  .toString()
+                                  .isNotEmpty)
+                                Text(
+                                  'Ref: ${p['referencia']}',
+                                ),
+                              if ((p['notas'] ?? '')
+                                  .toString()
+                                  .isNotEmpty)
+                                Text(
+                                  'Notas: ${p['notas']}',
+                                ),
+                              if (!activo &&
+                                  (p['motivoAnulacion'] ?? '')
+                                      .toString()
+                                      .isNotEmpty)
+                                Text(
+                                  'Anulado: ${p['motivoAnulacion']}',
+                                  style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .error,
+                                    fontStyle:
+                                        FontStyle.italic,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize:
+                                MainAxisSize.min,
+                            children: [
+                              if (activo)
+                                IconButton(
+                                  tooltip: 'Editar',
+                                  icon: const Icon(
+                                      Icons.edit),
+                                  onPressed: () =>
+                                      _editarPago(m, p),
+                                ),
+                              if (activo)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                  ),
+                                  tooltip: 'Anular',
+                                  onPressed: () =>
+                                      _anularPago(
+                                    p['id'] as int,
+                                    m['id'] as int,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
+              const SizedBox(height: 12),
+              if (pendiente > 0.01)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _registrarPago(m),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Registrar pago'),
+                  ),
+                ),
             ],
           ),
         );
@@ -1397,11 +1771,8 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     );
   }
 
-  // =================================================================
-  // ===== INICIO: SECCIÓN DE EXPORTACIÓN AÑADIDA =====================
-  // =================================================================
+  // ======================= EXPORTACIÓN (EXCEL / PDF) =======================
 
-  // --- Helpers de formato ---
   String _fmtDate(Object? v) {
     if (v == null) return '—';
     final s = v.toString();
@@ -1428,10 +1799,11 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
     if (v is double) return xls.DoubleCellValue(v);
     final s = '$v';
     final n = double.tryParse(s);
-    return (n != null) ? xls.DoubleCellValue(n) : xls.TextCellValue(s);
+    return (n != null)
+        ? xls.DoubleCellValue(n)
+        : xls.TextCellValue(s);
   }
 
-  // --- Helpers de guardado ---
   Future<String?> _pickSavePath({
     required String suggestedName,
     required List<String> extensions,
@@ -1460,11 +1832,17 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
   }) async {
     try {
       if (kIsWeb) {
-        final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+        final xf = XFile.fromData(
+          bytes,
+          name: defaultFileName,
+          mimeType: mimeType,
+        );
         await xf.saveTo(defaultFileName);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Descarga iniciada: $defaultFileName')),
+          SnackBar(
+            content: Text('Descarga iniciada: $defaultFileName'),
+          ),
         );
         return;
       }
@@ -1483,24 +1861,35 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
         return;
       }
 
-      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
+      final xf = XFile.fromData(
+        bytes,
+        name: defaultFileName,
+        mimeType: mimeType,
+      );
       await xf.saveTo(path);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Archivo guardado en: $path')),
+        SnackBar(
+          content: Text('Archivo guardado en: $path'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo guardar: $e')),
+        SnackBar(
+          content: Text('No se pudo guardar: $e'),
+        ),
       );
     }
   }
 
-  // --- Helpers de PDF ---
   pw.Widget _buildSectionHeader(
-      String title, IconData icon, PdfColor color, pw.Font materialFont) {
+    String title,
+    IconData icon,
+    PdfColor color,
+    pw.Font materialFont,
+  ) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: color,
@@ -1509,29 +1898,41 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           topRight: pw.Radius.circular(4),
         ),
       ),
-      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding:
+          const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       margin: const pw.EdgeInsets.only(bottom: 4),
       child: pw.Row(
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, color: PdfColors.white, size: 16),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            color: PdfColors.white,
+            size: 16,
+          ),
           pw.SizedBox(width: 8),
           pw.Text(
             title,
             style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-                fontSize: 12),
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
     );
   }
 
-  pw.Widget _buildChip(String label, String? value, IconData icon,
-      PdfColor color, pw.Font materialFont) {
+  pw.Widget _buildChipPdf(
+    String label,
+    String? value,
+    IconData icon,
+    PdfColor color,
+    pw.Font materialFont,
+  ) {
     return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const pw.EdgeInsets.symmetric(
+          horizontal: 8, vertical: 5),
       decoration: pw.BoxDecoration(
         color: color,
         borderRadius: pw.BorderRadius.circular(12),
@@ -1539,28 +1940,35 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       child: pw.Row(
         mainAxisSize: pw.MainAxisSize.min,
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, size: 12, color: PdfColors.black),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            size: 12,
+            color: PdfColors.black,
+          ),
           pw.SizedBox(width: 6),
           pw.Text(
             value == null || value.isEmpty
                 ? label
                 : '$label: ${value.trim()}',
-            style: const pw.TextStyle(fontSize: 10, color: PdfColors.black),
+            style: const pw.TextStyle(
+              fontSize: 10,
+              color: PdfColors.black,
+            ),
           ),
         ],
       ),
     );
   }
 
-  // --- Lógica Principal de Exportación ---
-
   Future<void> _exportPagosExcel() async {
-    if (_estudiante == null) throw Exception('No hay estudiante seleccionado');
-    
-    // MODIFICACIÓN: La fuente de datos es la lista ya filtrada '_mensualidades'
+    if (_estudiante == null) {
+      throw Exception('No hay estudiante seleccionado');
+    }
+
     final rows = _mensualidades;
-    final nombreEst = _estudiante!['nombreCompleto'] ?? 'estudiante';
+    final nombreEst =
+        _estudiante!['nombreCompleto'] ?? 'estudiante';
 
     final book = xls.Excel.createExcel();
     final sheet = book['Pagos'];
@@ -1569,63 +1977,92 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       xls.TextCellValue('Año'),
       xls.TextCellValue('Estado'),
       xls.TextCellValue('Monto'),
-      xls.TextCellValue('Fecha pago'), // Se usará la fecha de la mensualidad si no hay pago
+      xls.TextCellValue('Fecha pago'),
       xls.TextCellValue('Observación'),
     ]);
+
     for (final r in rows) {
-      final mes = _mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes'])));
-      final anio = _pickStr(r, ['anio','año','anio_pago','ano','year']);
-      final est = _pickStr(r, ['estado','status']);
-      final monto = _pickStr(r, ['monto','valor','importe','total','pago']);
-      // Nota: Esta pantalla no tiene fechas de pago individuales, usamos la fecha de la mensualidad
-      final fpago = _fmtDate(_pickStr(r, ['fecha', 'fecha_pago', 'fecha_vencimiento']));
-      final obs = _pickStr(r, ['observacion','observación','nota','comentario']);
+      final mes = _mesNombre(
+        int.tryParse(_pickStr(r, ['mes', 'Mes'])),
+      );
+      final anio = _pickStr(
+        r,
+        ['anio', 'año', 'anio_pago', 'ano', 'year'],
+      );
+      final est = _pickStr(r, ['estado', 'status']);
+      final monto = _pickStr(
+        r,
+        ['monto', 'valor', 'importe', 'total', 'pago'],
+      );
+      final fpago = _fmtDate(
+        _pickStr(
+          r,
+          ['fecha', 'fecha_pago', 'fecha_vencimiento'],
+        ),
+      );
+      final obs = _pickStr(
+        r,
+        ['observacion', 'observación', 'nota', 'comentario'],
+      );
 
       sheet.appendRow([
-        _cv(mes), _cv(anio), _cv(est), _cv(monto), _cv(fpago), _cv(obs),
+        _cv(mes),
+        _cv(anio),
+        _cv(est),
+        _cv(monto),
+        _cv(fpago),
+        _cv(obs),
       ]);
     }
+
     final encoded = book.encode()!;
     final bytes = Uint8List.fromList(encoded);
     await _saveBytes(
       bytes,
       defaultFileName: 'pagos_${nombreEst}.xlsx',
       extensions: const ['xlsx'],
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }
 
-  // ******** ESTE ES EL MÉTODO CORREGIDO ********
   Future<Uint8List> _buildPagosPdfBytes() async {
-    if (_estudiante == null) throw Exception('No hay estudiante seleccionado');
-    
+    if (_estudiante == null) {
+      throw Exception('No hay estudiante seleccionado');
+    }
+
     final rows = _mensualidades;
-    
-    // Cargar fuentes desde assets
-    final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+
+    final robotoData =
+        await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final robotoFont = pw.Font.ttf(robotoData);
-    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialData = await rootBundle
+        .load('assets/fonts/MaterialIcons-Regular.ttf');
     final materialFont = pw.Font.ttf(materialData);
 
     final doc = pw.Document();
-    final nombre = _estudiante!['nombreCompleto'] ?? 'Estudiante';
-    final titulo = 'Reporte de Pagos';
+    final nombre =
+        _estudiante!['nombreCompleto'] ?? 'Estudiante';
+    const titulo = 'Reporte de Pagos';
 
     const baseColor = PdfColors.blueGrey800;
     const lightColor = PdfColors.grey100;
 
-    // Calcular Total
     double totalFiltrado = 0.0;
     for (final r in rows) {
-      final montoStr = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
-      final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
+      final montoStr = _pickStr(
+        r,
+        ['monto', 'valor', 'importe', 'total', 'pago'],
+      );
+      final estado =
+          _pickStr(r, ['estado', 'status']).toLowerCase();
       if (estado != 'anulado') {
-         totalFiltrado += _asDouble(montoStr);
+        totalFiltrado += _asDouble(montoStr);
       }
     }
 
-    // Helper para celda de tabla
-    pw.Widget buildCell(String text, {
+    pw.Widget buildCell(
+      String text, {
       pw.Alignment alignment = pw.Alignment.centerLeft,
       bool isHeader = false,
       PdfColor? background,
@@ -1638,35 +2075,66 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           text,
           style: isHeader
               ? pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10)
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                  fontSize: 10,
+                )
               : const pw.TextStyle(fontSize: 10),
         ),
       );
     }
 
-    // Construir Filas de la Tabla
     final List<pw.TableRow> tableRows = [];
 
-    // Fila de Encabezado
-    tableRows.add(pw.TableRow(
-      decoration: const pw.BoxDecoration(color: baseColor),
-      children: [
-        buildCell('Mes', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Año', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Estado', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Monto', isHeader: true, alignment: pw.Alignment.centerRight),
-        buildCell('Fecha', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Observación', isHeader: true),
-      ],
-    ));
+    tableRows.add(
+      pw.TableRow(
+        decoration:
+            const pw.BoxDecoration(color: baseColor),
+        children: [
+          buildCell(
+            'Mes',
+            isHeader: true,
+            alignment: pw.Alignment.center,
+          ),
+          buildCell(
+            'Año',
+            isHeader: true,
+            alignment: pw.Alignment.center,
+          ),
+          buildCell(
+            'Estado',
+            isHeader: true,
+            alignment: pw.Alignment.center,
+          ),
+          buildCell(
+            'Monto',
+            isHeader: true,
+            alignment: pw.Alignment.centerRight,
+          ),
+          buildCell(
+            'Fecha',
+            isHeader: true,
+            alignment: pw.Alignment.center,
+          ),
+          buildCell(
+            'Observación',
+            isHeader: true,
+          ),
+        ],
+      ),
+    );
 
-    // Filas de Datos
     for (int i = 0; i < rows.length; i++) {
       final r = rows[i];
-      final background = i % 2 == 0 ? lightColor : null;
-      final estado = _pickStr(r, ['estado', 'status']).toLowerCase();
-      final monto = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
-          
+      final background =
+          i % 2 == 0 ? lightColor : null;
+      final estado =
+          _pickStr(r, ['estado', 'status']).toLowerCase();
+      final monto = _pickStr(
+        r,
+        ['monto', 'valor', 'importe', 'total', 'pago'],
+      );
+
       PdfColor statusColor;
       IconData statusIcon;
       switch (estado) {
@@ -1678,116 +2146,199 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
           statusColor = PdfColors.red100;
           statusIcon = Icons.cancel;
           break;
-        default: // 'pendiente' o cualquier otro
+        default:
           statusColor = PdfColors.yellow100;
           statusIcon = Icons.pending;
       }
 
-      tableRows.add(pw.TableRow(
-        decoration: pw.BoxDecoration(color: background),
-        children: [
-          buildCell(_mesNombre(int.tryParse(_pickStr(r, ['mes', 'Mes']))), alignment: pw.Alignment.center),
-          buildCell(_pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']), alignment: pw.Alignment.center),
-          pw.Container(
-            padding: const pw.EdgeInsets.all(6),
-            color: background,
-            alignment: pw.Alignment.center,
-            child: _buildChip(estado, '', statusIcon, statusColor, materialFont),
-          ),
-          buildCell(_fmtMoney.format(_asDouble(monto)), alignment: pw.Alignment.centerRight),
-          buildCell(_fmtDate(_pickStr(r, ['fecha', 'fecha_pago', 'fecha_vencimiento'])), alignment: pw.Alignment.center),
-          buildCell(_pickStr(r, ['observacion', 'observación', 'nota', 'comentario'])),
-        ],
-      ));
+      tableRows.add(
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: background),
+          children: [
+            buildCell(
+              _mesNombre(
+                int.tryParse(
+                  _pickStr(r, ['mes', 'Mes']),
+                ),
+              ),
+              alignment: pw.Alignment.center,
+            ),
+            buildCell(
+              _pickStr(
+                r,
+                ['anio', 'año', 'anio_pago', 'ano', 'year'],
+              ),
+              alignment: pw.Alignment.center,
+            ),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(6),
+              color: background,
+              alignment: pw.Alignment.center,
+              child: _buildChipPdf(
+                estado,
+                '',
+                statusIcon,
+                statusColor,
+                materialFont,
+              ),
+            ),
+            buildCell(
+              _fmtMoney.format(_asDouble(monto)),
+              alignment: pw.Alignment.centerRight,
+            ),
+            buildCell(
+              _fmtDate(
+                _pickStr(
+                  r,
+                  [
+                    'fecha',
+                    'fecha_pago',
+                    'fecha_vencimiento',
+                  ],
+                ),
+              ),
+              alignment: pw.Alignment.center,
+            ),
+            buildCell(
+              _pickStr(
+                r,
+                [
+                  'observacion',
+                  'observación',
+                  'nota',
+                  'comentario',
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
-    // Construir la Página
     doc.addPage(
       pw.MultiPage(
-        // === CORRECCIÓN: 'theme' ahora está DENTRO de 'pageTheme' ===
         pageTheme: pw.PageTheme(
           margin: const pw.EdgeInsets.all(24),
-          theme: pw.ThemeData.withFont(base: robotoFont), // <-- Movido aquí
+          theme: pw.ThemeData.withFont(base: robotoFont),
         ),
-        // Encabezado
-        header: (context) => pw.Column(children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(titulo.toUpperCase(),
-                  style: pw.TextStyle(
-                      color: baseColor,
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.Text(nombre,
-                  style: const pw.TextStyle(
-                      color: PdfColors.grey700, fontSize: 14)),
-            ],
-          ),
-          pw.Divider(color: PdfColors.grey400, height: 8),
-          pw.SizedBox(height: 10),
-        ]),
-        // Pie de página
-        footer: (context) => pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        header: (context) => pw.Column(
           children: [
-            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            pw.Row(
+              mainAxisAlignment:
+                  pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  titulo.toUpperCase(),
+                  style: pw.TextStyle(
+                    color: baseColor,
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  nombre,
+                  style: const pw.TextStyle(
+                    color: PdfColors.grey700,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            pw.Divider(
+              color: PdfColors.grey400,
+              height: 8,
+            ),
+            pw.SizedBox(height: 10),
+          ],
+        ),
+        footer: (context) => pw.Row(
+          mainAxisAlignment:
+              pw.MainAxisAlignment.spaceBetween,
+          children: [
             pw.Text(
-                'Página ${context.pageNumber} de ${context.pagesCount}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              'Generado el: ${_fmtDate(DateTime.now())}',
+              style: const pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey600,
+              ),
+            ),
+            pw.Text(
+              'Página ${context.pageNumber} de ${context.pagesCount}',
+              style: const pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey600,
+              ),
+            ),
           ],
         ),
         build: (context) => [
-          _buildSectionHeader('Pagos Filtrados', Icons.receipt_long, baseColor, materialFont),
+          _buildSectionHeader(
+            'Pagos filtrados',
+            Icons.receipt_long,
+            baseColor,
+            materialFont,
+          ),
           pw.SizedBox(height: 6),
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(1.8), // Mes
-              1: const pw.FlexColumnWidth(1.2), // Año
-              2: const pw.FlexColumnWidth(1.8), // Estado
-              3: const pw.FlexColumnWidth(1.5), // Monto
-              4: const pw.FlexColumnWidth(1.8), // Fecha
-              5: const pw.FlexColumnWidth(3.0), // Observación
+            border: pw.TableBorder.all(
+              color: PdfColors.grey300,
+              width: 0.5,
+            ),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.8),
+              1: pw.FlexColumnWidth(1.2),
+              2: pw.FlexColumnWidth(1.8),
+              3: pw.FlexColumnWidth(1.5),
+              4: pw.FlexColumnWidth(1.8),
+              5: pw.FlexColumnWidth(3.0),
             },
             children: tableRows,
           ),
-          pw.Divider(color: PdfColors.grey300, height: 24, thickness: 1.5),
+          pw.Divider(
+            color: PdfColors.grey300,
+            height: 24,
+            thickness: 1.5,
+          ),
           pw.Align(
             alignment: pw.Alignment.centerRight,
             child: pw.SizedBox(
               width: 250,
               child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                crossAxisAlignment:
+                    pw.CrossAxisAlignment.end,
                 children: [
-                   pw.Text(
+                  pw.Text(
                     'TOTAL (SEGÚN FILTRO)',
                     style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 10,
-                        color: PdfColors.grey700),
-                   ),
-                   pw.SizedBox(height: 4),
-                   pw.Text(
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 10,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
                     _fmtMoney.format(totalFiltrado),
                     style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold,
-                        fontSize: 18,
-                        color: baseColor),
-                   ),
-                   pw.SizedBox(height: 8),
-                   pw.Text(
-                    _anioFiltro == null && _estado == 'Todos' && !_soloPendiente
-                      ? 'Mostrando todos los registros.'
-                      : 'Filtros aplicados.',
-                    style:  pw.TextStyle(
-                        fontSize: 9,
-                        fontStyle: pw.FontStyle.italic,
-                        color: PdfColors.grey600),
-                   )
-                ]
-              )
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 18,
+                      color: baseColor,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    _anioFiltro == null &&
+                            _estado == 'Todos' &&
+                            !_soloPendiente
+                        ? 'Mostrando todos los registros.'
+                        : 'Filtros aplicados.',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontStyle: pw.FontStyle.italic,
+                      color: PdfColors.grey600,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1796,17 +2347,19 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
 
     return doc.save();
   }
-  // ******** FIN DEL MÉTODO CORREGIDO ********
 
   Future<void> _exportPagosPdf() async {
     if (_estudiante == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Selecciona un estudiante primero')),
+        const SnackBar(
+          content: Text('Selecciona un estudiante primero'),
+        ),
       );
       return;
     }
     final bytes = await _buildPagosPdfBytes();
-    final nombreEst = _estudiante!['nombreCompleto'] ?? 'estudiante';
+    final nombreEst =
+        _estudiante!['nombreCompleto'] ?? 'estudiante';
     await _saveBytes(
       bytes,
       defaultFileName: 'pagos_${nombreEst}.pdf',
@@ -1814,13 +2367,10 @@ class _AdminPagosScreenState extends State<AdminPagosScreen> {
       mimeType: 'application/pdf',
     );
   }
-
-  // =================================================================
-  // ===== FIN: SECCIÓN DE EXPORTACIÓN AÑADIDA =======================
-  // =================================================================
 }
 
-// ===== Diálogo para crear/editar pago =====
+// ======================= DIÁLOGOS =======================
+
 class _PagoDialog extends StatefulWidget {
   final PagosRepository pagosRepo;
   final int idMensualidad;
@@ -1849,7 +2399,9 @@ class _PagoDialogState extends State<_PagoDialog> {
   String? _montoError;
 
   final _fmtInput = NumberFormat.simpleCurrency(
-    locale: 'es_EC', name: '', decimalDigits: 2,
+    locale: 'es_EC',
+    name: '',
+    decimalDigits: 2,
   );
 
   @override
@@ -1857,13 +2409,16 @@ class _PagoDialogState extends State<_PagoDialog> {
     super.initState();
     if (widget.pagoExistente != null) {
       final p = widget.pagoExistente!;
-      _montoCtl.text = _fmtInput.format(_asDouble(p['monto']));
-      _fecha = DateTime.tryParse('${p['fecha']}') ?? DateTime.now();
+      _montoCtl.text =
+          _fmtInput.format(_asDouble(p['monto']));
+      _fecha = DateTime.tryParse('${p['fecha']}') ??
+          DateTime.now();
       _metodo = (p['metodo'] ?? 'efectivo') as String;
       _referencia = p['referencia']?.toString();
       _notas = p['notas']?.toString();
     } else {
-      _montoCtl.text = _fmtInput.format(widget.restante.clamp(0, double.infinity));
+      _montoCtl.text = _fmtInput
+          .format(widget.restante.clamp(0, double.infinity));
     }
   }
 
@@ -1887,8 +2442,10 @@ class _PagoDialogState extends State<_PagoDialog> {
     final monto = _parseMonto(_montoCtl.text);
     if (monto <= 0) {
       _montoError = 'Ingresa un monto válido';
-    } else if (widget.pagoExistente == null && monto > widget.restante) {
-      _montoError = 'Sobrepago. Máximo: ${_fmtInput.format(widget.restante)}';
+    } else if (widget.pagoExistente == null &&
+        monto > widget.restante) {
+      _montoError =
+          'Sobrepago. Máximo: ${_fmtInput.format(widget.restante)}';
     } else {
       _montoError = null;
     }
@@ -1902,10 +2459,12 @@ class _PagoDialogState extends State<_PagoDialog> {
     setState(() => _saving = true);
     try {
       final monto = _parseMonto(_montoCtl.text);
+      final montoRedondeado =
+          double.parse(monto.toStringAsFixed(2));
       if (widget.pagoExistente == null) {
         await widget.pagosRepo.crear(
           idMensualidad: widget.idMensualidad,
-          monto: double.parse(monto.toStringAsFixed(2)),
+          monto: montoRedondeado,
           fecha: _fecha,
           metodoPago: _metodo,
           referencia: _referencia,
@@ -1915,7 +2474,7 @@ class _PagoDialogState extends State<_PagoDialog> {
         final idPago = widget.pagoExistente!['id'] as int;
         await widget.pagosRepo.actualizar(
           idPago: idPago,
-          monto: double.parse(monto.toStringAsFixed(2)),
+          monto: montoRedondeado,
           fecha: _fecha,
           metodoPago: _metodo,
           referencia: _referencia,
@@ -1925,9 +2484,10 @@ class _PagoDialogState extends State<_PagoDialog> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            content: Text(msg),
             backgroundColor: Colors.red,
           ),
         );
@@ -1948,15 +2508,28 @@ class _PagoDialogState extends State<_PagoDialog> {
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                isEdit
+                    ? 'Modifica el monto, fecha o detalles del pago seleccionado.'
+                    : 'Registra un nuevo pago para esta mensualidad. No se permite sobrepago.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall,
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _montoCtl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Monto *',
                   helperText: isEdit
                       ? 'Edición de pago existente'
-                      : 'Restante: ${_fmtInput.format(widget.restante)}',
+                      : 'Saldo pendiente: ${_fmtInput.format(widget.restante)} (máximo permitido).',
                   errorText: _montoError,
                   prefixText: r'$ ',
                   border: const OutlineInputBorder(),
@@ -1969,8 +2542,10 @@ class _PagoDialogState extends State<_PagoDialog> {
                 lastDate: DateTime(2100, 12, 31),
                 initialDate: _fecha,
                 fieldLabelText: 'Fecha de pago',
-                onDateSubmitted: (d) => setState(() => _fecha = d),
-                onDateSaved: (d) => setState(() => _fecha = d),
+                onDateSubmitted: (d) =>
+                    setState(() => _fecha = d),
+                onDateSaved: (d) =>
+                    setState(() => _fecha = d),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
@@ -1980,11 +2555,21 @@ class _PagoDialogState extends State<_PagoDialog> {
                   border: OutlineInputBorder(),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'efectivo', child: Text('Efectivo')),
-                  DropdownMenuItem(value: 'transferencia', child: Text('Transferencia')),
-                  DropdownMenuItem(value: 'tarjeta', child: Text('Tarjeta')),
+                  DropdownMenuItem(
+                    value: 'efectivo',
+                    child: Text('Efectivo'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'transferencia',
+                    child: Text('Transferencia'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'tarjeta',
+                    child: Text('Tarjeta'),
+                  ),
                 ],
-                onChanged: (v) => setState(() => _metodo = v ?? 'efectivo'),
+                onChanged: (v) =>
+                    setState(() => _metodo = v ?? 'efectivo'),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -1993,7 +2578,8 @@ class _PagoDialogState extends State<_PagoDialog> {
                   labelText: 'Referencia (opcional)',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (v) => _referencia = v.trim().isEmpty ? null : v.trim(),
+                onChanged: (v) => _referencia =
+                    v.trim().isEmpty ? null : v.trim(),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -2003,7 +2589,8 @@ class _PagoDialogState extends State<_PagoDialog> {
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 2,
-                onChanged: (v) => _notas = v.trim().isEmpty ? null : v.trim(),
+                onChanged: (v) =>
+                    _notas = v.trim().isEmpty ? null : v.trim(),
               ),
             ],
           ),
@@ -2011,13 +2598,20 @@ class _PagoDialogState extends State<_PagoDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+          onPressed:
+              _saving ? null : () => Navigator.of(context).pop(false),
           child: const Text('Cancelar'),
         ),
         FilledButton(
           onPressed: _saving ? null : _onSubmit,
           child: _saving
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                )
               : Text(isEdit ? 'Guardar cambios' : 'Registrar'),
         ),
       ],
@@ -2025,17 +2619,25 @@ class _PagoDialogState extends State<_PagoDialog> {
   }
 }
 
-// ===== Diálogo para generar mensualidades hasta diciembre =====
+// ===== Diálogo para generar mensualidades =====
+
 class _GenMensConfig {
   final int anio;
   final double valorMensual;
-  _GenMensConfig({required this.anio, required this.valorMensual});
+  final List<int> meses;
+
+  _GenMensConfig({
+    required this.anio,
+    required this.valorMensual,
+    required this.meses,
+  });
 }
 
 class _GenerarMensualidadesDialog extends StatefulWidget {
   final int anioInicial;
   final NumberFormat fmtMoney;
   final Set<int> mesesYa;
+
   const _GenerarMensualidadesDialog({
     required this.anioInicial,
     required this.fmtMoney,
@@ -2043,18 +2645,29 @@ class _GenerarMensualidadesDialog extends StatefulWidget {
   });
 
   @override
-  State<_GenerarMensualidadesDialog> createState() => _GenerarMensualidadesDialogState();
+  State<_GenerarMensualidadesDialog> createState() =>
+      _GenerarMensualidadesDialogState();
 }
 
-class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog> {
+class _GenerarMensualidadesDialogState
+    extends State<_GenerarMensualidadesDialog> {
   late int _anio;
-  final _valorCtl = TextEditingController(text: '40.00'); // por defecto
+  final TextEditingController _valorCtl =
+      TextEditingController(text: '40.00'); // valor por defecto
   String? _error;
+  late Set<int> _mesesSeleccionados;
 
   @override
   void initState() {
     super.initState();
     _anio = widget.anioInicial;
+    final desde = _mesActualSiCorresponde();
+    _mesesSeleccionados = <int>{};
+    for (int m = desde; m <= 12; m++) {
+      if (!widget.mesesYa.contains(m)) {
+        _mesesSeleccionados.add(m);
+      }
+    }
   }
 
   int _mesActualSiCorresponde() {
@@ -2062,17 +2675,9 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
     return (_anio == hoy.year) ? hoy.month : 1;
   }
 
-  int _mesesACrear() {
-    final desde = _mesActualSiCorresponde();
-    int c = 0;
-    for (int m = desde; m <= 12; m++) {
-      if (!widget.mesesYa.contains(m)) c++;
-    }
-    return c;
-  }
-
   double _toDouble(String s) {
-    var t = s.trim().replaceAll(' ', '').replaceAll('\$', '');
+    var t =
+        s.trim().replaceAll(' ', '').replaceAll('\$', '');
     if (t.contains(',') && t.contains('.')) {
       t = t.replaceAll('.', '').replaceAll(',', '.');
     } else if (t.contains(',')) {
@@ -2084,68 +2689,156 @@ class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog
   @override
   Widget build(BuildContext context) {
     final desde = _mesActualSiCorresponde();
-    final count = _mesesACrear();
     final valor = _toDouble(_valorCtl.text);
+    final count = _mesesSeleccionados.length;
     final total = valor * count;
 
     return AlertDialog(
-      title: const Text('Generar mensualidades (hasta diciembre)'),
+      title: const Text('Generar mensualidades'),
       content: SizedBox(
-        width: 420,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              const Text('Año:'), const SizedBox(width: 12),
-              DropdownButton<int>(
-                value: _anio,
-                items: [
-                  for (final y in [DateTime.now().year - 1, DateTime.now().year, DateTime.now().year + 1])
-                    DropdownMenuItem(value: y, child: Text('$y')),
-                ],
-                onChanged: (v) => setState(() { _anio = v ?? _anio; }),
-              ),
-            ]),
+            Row(
+              children: [
+                const Text(
+                  'Año:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: 8),
+                Text('$_anio'),
+              ],
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _valorCtl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Valor mensual (USD) *',
+                helperText:
+                    'Este valor se aplicará a todos los meses seleccionados.',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                setState(() {
+                  _error = null;
+                });
+              },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            Text(
+              'Selecciona los meses a generar:',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (int mes = 1; mes <= 12; mes++)
+                  _buildMesChip(
+                    context,
+                    mes: mes,
+                    desde: desde,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 count == 0
-                    ? 'No hay meses faltantes.'
-                    : 'Se crearán $count mes(es): ${_mesNombre(desde)}–Diciembre\nTotal a generar: ${widget.fmtMoney.format(total)}',
+                    ? 'Selecciona al menos un mes disponible.'
+                    : 'Se crearán $count mensualidad(es).\n'
+                        'Total estimado: ${widget.fmtMoney.format(total)}',
               ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
             ],
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
         FilledButton(
           onPressed: () {
             final v = _toDouble(_valorCtl.text);
-            if (v <= 0) {
-              setState(() => _error = 'Ingresa un valor válido (> 0)');
+            if (_mesesSeleccionados.isEmpty) {
+              setState(
+                () => _error = 'Selecciona al menos un mes.',
+              );
               return;
             }
-            Navigator.pop(context, _GenMensConfig(anio: _anio, valorMensual: v));
+            if (v <= 0) {
+              setState(
+                () => _error = 'Ingresa un valor válido (> 0).',
+              );
+              return;
+            }
+            Navigator.pop(
+              context,
+              _GenMensConfig(
+                anio: _anio,
+                valorMensual: v,
+                meses: _mesesSeleccionados.toList()..sort(),
+              ),
+            );
           },
           child: const Text('Generar'),
         ),
       ],
+    );
+  }
+
+  Widget _buildMesChip(
+    BuildContext context, {
+    required int mes,
+    required int desde,
+  }) {
+    final yaExiste = widget.mesesYa.contains(mes);
+    final disponible = !yaExiste && mes >= desde;
+    final seleccionado = _mesesSeleccionados.contains(mes);
+
+    final nombreMes = _mesNombre(mes);
+    final etiqueta =
+        nombreMes.length <= 3 ? nombreMes : nombreMes.substring(0, 3);
+
+    return FilterChip(
+      label: Text(etiqueta),
+      selected: seleccionado,
+      onSelected: !disponible
+          ? null
+          : (v) {
+              setState(() {
+                if (v) {
+                  _mesesSeleccionados.add(mes);
+                } else {
+                  _mesesSeleccionados.remove(mes);
+                }
+                _error = null;
+              });
+            },
+      tooltip: yaExiste
+          ? 'Ya existe una mensualidad para este mes.'
+          : mes < desde
+              ? 'Solo se pueden generar mensualidades desde el mes actual en adelante.'
+              : null,
     );
   }
 }

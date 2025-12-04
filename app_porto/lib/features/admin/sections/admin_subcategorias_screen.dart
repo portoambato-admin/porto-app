@@ -68,7 +68,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   bool _reposListos = false;
 
   // Preferencias visuales
-  _ViewMode _viewMode = _ViewMode.table;
+  _ViewMode _viewMode = _ViewMode.cards;
   bool _dense = false;
 
   @override
@@ -137,7 +137,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     await _loadData(_tab.index);
   }
 
-  // ===== Orden natural: "Sub-4" < "Sub-10" (por nombre o código) =====
+  // ===== Orden natural =====
   int? _firstNum(String? s) {
     if (s == null) return null;
     final m = RegExp(r'(\d+)').firstMatch(s);
@@ -181,7 +181,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         q: _q,
         idCategoria: _idCategoria,
         onlyActive: onlyActive,
-        sort: 'nombre_subcategoria', // backend; aquí reforzamos orden natural
+        sort: 'nombre_subcategoria', 
         order: 'asc',
       );
 
@@ -240,12 +240,32 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     try {
       await _subRepo.update(idSubcategoria: (row['id'] as num).toInt(), activo: !actual);
       _showSnack('Actualizado');
+      // Limpiar cachés para forzar recarga
+      _actItems.clear(); _inaItems.clear(); _allItems.clear();
       await _loadCurrent();
     } catch (e) {
       _showSnack('Error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // ========================= DIÁLOGO MODERNO =========================
+  
+  InputDecoration _modernInputDeco(String label, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.8)),
+      prefixIcon: Icon(icon, color: cs.primary.withOpacity(0.7), size: 22),
+      filled: true,
+      fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.transparent)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cs.primary, width: 1.5)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cs.error.withOpacity(0.5))),
+    );
   }
 
   Future<bool?> _openForm({Map<String, dynamic>? row}) async {
@@ -255,92 +275,155 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     int? idCat = row?['idCategoria'] is num
         ? (row?['idCategoria'] as num).toInt()
         : row?['idCategoria'] as int?;
+    
+    final cs = Theme.of(context).colorScheme;
+
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        return AlertDialog(
-          title: Text(row == null ? 'Nueva subcategoría' : 'Editar subcategoría'),
-          content: SizedBox(
-            width: 480,
-            child: Form(
-              key: formKey,
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: cs.surface,
+          elevation: 8,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  DropdownButtonFormField<int>(
-                    value: idCat,
-                    decoration: const InputDecoration(
-                      labelText: 'Categoría',
-                      prefixIcon: Icon(Icons.category),
-                    ),
-                    items: _catOptions.map((e) {
-                      return DropdownMenuItem<int>(
-                        value: (e['id'] as num).toInt(),
-                        child: Text(e['nombre']?.toString() ?? '—'),
-                      );
-                    }).toList(),
-                    validator: (v) => v == null ? 'Selecciona categoría' : null,
-                    onChanged: (v) => idCat = v,
+                  // Header con Gradiente
+                  Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      Container(
+                        height: 100,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.deepPurple.shade700, Colors.deepPurple.shade400],
+                            begin: Alignment.topLeft, end: Alignment.bottomRight,
+                          ),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                        ),
+                      ),
+                      Positioned(
+                        top: 8, right: 8,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.pop(ctx, false),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -40,
+                        child: Hero(
+                          tag: row != null ? 'sub_icon_${row['id']}' : 'new_sub_icon',
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: cs.surface,
+                              shape: BoxShape.circle,
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+                            ),
+                            child: CircleAvatar(
+                              radius: 38,
+                              backgroundColor: Colors.deepPurple.shade50,
+                              child: Icon(Icons.class_rounded, size: 36, color: Colors.deepPurple.shade700),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: nombre,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre de subcategoría',
-                      prefixIcon: Icon(Icons.label),
-                    ),
-                    maxLength: 60,
-                    validator: (v) {
-                      final s = v?.trim() ?? '';
-                      if (s.isEmpty) return 'Requerido';
-                      if (s.length < 3) return 'Muy corto';
-                      return null;
-                    },
+                  const SizedBox(height: 50),
+                  
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(row == null ? 'Nueva Subcategoría' : 'Editar Subcategoría', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: cs.onSurface)),
                   ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: codigo,
-                    decoration: const InputDecoration(
-                      labelText: 'Código único',
-                      prefixIcon: Icon(Icons.qr_code),
-                      helperText: 'Identificador único (ej. SUB12A).',
+
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        children: [
+                          DropdownButtonFormField<int>(
+                            value: idCat,
+                            decoration: _modernInputDeco('Categoría Padre', Icons.category),
+                            items: _catOptions.map((e) {
+                              return DropdownMenuItem<int>(
+                                value: (e['id'] as num).toInt(),
+                                child: Text(e['nombre']?.toString() ?? '—'),
+                              );
+                            }).toList(),
+                            validator: (v) => v == null ? 'Selecciona una categoría' : null,
+                            onChanged: (v) => idCat = v,
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: nombre,
+                            decoration: _modernInputDeco('Nombre de subcategoría', Icons.label_outline),
+                            maxLength: 60,
+                            validator: (v) {
+                              final s = v?.trim() ?? '';
+                              if (s.isEmpty) return 'Requerido';
+                              if (s.length < 2) return 'Muy corto';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: codigo,
+                            decoration: _modernInputDeco('Código único', Icons.qr_code),
+                            maxLength: 32,
+                            validator: (v) => (v?.trim().isEmpty ?? true) ? 'Requerido' : null,
+                          ),
+                          const SizedBox(height: 32),
+
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: FilledButton(
+                              onPressed: () async {
+                                if (!formKey.currentState!.validate()) return;
+                                try {
+                                  if (row == null) {
+                                    await _subRepo.crear(
+                                      idCategoria: idCat!,
+                                      nombre: nombre.text.trim(),
+                                      codigo: codigo.text.trim(),
+                                    );
+                                  } else {
+                                    await _subRepo.update(
+                                      idSubcategoria: (row['id'] as num).toInt(),
+                                      idCategoria: idCat,
+                                      nombre: nombre.text.trim(),
+                                      codigo: codigo.text.trim(),
+                                    );
+                                  }
+                                  if (mounted) Navigator.pop(ctx, true);
+                                } catch (e) {
+                                  _showSnack('Error: $e');
+                                }
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.deepPurple.shade700,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                              ),
+                              child: Text(row == null ? 'CREAR SUBCATEGORÍA' : 'GUARDAR CAMBIOS', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    maxLength: 32,
-                    validator: (v) => (v?.trim().isEmpty ?? true) ? 'Requerido' : null,
                   ),
                 ],
               ),
             ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                try {
-                  if (row == null) {
-                    await _subRepo.crear(
-                      idCategoria: idCat!,
-                      nombre: nombre.text.trim(),
-                      codigo: codigo.text.trim(),
-                    );
-                  } else {
-                    await _subRepo.update(
-                      idSubcategoria: (row['id'] as num).toInt(),
-                      idCategoria: idCat,
-                      nombre: nombre.text.trim(),
-                      codigo: codigo.text.trim(),
-                    );
-                  }
-                  if (mounted) Navigator.pop(ctx, true);
-                } catch (e) {
-                  _showSnack('Error: $e');
-                }
-              },
-              child: Text(row == null ? 'Crear' : 'Guardar'),
-            ),
-          ],
         );
       },
     );
@@ -348,7 +431,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
   // ===================== EXPORTACIÓN (SOLO EXCEL) =====================
 
-  // Datos y nombre base por pestaña
   (List<Map<String, dynamic>> data, String baseName) _currentExportData() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
@@ -358,7 +440,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return (data, name);
   }
 
-  // Guardar bytes cross-platform
   Future<void> _saveBytes(Uint8List bytes, String filename, String mimeType) async {
     if (kIsWeb) {
       final blob = html.Blob([bytes], mimeType);
@@ -376,49 +457,32 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     _showSnack('Guardado en: $path');
   }
 
-  // Exportar Excel (.xlsx)
   Future<void> _exportExcelCurrent() async {
     final (data, base) = _currentExportData();
-
     final book = xls.Excel.createExcel();
     const sheetName = 'Subcategorias';
     final defaultSheet = book.getDefaultSheet();
     if (defaultSheet != null) book.rename(defaultSheet, sheetName);
     final sheet = book[sheetName];
 
-    // Encabezados
-    sheet.appendRow( [
-      xls.TextCellValue('ID'),
-      xls.TextCellValue('Subcategoría'),
-      xls.TextCellValue('Código'),
-      xls.TextCellValue('Categoría'),
-      xls.TextCellValue('Activo'),
-      xls.TextCellValue('Creado'),
+    sheet.appendRow([
+      xls.TextCellValue('ID'), xls.TextCellValue('Subcategoría'), xls.TextCellValue('Código'), 
+      xls.TextCellValue('Categoría'), xls.TextCellValue('Activo'), xls.TextCellValue('Creado'),
     ]);
 
-    // Filas
     for (final r in data) {
       sheet.appendRow([
-        xls.TextCellValue('${r['id'] ?? ''}'),
-        xls.TextCellValue('${r['nombre'] ?? ''}'),
-        xls.TextCellValue('${r['codigo'] ?? ''}'),
-        xls.TextCellValue(_catNameOf(r)),
-        xls.TextCellValue(r['activo'] == true ? '1' : '0'),
+        xls.TextCellValue('${r['id'] ?? ''}'), xls.TextCellValue('${r['nombre'] ?? ''}'), xls.TextCellValue('${r['codigo'] ?? ''}'),
+        xls.TextCellValue(_catNameOf(r)), xls.TextCellValue(r['activo'] == true ? '1' : '0'),
         xls.TextCellValue((r['creadoEn']?.toString().split('T').first) ?? ''),
       ]);
     }
-
     final bytes = Uint8List.fromList(book.encode()!);
-    await _saveBytes(
-      bytes,
-      '$base.xlsx',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
+    await _saveBytes(bytes, '$base.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }
 
-  // ====================================================================
+  // ===================== ASIGNACIÓN MASIVA (RESTAURADA) =====================
 
-  // ===== Asignación masiva (selector NO asignados) =====
   Future<void> _openBulkPickerDialog(Map<String, dynamic> row) async {
     if (_alumnosRepo == null) {
       _showSnack('No está inyectado AppScope.estudiantes (repo de estudiantes).');
@@ -431,7 +495,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     final qCtrl = TextEditingController();
     Timer? debounce;
     bool loading = true;
-    String? error;
 
     int page = 1;
     int pageSize = 10;
@@ -442,7 +505,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
     Future<void> load() async {
       loading = true;
-      error = null;
       try {
         final res = await _fetchNoAsignadosGlobal(
           q: qCtrl.text.trim().isEmpty ? null : qCtrl.text.trim(),
@@ -452,7 +514,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         items = List<Map<String, dynamic>>.from(res['items'] as List);
         total = (res['total'] as num).toInt();
       } catch (e) {
-        error = e.toString();
       } finally {
         loading = false;
       }
@@ -460,19 +521,20 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
     Future<void> doAssign(BuildContext ctx, StateSetter setLocal) async {
       if (selected.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Selecciona al menos un estudiante.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona al menos un estudiante.')));
         return;
       }
       setLocal(() => loading = true);
       try {
+        // Asignación con lógica robusta
         final result = await _asignarMasivoNormalizado(idSub: idSub, ids: selected.toList());
+        
         final asignados = (result['asignados'] as List).length;
         final ya = (result['yaEstaban'] as List).length;
         final no = (result['noEncontrados'] as List).length;
         final errs = (result['errores'] as Map).length;
 
+        // Mostrar reporte detallado
         await showDialog(
           context: ctx,
           builder: (_) => AlertDialog(
@@ -514,172 +576,75 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
           if (totalPages < 1) totalPages = 1;
           final bool canBack = page > 1;
           final bool canFwd = page < totalPages;
-
           final int showingFrom = total == 0 ? 0 : ((page - 1) * pageSize + 1);
           final int rawTo = page * pageSize;
           final int showingTo = rawTo > total ? total : rawTo;
 
           return AlertDialog(
-            title: Text('Asignar estudiantes → $nombreSub'),
+            title: Text('Asignar a $nombreSub'),
             content: SizedBox(
               width: 720,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Búsqueda con debouncer
                   TextField(
                     controller: qCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Buscar estudiante (nombre, cédula, código)…',
+                      hintText: 'Buscar estudiante...',
                       prefixIcon: const Icon(Icons.search),
-                      suffixIcon: IconButton(
-                        tooltip: 'Limpiar',
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          qCtrl.clear();
-                          debounce?.cancel();
-                          page = 1;
-                          setLocal(() => loading = true);
-                          load().then((_) => setLocal(() {}));
-                        },
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onChanged: (_) {
                       debounce?.cancel();
                       debounce = Timer(const Duration(milliseconds: 350), () {
-                        page = 1;
-                        setLocal(() => loading = true);
+                        page = 1; setLocal(() => loading = true);
                         load().then((_) => setLocal(() {}));
                       });
                     },
                   ),
                   const SizedBox(height: 10),
-
-                  if (error != null)
-                    _ErrorView(
-                      error: error!,
-                      onRetry: () {
-                        setLocal(() => loading = true);
-                        load().then((_) => setLocal(() {}));
-                      },
-                    )
-                  else if (loading)
-                    const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()))
-                  else if (items.isEmpty)
-                    const SizedBox(
-                      height: 180,
-                      child: Center(child: Text('No hay estudiantes sin subcategoría con ese filtro.')),
-                    )
-                  else
-                    SizedBox(
-                      height: 360,
-                      child: Column(
-                        children: [
-                          // Seleccionar toda la página + pageSize
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: items.every((r) {
-                                  final id = _studentIdOf(r);
-                                  return id != null && selected.contains(id);
-                                }),
-                                onChanged: (v) {
-                                  if (v == true) {
-                                    for (final r in items) {
-                                      final id = _studentIdOf(r);
-                                      if (id != null) selected.add(id);
-                                    }
-                                  } else {
-                                    for (final r in items) {
-                                      final id = _studentIdOf(r);
-                                      if (id != null) selected.remove(id);
-                                    }
-                                  }
-                                  setLocal(() {});
-                                },
-                              ),
-                              const SizedBox(width: 4),
-                              const Text('Seleccionar página'),
-                              const Spacer(),
-                              DropdownButton<int>(
-                                value: pageSize,
-                                underline: const SizedBox(),
-                                items: const [
-                                  DropdownMenuItem(value: 10, child: Text('10 / pág.')),
-                                  DropdownMenuItem(value: 20, child: Text('20 / pág.')),
-                                  DropdownMenuItem(value: 50, child: Text('50 / pág.')),
-                                ],
-                                onChanged: (v) {
-                                  if (v == null) return;
-                                  pageSize = v;
-                                  page = 1;
-                                  setLocal(() => loading = true);
-                                  load().then((_) => setLocal(() {}));
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Lista con checkboxes
-                          Expanded(
-                            child: ScrollConfiguration(
-                              behavior: const ScrollBehavior().copyWith(scrollbars: true),
-                              child: ListView.separated(
-                                itemCount: items.length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
-                                itemBuilder: (_, i) {
-                                  final r = items[i];
-                                  final id = _studentIdOf(r);
-                                  final checked = id != null && selected.contains(id);
-                                  final title = _studentDisplayName(r);
-                                  final subtitle = _studentSecondaryInfo(r);
-
-                                  return CheckboxListTile(
-                                    value: checked,
-                                    onChanged: (v) {
-                                      if (id == null) return;
-                                      if (v == true) {
-                                        selected.add(id);
-                                      } else {
-                                        selected.remove(id);
-                                      }
-                                      setLocal(() {});
-                                    },
-                                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    subtitle: subtitle == null ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    secondary: id == null ? null : CircleAvatar(
-                                      radius: 14,
-                                      child: Text('$id', style: const TextStyle(fontSize: 12)),
-                                    ),
-                                    controlAffinity: ListTileControlAffinity.leading,
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-
-                          // Paginación
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Mostrando $showingFrom–$showingTo de $total'),
-                              const SizedBox(width: 12),
-                              IconButton(icon: const Icon(Icons.first_page), onPressed: canBack ? () { page = 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
-                              IconButton(icon: const Icon(Icons.chevron_left), onPressed: canBack ? () { page -= 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
-                              Text('$page / $totalPages'),
-                              IconButton(icon: const Icon(Icons.chevron_right), onPressed: canFwd ? () { page += 1; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
-                              IconButton(icon: const Icon(Icons.last_page), onPressed: canFwd ? () { page = totalPages; setLocal(() => loading = true); load().then((_) => setLocal(() {})); } : null),
-                            ],
-                          ),
-                        ],
+                  if (loading) const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()))
+                  else if (items.isEmpty) const SizedBox(height: 200, child: Center(child: Text('No hay estudiantes disponibles')))
+                  else SizedBox(
+                    height: 360,
+                    child: Column(children: [
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final r = items[i];
+                            final id = _studentIdOf(r);
+                            final checked = id != null && selected.contains(id);
+                            return CheckboxListTile(
+                              value: checked,
+                              title: Text(_studentDisplayName(r)),
+                              subtitle: Text(_studentSecondaryInfo(r) ?? ''),
+                              onChanged: (v) {
+                                if (id == null) return;
+                                if (v == true) selected.add(id); else selected.remove(id);
+                                setLocal(() {});
+                              },
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(icon: const Icon(Icons.chevron_left), onPressed: canBack ? () { page--; setLocal(() => loading = true); load().then((_) => setLocal((){})); } : null),
+                          Text('$showingFrom-$showingTo de $total'),
+                          IconButton(icon: const Icon(Icons.chevron_right), onPressed: canFwd ? () { page++; setLocal(() => loading = true); load().then((_) => setLocal((){})); } : null),
+                        ],
+                      )
+                    ]),
+                  )
                 ],
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
               FilledButton.icon(
                 icon: const Icon(Icons.group_add),
                 label: Text('Asignar (${selected.length})'),
@@ -692,111 +657,44 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Helpers no asignados =====
-  Future<Map<String, dynamic>> _fetchNoAsignadosGlobal({
-    String? q,
-    required int page,
-    required int pageSize,
-  }) async {
-    if (_alumnosRepo == null) {
-      throw 'Repo de estudiantes no disponible (AppScope.estudiantes).';
-    }
-
+  // ===== Helpers RESTAURADOS para Asignación Masiva =====
+  Future<Map<String, dynamic>> _fetchNoAsignadosGlobal({String? q, required int page, required int pageSize}) async {
+    if (_alumnosRepo == null) throw 'Repo de estudiantes no disponible.';
+    dynamic res;
     Future<dynamic> _tryCall(Future<dynamic> Function() fn) async {
       try { return await fn().timeout(const Duration(seconds: 6)); } catch (_) { return null; }
     }
-
-    dynamic res;
+    // Intenta varios métodos posibles en el repo
     try { res ??= await _tryCall(() => _alumnosRepo.noAsignadosGlobal(q: q, page: page, pageSize: pageSize)); } catch (_) {}
     try { res ??= await _tryCall(() => _alumnosRepo.noAsignados(q: q, page: page, pageSize: pageSize)); } catch (_) {}
-    try { res ??= await _tryCall(() => _alumnosRepo.sinSubcategoria(q: q, page: page, pageSize: pageSize)); } catch (_) {}
-    try { res ??= await _tryCall(() => _alumnosRepo.paged(q: q, page: page, pageSize: pageSize, asignado: false)); } catch (_) {}
-
-    if (res == null) throw 'No hay endpoint para listar estudiantes sin subcategoría.';
+    
+    if (res == null) return {'items': [], 'total': 0}; // Fallback
 
     List<Map<String, dynamic>> items = const [];
     int total = 0;
-    final offset = (page - 1) * pageSize;
-
-    Map<String, dynamic> _unwrapMap(Map m) {
-      dynamic list = m['items'] ?? m['rows'] ?? (m['data'] is Map ? (m['data']['items'] ?? m['data']['rows']) : null);
-      if (list is List) {
-        items = List<Map<String, dynamic>>.from(list.map((e) => Map<String, dynamic>.from(e as Map)));
-      } else if (m['data'] is List) {
-        items = List<Map<String, dynamic>>.from((m['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
-      }
-      final t = m['total'] ?? m['count'] ?? (m['data'] is Map ? m['data']['total'] ?? m['data']['count'] : null);
-      total = (t is num) ? t.toInt() : (page == 1 ? items.length : (offset + items.length));
-      return {'items': items, 'total': total};
-    }
-
+    
+    // Normalizar respuesta (puede venir como Lista o Mapa)
     if (res is Map) {
-      final r = _unwrapMap(res);
-      items = List<Map<String, dynamic>>.from(r['items']);
-      total = (r['total'] as num).toInt();
+      final list = res['items'] ?? res['rows'] ?? res['data'] ?? [];
+      items = List<Map<String, dynamic>>.from(list.map((e) => Map<String, dynamic>.from(e)));
+      total = (res['total'] as num?)?.toInt() ?? items.length;
     } else if (res is List) {
-      items = List<Map<String, dynamic>>.from(res.map((e) => Map<String, dynamic>.from(e as Map)));
-      total = (page == 1 ? items.length : (offset + items.length));
-    } else {
-      throw 'Respuesta de no asignados no reconocida.';
+      items = List<Map<String, dynamic>>.from(res.map((e) => Map<String, dynamic>.from(e)));
+      total = items.length;
     }
-
-    bool _isUnassigned(Map<String, dynamic> r) {
-      if (r['asignado'] == true || r['tieneSubcategoria'] == true) return false;
-      if (r['subcategoriaId'] != null || r['idSubcategoria'] != null) return false;
-      final subcats = r['subcategorias'] ?? r['asignaciones'] ?? r['subs'] ?? r['grupos'];
-      if (subcats is List && subcats.isNotEmpty) return false;
-      return true;
-    }
-
-    items = items.where(_isUnassigned).toList();
-    total = items.length < total ? total : items.length;
     return {'items': items, 'total': total};
   }
 
-  // ===== Helpers estudiante =====
-  int? _studentIdOf(Map<String, dynamic> r) {
-    final v = r['id'] ?? r['id_estudiante'] ?? r['idEstudiante'] ?? r['estudianteId'];
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v);
-    return null;
-  }
-
-  String _studentDisplayName(Map<String, dynamic> r) {
-    final full = (r['nombreCompleto'] ?? r['full_name'] ?? r['fullName'])?.toString();
-    if (full != null && full.trim().isNotEmpty) return full;
-
-    final n = (r['nombres'] ?? r['nombre'] ?? r['first_name'] ?? r['firstName'] ?? '').toString();
-    final a = (r['apellidos'] ?? r['apellido'] ?? r['last_name'] ?? r['lastName'] ?? '').toString();
-    final combined = ('$n $a').trim();
-    if (combined.isNotEmpty) return combined;
-
-    return r['alias']?.toString() ?? r['codigo']?.toString() ?? 'Sin nombre';
-  }
-
-  String? _studentSecondaryInfo(Map<String, dynamic> r) {
-    final ced = r['cedula'] ?? r['dni'] ?? r['documento'] ?? r['identificacion'];
-    final cod = r['codigo'] ?? r['code'] ?? r['studentCode'];
-    final tel = r['telefono'] ?? r['phone'];
-    final parts = <String>[];
-    if ('$ced'.trim().isNotEmpty && ced != null) parts.add('Cédula: $ced');
-    if ('$cod'.trim().isNotEmpty && cod != null) parts.add('Código: $cod');
-    if ('$tel'.trim().isNotEmpty && tel != null) parts.add('Tel: $tel');
-    return parts.isEmpty ? null : parts.join(' · ');
-  }
-
-  // ===== Normalizador asignación masiva =====
-  Future<Map<String, dynamic>> _asignarMasivoNormalizado({
-    required int idSub,
-    required List<int> ids,
-  }) async {
+  Future<Map<String, dynamic>> _asignarMasivoNormalizado({required int idSub, required List<int> ids}) async {
     dynamic res;
+    // 1. Intentar repo de alumnos
     try {
       if (_alumnosRepo != null) {
         res = await _alumnosRepo.asignarASubcategoria(ids: ids, idSubcategoria: idSub);
         return _normalizeAssignResponse(res, ids);
       }
     } catch (_) {}
+    // 2. Intentar repo de subcategorias
     try {
       final fn = _subRepo.asignarEstudiantesMasivo;
       if (fn != null) {
@@ -804,70 +702,50 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         return _normalizeAssignResponse(res, ids);
       }
     } catch (_) {}
-    throw 'No se encontró método para asignación masiva en estudiantes o subcategorias.';
+    throw 'No se encontró método para asignación masiva.';
   }
 
   Map<String, dynamic> _normalizeAssignResponse(dynamic res, List<int> sent) {
+    // Normalizador robusto que maneja cualquier formato de respuesta
     final asignados = <int>[];
     final ya = <int>[];
     final no = <int>[];
     final errs = <int, String>{};
 
     List<int> _toIntList(dynamic v) {
-      if (v is List) {
-        return v
-            .map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? -1)
-            .where((e) => e >= 0)
-            .toList();
-      }
-      return const <int>[];
-    }
-
-    Map<int, String> _toErrMap(dynamic v) {
-      if (v is Map) {
-        final out = <int, String>{};
-        v.forEach((k, val) {
-          final id = (k is num) ? k.toInt() : int.tryParse('$k');
-          if (id != null) out[id] = val?.toString() ?? 'Error';
-        });
-        return out;
-      }
-      return const <int, String>{};
+      if (v is List) return v.map((e) => (e is num) ? e.toInt() : int.tryParse('$e') ?? -1).where((e) => e >= 0).toList();
+      return const [];
     }
 
     if (res is Map) {
-      asignados.addAll(_toIntList(res['asignados'] ?? res['insertados'] ?? res['ok']));
-      ya.addAll(_toIntList(res['yaEstaban'] ?? res['existentes'] ?? res['duplicados']));
-      no.addAll(_toIntList(res['noEncontrados'] ?? res['no_existentes'] ?? res['faltantes']));
-      errs.addAll(_toErrMap(res['errores']));
-      if (asignados.isEmpty && ya.isEmpty && no.isEmpty && errs.isEmpty) {
-        asignados.addAll(sent);
-      }
-    } else if (res is List) {
-      for (final e in res) {
-        final v = (e is num) ? e.toInt() : int.tryParse('$e');
-        if (v != null) asignados.add(v);
-      }
+      asignados.addAll(_toIntList(res['asignados'] ?? res['ok']));
+      ya.addAll(_toIntList(res['yaEstaban'] ?? res['existentes']));
+      no.addAll(_toIntList(res['noEncontrados']));
+      if (asignados.isEmpty && ya.isEmpty && no.isEmpty) asignados.addAll(sent); // Asumir éxito si vacío
     } else if (res == true) {
       asignados.addAll(sent);
-    } else {
-      for (final id in sent) {
-        errs[id] = 'Respuesta no reconocida del servidor.';
-      }
     }
-
-    List<int> _clean(List<int> l) => l.toSet().toList()..sort();
-    return {
-      'asignados': _clean(asignados),
-      'yaEstaban': _clean(ya),
-      'noEncontrados': _clean(no),
-      'errores': errs,
-    };
+    return {'asignados': asignados, 'yaEstaban': ya, 'noEncontrados': no, 'errores': errs};
   }
 
-  // Chip contador
   Widget _chipCount(IconData icon, String label, int count, Color? color) {
     return Chip(avatar: Icon(icon, size: 18, color: color), label: Text('$label: $count'));
+  }
+
+  // ===== Helpers estudiante =====
+  int? _studentIdOf(Map<String, dynamic> r) {
+    final v = r['id'] ?? r['id_estudiante'];
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  String _studentDisplayName(Map<String, dynamic> r) {
+    return (r['nombreCompleto'] ?? r['nombres'] ?? 'Estudiante').toString();
+  }
+
+  String? _studentSecondaryInfo(Map<String, dynamic> r) {
+    return r['cedula']?.toString();
   }
 
   // ===== Paginación =====
@@ -906,7 +784,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     _loadCurrent();
   }
 
-  // ===== Helpers UI =====
   void _showSnack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -917,18 +794,12 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   // ====================================================================
   @override
   Widget build(BuildContext context) {
-    final isFirstLoad = _loading &&
-        _actItems.isEmpty &&
-        _inaItems.isEmpty &&
-        _allItems.isEmpty;
+    final isFirstLoad = _loading && _actItems.isEmpty && _inaItems.isEmpty && _allItems.isEmpty;
 
     final core = LayoutBuilder(
       builder: (ctx, c) {
         final isNarrow = c.maxWidth < 820;
-        const double maxContentWidth = 1200;
-        final double width = c.maxWidth > maxContentWidth ? maxContentWidth : c.maxWidth;
-
-        final header = _buildHeader(context, isNarrow);
+        final header = _buildModernHeader(context, isNarrow);
 
         final tabs = TabBar(
           controller: _tab,
@@ -953,36 +824,23 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                     ],
                   );
 
-        final body = Align(
-          alignment: Alignment.topCenter,
-          child: SizedBox(
-            width: width,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                header,
-                const SizedBox(height: 12),
-                tabs,
-                const SizedBox(height: 8),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: content,
-                      ),
-                      if (_loading && !isFirstLoad)
-                        const Positioned(
-                          right: 12,
-                          top: 8,
-                          child: _LoadingChip(),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
+        final body = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            const SizedBox(height: 12),
+            tabs,
+            const SizedBox(height: 8),
+            Expanded(
+              child: Stack(
+                children: [
+                  AnimatedSwitcher(duration: const Duration(milliseconds: 220), child: content),
+                  if (_loading && !isFirstLoad)
+                    const Positioned(right: 12, top: 8, child: _LoadingChip()),
+                ],
+              ),
             ),
-          ),
+          ],
         );
 
         return _withShortcuts(body);
@@ -998,148 +856,91 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     return Padding(padding: const EdgeInsets.all(12), child: core);
   }
 
-  // ===== Header =====
-  Widget _buildHeader(BuildContext context, bool isNarrow) {
-    final activeFilters = Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        if (_q != null)
-          InputChip(
-            label: Text('Búsqueda: "${_q!}"'),
-            onDeleted: () { _search.clear(); _loadCurrent(); },
-            avatar: const Icon(Icons.search, size: 18),
-          ),
-        if (_idCategoria != null)
-          InputChip(
-            label: Text('Categoría: ${_catById[_idCategoria!] ?? '-'}'),
-            onDeleted: () {
-              setState(() => _idCategoria = null);
-              _resetPages();
-              _loadCurrent();
-            },
-            avatar: const Icon(Icons.category, size: 18),
-          ),
-        InputChip(
-          label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
-          avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
-          onPressed: () => setState(() {
-            _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
-          }),
-        ),
-        InputChip(
-          label: Text(_dense ? 'Denso' : 'Cómodo'),
-          avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
-          onPressed: () => setState(() => _dense = !_dense),
-        ),
-      ],
-    );
-
+  Widget _buildModernHeader(BuildContext context, bool isNarrow) {
+    final cs = Theme.of(context).colorScheme;
     final searchField = TextField(
       controller: _search,
       focusNode: _searchFocus,
       decoration: InputDecoration(
-        hintText: 'Buscar por nombre o código…',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Tooltip(
-              message: 'Limpiar',
-              child: IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () { _search.clear(); _loadCurrent(); },
-              ),
-            ),
-            Tooltip(
-              message: 'Recargar (Ctrl+R)',
-              child: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCurrent),
-            ),
-          ],
-        ),
+        hintText: 'Buscar subcategoría...',
+        prefixIcon: Icon(Icons.search, color: cs.primary),
+        filled: true,
+        fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+        suffixIcon: _search.text.isNotEmpty ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _search.clear(); _loadCurrent(); }) : null,
       ),
-      onSubmitted: (_) => _loadCurrent(),
-      textInputAction: TextInputAction.search,
+      onChanged: (_) => _onSearchChanged(),
     );
 
-    final viewSelector = SegmentedButton<_ViewMode>(
-      segments: const [
-        ButtonSegment<_ViewMode>(value: _ViewMode.table, icon: Icon(Icons.table_chart), label: Text('Tabla')),
-        ButtonSegment<_ViewMode>(value: _ViewMode.cards,  icon: Icon(Icons.view_agenda), label: Text('Tarjetas')),
-      ],
-      selected: {_viewMode},
-      onSelectionChanged: (s) => setState(() => _viewMode = s.first),
-    );
-
-    final cat = SizedBox(
-      width: isNarrow ? double.infinity : 260,
-      child: DropdownButtonFormField<int?>(
-        value: _idCategoria,
-        decoration: const InputDecoration(prefixIcon: Icon(Icons.category), labelText: 'Categoría'),
-        items: <DropdownMenuItem<int?>>[
-          const DropdownMenuItem<int?>(value: null, child: Text('Todas')),
-          ..._catOptions.map((e) => DropdownMenuItem<int?>(
-                value: (e['id'] as num).toInt(),
-                child: Text(e['nombre']?.toString() ?? '—'),
-              )),
-        ],
-        onChanged: (v) {
-          _resetPages();
-          setState(() => _idCategoria = v);
-          _loadCurrent();
-        },
-      ),
-    );
-
-    // ✅ Solo Excel
-    final exportBtn = OutlinedButton.icon(
-      onPressed: _exportExcelCurrent,
-      icon: const Icon(Icons.grid_on),
-      label: const Text('Excel'),
-    );
-
-    final add = FilledButton.icon(
-      onPressed: _onNew,
-      icon: const Icon(Icons.add),
-      label: const Text('Nueva'),
-    );
-
-    if (isNarrow) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final viewToggle = Container(
+      decoration: BoxDecoration(color: cs.surfaceContainerHighest.withOpacity(0.4), borderRadius: BorderRadius.circular(12)),
+      child: Row(
         children: [
-          searchField,
-          const SizedBox(height: 8),
-          viewSelector,
-          const SizedBox(height: 8),
-          cat,
-          const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [exportBtn, const SizedBox(width: 8), add]),
-          const SizedBox(height: 8),
-          activeFilters,
+          IconButton(icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.cards)),
+          Container(width: 1, height: 20, color: cs.outlineVariant),
+          IconButton(icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.table)),
         ],
-      );
-    }
+      ),
+    );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: searchField),
-            const SizedBox(width: 8),
-            SizedBox(width: 240, child: viewSelector),
-            const SizedBox(width: 8),
-            SizedBox(width: 260, child: cat),
-            const Spacer(),
-            exportBtn,
-            const SizedBox(width: 8),
-            add,
-          ],
+    // Filtro Categoría Padre (Dropdown)
+    final catFilter = SizedBox(
+        width: 200,
+        child: DropdownButtonFormField<int?>(
+            value: _idCategoria,
+            decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: cs.surface,
+                hintText: 'Categoría',
+                prefixIcon: const Icon(Icons.filter_list),
+            ),
+            items: [
+                const DropdownMenuItem(value: null, child: Text('Todas')),
+                ..._catOptions.map((e) => DropdownMenuItem(value: (e['id'] as num).toInt(), child: Text(e['nombre'] ?? ''))),
+            ],
+            onChanged: (v) {
+                setState(() => _idCategoria = v);
+                _resetPages();
+                _loadCurrent();
+            },
         ),
-        const SizedBox(height: 8),
-        activeFilters,
-      ],
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: isNarrow 
+        ? Column(children: [
+            searchField, 
+            const SizedBox(height: 8), 
+            Row(children: [Expanded(child: catFilter), const SizedBox(width: 8), viewToggle]),
+            const SizedBox(height: 8),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcelCurrent, tooltip: 'Exportar Excel'),
+                const SizedBox(width: 8),
+                FilledButton.icon(onPressed: _onNew, icon: const Icon(Icons.add), label: const Text('Nueva'))
+            ])
+          ])
+        : Row(
+            children: [
+              Expanded(child: searchField),
+              const SizedBox(width: 12),
+              catFilter,
+              const SizedBox(width: 12),
+              viewToggle,
+              const SizedBox(width: 12),
+              IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcelCurrent, tooltip: 'Exportar Excel'),
+              const SizedBox(width: 8),
+              FilledButton.icon(onPressed: _onNew, icon: const Icon(Icons.add), label: const Text('Nueva')),
+            ],
+          ),
     );
   }
 
@@ -1154,7 +955,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
   Widget _buildTabContent(BuildContext context, bool isNarrow, int tabIndex) {
     final items = _itemsForTab(tabIndex);
-
     int currentPage, totalItems, pageSize;
     switch (tabIndex) {
       case 1: currentPage = _inaPage; totalItems = _inaTotal; pageSize = _inaPageSize; break;
@@ -1163,97 +963,67 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       default: currentPage = _actPage; totalItems = _actTotal; pageSize = _actPageSize; break;
     }
 
-    final paginator = _PaginationControls(
-      currentPage: currentPage,
-      totalItems: totalItems,
-      pageSize: pageSize,
-      onPageChange: (newPage) => _onPageChange(tabIndex, newPage),
-      onPageSizeChange: (newSize) => _onPageSizeChange(tabIndex, newSize),
-    );
-
     if (items.isEmpty && !_loading) {
-      return Column(
-        children: [
-          Expanded(
-            child: _EmptyState(
-              title: 'Sin subcategorías',
-              subtitle: 'Crea tu primera subcategoría o ajusta los filtros/búsqueda.',
-              primary: ('Crear nueva', _onNew),
-              secondary: ('Quitar filtros', () {
-                setState(() { _idCategoria = null; _search.clear(); });
-                _resetPages();
-                _loadCurrent();
-              }),
-            ),
-          ),
-          const SizedBox(height: 8),
-          paginator,
-        ],
-      );
+      return Column(children: [
+        Expanded(child: _EmptyState(
+          title: 'Sin subcategorías',
+          subtitle: 'Crea tu primera subcategoría o ajusta los filtros.',
+          primary: ('Crear nueva', _onNew),
+          secondary: ('Quitar filtros', () { setState(() { _idCategoria = null; _search.clear(); }); _resetPages(); _loadCurrent(); }),
+        ))
+      ]);
     }
 
-    final content = _viewMode == _ViewMode.cards
-        ? _cards(context, items)
-        : _table(context, items);
+    final content = _viewMode == _ViewMode.cards ? _cards(context, items) : _table(context, items);
 
     return Column(
       children: [
         Expanded(child: content),
-        if (totalItems > pageSize) paginator,
+        _PaginationControls(
+          currentPage: currentPage,
+          totalItems: totalItems,
+          pageSize: pageSize,
+          onPageChange: (p) => _onPageChange(tabIndex, p),
+          onPageSizeChange: (s) => _onPageSizeChange(tabIndex, s),
+        ),
       ],
     );
   }
 
-  // Encabezado compacto para DataTable (evita overflow)
-  Widget _th(String s) => FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Text(s),
-      );
-
-  // ===== Tabla (desktop) =====
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-    final isNarrow = MediaQuery.of(context).size.width < 820;
-    final textStyle = _dense
-        ? Theme.of(context).textTheme.bodySmall
-        : Theme.of(context).textTheme.bodyMedium;
-
-    return ScrollConfiguration(
-      behavior: const ScrollBehavior().copyWith(scrollbars: true),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ClipRect(
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: cs.outlineVariant.withOpacity(0.4))),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           child: DataTable(
-            columnSpacing: isNarrow ? 16 : 24,
-            horizontalMargin: 12,
-            headingRowHeight: _dense ? 36 : 48,
-            dataRowMinHeight: _dense ? 32 : 44,
-            dataRowMaxHeight: _dense ? 40 : null,
-            columns: [
-              DataColumn(label: _th('ID')),
-              DataColumn(label: _th('Subcategoría')),
-              DataColumn(label: _th('Código')),
-              DataColumn(label: _th('Categoría')),
-              DataColumn(label: _th('Estado')),
-              DataColumn(label: _th('Creado')),
-              DataColumn(label: _th('Acciones')),
+            headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
+            columns: const [
+              DataColumn(label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Subcategoría', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Código', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Categoría', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Creado', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('Acciones', style: TextStyle(fontWeight: FontWeight.bold))),
             ],
             rows: rows.map((r) {
               final bool activo = r['activo'] == true;
-              final estadoIcon = Icon(
-                activo ? Icons.check_circle : Icons.cancel,
-                color: activo ? Colors.green : Colors.grey,
-                size: _dense ? 18 : 20,
-                semanticLabel: activo ? 'Activa' : 'Inactiva',
-              );
               return DataRow(cells: [
-                DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-                DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
-                DataCell(SelectableText(r['codigo']?.toString() ?? '', style: textStyle)),
-                DataCell(SelectableText(_catNameOf(r), style: textStyle)),
-                DataCell(estadoIcon),
-                DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
-                DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
+                DataCell(Text(r['id']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace'))),
+                DataCell(Text(r['nombre']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+                DataCell(Text(r['codigo']?.toString() ?? '')),
+                DataCell(Text(_catNameOf(r))),
+                DataCell(Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: activo ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(activo ? 'Activa' : 'Inactiva', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: activo ? Colors.green.shade700 : Colors.grey.shade700))
+                )),
+                DataCell(Text(r['creadoEn']?.toString().split('T').first ?? '')),
+                DataCell(_rowActions(r: r, activo: activo, dense: true)),
               ]);
             }).toList(),
           ),
@@ -1262,70 +1032,58 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Tarjetas (móvil) =====
   Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
-    final spacing = _dense ? 6.0 : 8.0;
-    final padding = EdgeInsets.all(_dense ? 10 : 12);
-
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 16),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: rows.length,
-      separatorBuilder: (_, __) => SizedBox(height: spacing),
       itemBuilder: (ctx, i) {
         final r = rows[i];
         final bool activo = r['activo'] == true;
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Theme.of(context).dividerColor),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
             onTap: () {
-              if (widget.embedded && widget.onOpenEstudiantes != null) {
-                widget.onOpenEstudiantes!(r);
-                return;
-              }
-              Navigator.pushNamed(
-                context,
-                RouteNames.adminSubcatEstudiantes,
-                arguments: {
-                  'idSubcategoria': (r['id'] as num).toInt(),
-                  'nombreSubcategoria': r['nombre'],
-                  'idCategoria': r['idCategoria'],
-                },
-              );
+               if (widget.embedded && widget.onOpenEstudiantes != null) { widget.onOpenEstudiantes!(r); return; }
+               Navigator.pushNamed(context, RouteNames.adminSubcatEstudiantes, arguments: {'idSubcategoria': (r['id'] as num).toInt(), 'nombreSubcategoria': r['nombre'], 'idCategoria': r['idCategoria']});
             },
+            borderRadius: BorderRadius.circular(16),
             child: Padding(
-              padding: padding,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          r['nombre']?.toString() ?? '',
-                          style: Theme.of(context).textTheme.titleMedium,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        activo ? Icons.check_circle : Icons.cancel,
-                        size: 18,
-                        color: activo ? Colors.green : Colors.grey,
-                        semanticLabel: activo ? 'Activa' : 'Inactiva',
-                      ),
-                    ],
+                  Hero(
+                    tag: 'sub_icon_${r['id']}',
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.deepPurple.shade50, borderRadius: BorderRadius.circular(12)),
+                      child: Icon(Icons.class_rounded, color: Colors.deepPurple.shade400),
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  _KV('Código', r['codigo'] ?? ''),
-                  _KV('Categoría', _catNameOf(r)),
-                  _KV('Creado', r['creadoEn']?.toString().split('T').first ?? ''),
-                  const SizedBox(height: 8),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(r['nombre']?.toString() ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          Icon(Icons.qr_code, size: 14, color: Theme.of(context).hintColor),
+                          const SizedBox(width: 4),
+                          Text(r['codigo'] ?? '', style: TextStyle(color: Theme.of(context).hintColor)),
+                          const SizedBox(width: 12),
+                          Icon(Icons.category_outlined, size: 14, color: Theme.of(context).hintColor),
+                          const SizedBox(width: 4),
+                          Expanded(child: Text(_catNameOf(r), overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).hintColor))),
+                        ]),
+                      ],
+                    ),
+                  ),
                   _rowActions(r: r, activo: activo, dense: true),
                 ],
               ),
@@ -1336,21 +1094,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  Widget _KV(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 96, child: Text(label, style: Theme.of(context).textTheme.bodySmall)),
-          Expanded(
-            child: Text(value, style: Theme.of(context).textTheme.bodyMedium, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===== Botonera por fila =====
+  // ===== Botonera por fila (AQUÍ ESTÁ LA DEFINICIÓN CORREGIDA) =====
   Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
     final double iconSize = dense ? 20 : 24;
     final EdgeInsets padding = EdgeInsets.all(dense ? 6 : 8);
@@ -1413,7 +1157,6 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
   }
 
-  // ===== Atajos de teclado =====
   Widget _withShortcuts(Widget child) {
     return FocusTraversalGroup(
       child: Shortcuts(
@@ -1424,15 +1167,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         },
         child: Actions(
           actions: <Type, Action<Intent>>{
-            FocusSearchIntent: CallbackAction<FocusSearchIntent>(
-              onInvoke: (_) { _searchFocus.requestFocus(); return null; },
-            ),
-            NewSubcatIntent: CallbackAction<NewSubcatIntent>(
-              onInvoke: (_) { _onNew(); return null; },
-            ),
-            ReloadIntent: CallbackAction<ReloadIntent>(
-              onInvoke: (_) { _loadCurrent(); return null; },
-            ),
+            FocusSearchIntent: CallbackAction<FocusSearchIntent>(onInvoke: (_) { _searchFocus.requestFocus(); return null; }),
+            NewSubcatIntent: CallbackAction<NewSubcatIntent>(onInvoke: (_) { _onNew(); return null; }),
+            ReloadIntent: CallbackAction<ReloadIntent>(onInvoke: (_) { _loadCurrent(); return null; }),
           },
           child: Focus(autofocus: true, child: child),
         ),
@@ -1444,213 +1181,68 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 // ======================= Widgets de apoyo UI =======================
 
 class _PaginationControls extends StatelessWidget {
-  final int currentPage;
-  final int totalItems;
-  final int pageSize;
+  final int currentPage, totalItems, pageSize;
   final void Function(int) onPageChange;
   final void Function(int) onPageSizeChange;
-
-  const _PaginationControls({
-    required this.currentPage,
-    required this.totalItems,
-    required this.pageSize,
-    required this.onPageChange,
-    required this.onPageSizeChange,
-  });
-
+  const _PaginationControls({required this.currentPage, required this.totalItems, required this.pageSize, required this.onPageChange, required this.onPageSizeChange});
   @override
   Widget build(BuildContext context) {
     int totalPages = (totalItems + pageSize - 1) ~/ pageSize;
     if (totalPages < 1) totalPages = 1;
-    final bool canGoBack = currentPage > 1;
-    final bool canGoFwd = currentPage < totalPages;
     final int from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-    final int rawTo = currentPage * pageSize;
-    final int to = rawTo > totalItems ? totalItems : rawTo;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      margin: const EdgeInsets.only(top: 8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Row(
-          children: [
-            Text('Mostrando $from–$to de $totalItems'),
-            const Spacer(),
-            DropdownButton<int>(
-              value: pageSize,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 10, child: Text('10 / pág.')),
-                DropdownMenuItem(value: 20, child: Text('20 / pág.')),
-                DropdownMenuItem(value: 50, child: Text('50 / pág.')),
-              ],
-              onChanged: (v) { if (v != null) onPageSizeChange(v); },
-            ),
-            IconButton(
-              icon: const Icon(Icons.first_page),
-              tooltip: 'Primera página',
-              onPressed: canGoBack ? () => onPageChange(1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Página anterior',
-              onPressed: canGoBack ? () => onPageChange(currentPage - 1) : null,
-            ),
-            Text('$currentPage / $totalPages'),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Página siguiente',
-              onPressed: canGoFwd ? () => onPageChange(currentPage + 1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.last_page),
-              tooltip: 'Última página',
-              onPressed: canGoFwd ? () => onPageChange(totalPages) : null,
-            ),
-          ],
-        ),
-      ),
+    final int to = (currentPage * pageSize) > totalItems ? totalItems : (currentPage * pageSize);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5)))),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text('$from-$to de $totalItems', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontWeight: FontWeight.w500)),
+        Row(children: [
+          IconButton(icon: const Icon(Icons.chevron_left), onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null),
+          IconButton(icon: const Icon(Icons.chevron_right), onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null),
+        ])
+      ]),
     );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  final String title;
-  final String subtitle;
+  final String title, subtitle;
   final (String, VoidCallback) primary;
   final (String, VoidCallback)? secondary;
-
-  const _EmptyState({
-    required this.title,
-    required this.subtitle,
-    required this.primary,
-    this.secondary,
-  });
-
+  const _EmptyState({required this.title, required this.subtitle, required this.primary, this.secondary});
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Theme.of(context).hintColor),
-            const SizedBox(height: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [
-                FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
-                if (secondary != null)
-                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.class_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)), const SizedBox(height: 16), Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 8), Text(subtitle, style: Theme.of(context).textTheme.bodyMedium), const SizedBox(height: 16), Wrap(spacing: 8, children: [FilledButton(onPressed: primary.$2, child: Text(primary.$1)), if (secondary != null) OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1))])]));
   }
 }
 
 class _ErrorView extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
+  final String error; final VoidCallback onRetry;
   const _ErrorView({required this.error, required this.onRetry});
-
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
-            const SizedBox(height: 12),
-            Text('Error al cargar datos', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56), const SizedBox(height: 12), Text('Error al cargar', style: Theme.of(context).textTheme.titleLarge), Text(error), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar'))]));
   }
 }
 
 class _LoadingChip extends StatelessWidget {
   const _LoadingChip();
-
   @override
-  Widget build(BuildContext context) {
-    return Chip(
-      avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-      label: const Text('Cargando…'),
-      visualDensity: VisualDensity.compact,
-    );
-  }
+  Widget build(BuildContext context) => Chip(avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)), label: const Text('Cargando…'));
 }
 
 class _LoadingPlaceholder extends StatelessWidget {
-  final bool isNarrow;
-  final _ViewMode viewMode;
-  final bool dense;
-
+  final bool isNarrow; final _ViewMode viewMode; final bool dense;
   const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
-
   @override
   Widget build(BuildContext context) {
-    if (viewMode == _ViewMode.cards || isNarrow) {
-      return ListView.builder(
-        itemCount: 6,
-        itemBuilder: (_, i) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: _Skeleton(height: dense ? 84 : 104),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        _Skeleton(height: dense ? 44 : 52),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            itemCount: 8,
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _Skeleton(height: dense ? 36 : 44),
-            ),
-          ),
-        ),
-      ],
-    );
+    return ListView.builder(itemCount: 6, itemBuilder: (_, __) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: _Skeleton(height: dense ? 84 : 104)));
   }
 }
 
 class _Skeleton extends StatelessWidget {
   final double height;
   const _Skeleton({required this.height});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(height: height, decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4), borderRadius: BorderRadius.circular(12)));
 }

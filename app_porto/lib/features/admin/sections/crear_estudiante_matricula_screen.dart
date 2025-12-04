@@ -26,6 +26,9 @@ class _CrearEstudianteMatriculaScreenState
   final _direccionCtl = TextEditingController();
   final _telefonoCtl = TextEditingController();
   final _cicloCtl = TextEditingController();
+  // Controladores de texto para las fechas (para mostrar el valor formateado)
+  final _nacimientoTxt = TextEditingController();
+  final _matriculaTxt = TextEditingController();
 
   DateTime? _nacimiento;
   DateTime? _fechaMatricula;
@@ -38,6 +41,14 @@ class _CrearEstudianteMatriculaScreenState
 
   bool _saving = false;
   bool _loadingSubs = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicializar fechas por defecto
+    _fechaMatricula = DateTime.now();
+    _matriculaTxt.text = _fmt(_fechaMatricula);
+  }
 
   @override
   void didChangeDependencies() {
@@ -79,48 +90,67 @@ class _CrearEstudianteMatriculaScreenState
     }
   }
 
-  Future<void> _pickNacimiento() async {
+  // Selector de fecha con tema Azul
+  Future<void> _pickDate(bool isNacimiento) async {
     final now = DateTime.now();
-    final sel = await showDatePicker(
+    final initial = isNacimiento 
+        ? (_nacimiento ?? DateTime(now.year - 10, 1, 1)) 
+        : (_fechaMatricula ?? now);
+    
+    final picked = await showDatePicker(
       context: context,
-      initialDate: _nacimiento ?? DateTime(now.year - 8, now.month, now.day),
-      firstDate: DateTime(now.year - 30, 1, 1),
-      lastDate: DateTime(now.year, 12, 31),
-      locale: const Locale('es', 'ES'),
+      initialDate: initial,
+      firstDate: DateTime(1990),
+      lastDate: isNacimiento ? now : DateTime(now.year + 1),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.blue.shade800, // Azul fuerte para selección
+              onPrimary: Colors.white,
+              onSurface: Colors.blue.shade900,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(foregroundColor: Colors.blue.shade800),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
-    if (sel != null) setState(() => _nacimiento = sel);
-  }
 
-  Future<void> _pickFechaMatricula() async {
-    final now = DateTime.now();
-    final sel = await showDatePicker(
-      context: context,
-      initialDate: _fechaMatricula ?? now,
-      firstDate: DateTime(now.year - 5, 1, 1),
-      lastDate: DateTime(now.year + 1, 12, 31),
-      locale: const Locale('es', 'ES'),
-    );
-    if (sel != null) setState(() => _fechaMatricula = sel);
+    if (picked != null) {
+      setState(() {
+        if (isNacimiento) {
+          _nacimiento = picked;
+          _nacimientoTxt.text = _fmt(picked);
+        } else {
+          _fechaMatricula = picked;
+          _matriculaTxt.text = _fmt(picked);
+        }
+      });
+    }
   }
 
   String? _onlyLettersValidator(String? v) {
     final s = (v ?? '').trim();
-    if (s.isEmpty) return 'Este campo es requerido';
+    if (s.isEmpty) return 'Requerido';
+    if (s.length < 3) return 'Mínimo 3 caracteres';
     final ok = RegExp(r'^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$').hasMatch(s);
-    if (!ok) return 'Solo se permiten letras';
+    if (!ok) return 'Solo letras';
     return null;
   }
 
   String? _telefonoValidator(String? v) {
     final s = (v ?? '').trim();
     if (s.isEmpty) return null;
-    if (!RegExp(r'^\d{6,15}$').hasMatch(s)) return 'Teléfono inválido (6-15 dígitos)';
+    if (!RegExp(r'^\d{7,10}$').hasMatch(s)) return 'Teléfono inválido (7-10 dígitos)';
     return null;
   }
 
   bool _validarCedulaEcu(String? s) {
     final ci = (s ?? '').trim();
-    if (ci.isEmpty) return true;
+    if (ci.isEmpty) return true; // Opcional si está vacío en backend
     if (!RegExp(r'^\d{10}$').hasMatch(ci)) return false;
     final prov = int.tryParse(ci.substring(0, 2)) ?? -1;
     if (!((prov >= 1 && prov <= 24) || prov == 30)) return false;
@@ -143,326 +173,291 @@ class _CrearEstudianteMatriculaScreenState
   }
 
   String _fmt(DateTime? d) {
-    if (d == null) return 'Seleccionar';
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    if (d == null) return '';
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_catSel == null) {
+    if (!(_formKey.currentState?.validate() ?? false)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Por favor selecciona una categoría'),
-            ],
-          ),
-          backgroundColor: Colors.orange.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        const SnackBar(content: Text('Por favor corrige los errores en el formulario'), backgroundColor: Colors.red),
       );
       return;
     }
-
-    final nacISO = _nacimiento == null
-        ? null
-        : '${_nacimiento!.year}-${_nacimiento!.month.toString().padLeft(2, '0')}-${_nacimiento!.day.toString().padLeft(2, '0')}';
-    final matISO = _fechaMatricula == null
-        ? null
-        : '${_fechaMatricula!.year}-${_fechaMatricula!.month.toString().padLeft(2, '0')}-${_fechaMatricula!.day.toString().padLeft(2, '0')}';
-    final ced = _cedulaCtl.text.trim().isEmpty ? null : _cedulaCtl.text.trim();
+    if (_catSel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debes seleccionar una Categoría'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     try {
       await _est.crearConMatricula(
         nombres: _nombresCtl.text.trim(),
         apellidos: _apellidosCtl.text.trim(),
-        cedula: ced,
-        fechaNacimientoISO: nacISO,
+        cedula: _cedulaCtl.text.trim().isEmpty ? null : _cedulaCtl.text.trim(),
+        fechaNacimientoISO: _nacimiento != null ? _fmt(_nacimiento) : null,
         direccion: _direccionCtl.text.trim().isEmpty ? null : _direccionCtl.text.trim(),
         telefono: _telefonoCtl.text.trim().isEmpty ? null : _telefonoCtl.text.trim(),
         idCategoria: _catSel!,
         ciclo: _cicloCtl.text.trim().isEmpty ? null : _cicloCtl.text.trim(),
-        fechaMatriculaISO: matISO,
+        fechaMatriculaISO: _fechaMatricula != null ? _fmt(_fechaMatricula) : null,
         idSubcategoria: _subSel,
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle_outline, color: Colors.white),
-              SizedBox(width: 12),
-              Text('Estudiante inscrito correctamente'),
-            ],
-          ),
-          backgroundColor: Colors.green.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        const SnackBar(content: Text('Estudiante inscrito correctamente'), backgroundColor: Colors.green),
       );
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Error: $e')),
-            ],
-          ),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  // Estilo "Azul Profundo" para inputs
+  InputDecoration _blueInputDeco(String label, IconData icon, {String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.w500),
+      prefixIcon: Icon(icon, color: Colors.blue.shade700),
+      filled: true,
+      fillColor: Colors.blue.shade50.withOpacity(0.5),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.blue.shade100),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.blue.shade800, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.red.shade300),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width > 900;
     final isTablet = size.width > 600 && size.width <= 900;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Nueva Inscripción'),
-        centerTitle: false,
+        title: const Text('Nueva Inscripción', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue.shade900,
         elevation: 0,
-        backgroundColor: theme.colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: _saving
-          ? Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    theme.colorScheme.primaryContainer.withOpacity(0.1),
-                    theme.colorScheme.surface,
-                  ],
-                ),
-              ),
-              child: Center(
-                child: Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(40),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 60,
-                          height: 60,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Guardando información',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Por favor espera...',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: Colors.blue.shade900, strokeWidth: 3),
+                  const SizedBox(height: 16),
+                  Text('Guardando...', style: TextStyle(color: Colors.blue.shade900, fontSize: 16, fontWeight: FontWeight.bold))
+                ],
               ),
             )
           : Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.colorScheme.primaryContainer.withOpacity(0.05),
-                    theme.colorScheme.surface,
-                    theme.colorScheme.secondaryContainer.withOpacity(0.03),
-                  ],
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [Colors.blue.shade50, Colors.white],
+                  stops: const [0.0, 0.3],
                 ),
               ),
               child: SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
-                  horizontal: isDesktop ? 48 : (isTablet ? 32 : 16),
-                  vertical: isDesktop ? 32 : 16,
+                  horizontal: isDesktop ? 60 : (isTablet ? 32 : 16),
+                  vertical: 24,
                 ),
                 child: Form(
                   key: _formKey,
                   child: Center(
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: isDesktop ? 1400 : 1200),
+                      constraints: const BoxConstraints(maxWidth: 1000),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Header más atractivo
-                          Container(
-                            padding: const EdgeInsets.all(32),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  theme.colorScheme.primaryContainer,
-                                  theme.colorScheme.primaryContainer.withOpacity(0.7),
-                                ],
-                              ),
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: theme.colorScheme.primary.withOpacity(0.1),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Row(
+                          // Sección 1: Datos Personales
+                          _buildSectionTitle('Datos Personales', Icons.person_outline),
+                          const SizedBox(height: 16),
+                          LayoutBuilder(builder: (ctx, constraints) {
+                            return Wrap(
+                              spacing: 20, runSpacing: 20,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: theme.colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: theme.colorScheme.primary.withOpacity(0.3),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    Icons.person_add_alt_1_rounded,
-                                    color: theme.colorScheme.onPrimary,
-                                    size: isDesktop ? 36 : 28,
+                                SizedBox(
+                                  width: constraints.maxWidth > 600 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _nombresCtl,
+                                    decoration: _blueInputDeco('Nombres *', Icons.badge_outlined),
+                                    textCapitalization: TextCapitalization.words,
+                                    validator: _onlyLettersValidator,
                                   ),
                                 ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Registrar Nuevo Estudiante',
-                                        style: theme.textTheme.headlineSmall?.copyWith(
-                                          fontWeight: FontWeight.bold,
-                                          color: theme.colorScheme.onPrimaryContainer,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Complete el formulario con los datos del estudiante',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
-                                        ),
-                                      ),
-                                    ],
+                                SizedBox(
+                                  width: constraints.maxWidth > 600 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _apellidosCtl,
+                                    decoration: _blueInputDeco('Apellidos *', Icons.person_outline),
+                                    textCapitalization: TextCapitalization.words,
+                                    validator: _onlyLettersValidator,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: constraints.maxWidth > 600 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _cedulaCtl,
+                                    decoration: _blueInputDeco('Cédula', Icons.credit_card),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                                    validator: (v) => (v == null || v.isEmpty) ? null : (_validarCedulaEcu(v) ? null : 'Cédula inválida'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: constraints.maxWidth > 600 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _nacimientoTxt,
+                                    decoration: _blueInputDeco('Fecha Nacimiento', Icons.cake_outlined),
+                                    readOnly: true,
+                                    onTap: () => _pickDate(true),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _direccionCtl,
+                                    decoration: _blueInputDeco('Dirección', Icons.location_on_outlined),
+                                    maxLines: 2,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: constraints.maxWidth > 600 ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                                  child: TextFormField(
+                                    controller: _telefonoCtl,
+                                    decoration: _blueInputDeco('Teléfono', Icons.phone_outlined),
+                                    keyboardType: TextInputType.phone,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    validator: _telefonoValidator,
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                          
-                          SizedBox(height: isDesktop ? 40 : 24),
-
-                          // Layout responsivo
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              if (constraints.maxWidth > 900) {
-                                // Desktop: 2 columnas
-                                return Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(child: _buildDatosPersonales(theme)),
-                                    const SizedBox(width: 24),
-                                    Expanded(child: _buildDatosMatricula(theme)),
-                                  ],
-                                );
-                              } else {
-                                // Mobile/Tablet: 1 columna
-                                return Column(
-                                  children: [
-                                    _buildDatosPersonales(theme),
-                                    const SizedBox(height: 24),
-                                    _buildDatosMatricula(theme),
-                                  ],
-                                );
-                              }
-                            },
-                          ),
+                            );
+                          }),
 
                           const SizedBox(height: 32),
-
-                          // Botones de acción mejorados
+                          
+                          // Sección 2: Datos Académicos
+                          _buildSectionTitle('Datos Académicos', Icons.school_outlined),
+                          const SizedBox(height: 16),
                           Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(24),
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: theme.colorScheme.outline.withOpacity(0.2),
-                              ),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.blue.shade100),
+                              boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
                             ),
-                            child: Wrap(
-                              alignment: WrapAlignment.end,
-                              spacing: 12,
-                              runSpacing: 12,
+                            child: Column(
                               children: [
-                                OutlinedButton.icon(
-                                  onPressed: () => Navigator.pop(context),
-                                  icon: const Icon(Icons.close_rounded),
-                                  label: const Text('Cancelar'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
+                                DropdownButtonFormField<int>(
+                                  value: _catSel,
+                                  decoration: _blueInputDeco('Categoría *', Icons.category_outlined),
+                                  items: _catsList.map((c) => DropdownMenuItem<int>(
+                                    value: c['id'] as int,
+                                    child: Text(c['nombre']),
+                                  )).toList(),
+                                  onChanged: (v) {
+                                    setState(() => _catSel = v);
+                                    if (v != null) _loadSubs(v);
+                                  },
+                                  validator: (v) => v == null ? 'Requerido' : null,
                                 ),
-                                FilledButton.icon(
-                                  onPressed: _submit,
-                                  icon: const Icon(Icons.check_circle_rounded),
-                                  label: const Text('Guardar Inscripción'),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 16,
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: DropdownButtonFormField<int>(
+                                        value: _subSel,
+                                        decoration: _blueInputDeco(
+                                          _loadingSubs ? 'Cargando...' : 'Subcategoría', 
+                                          Icons.subdirectory_arrow_right
+                                        ),
+                                        items: _subsList.map((s) => DropdownMenuItem<int>(
+                                          value: s['id'] as int,
+                                          child: Text(s['nombre']),
+                                        )).toList(),
+                                        onChanged: _loadingSubs || _catSel == null ? null : (v) => setState(() => _subSel = v),
+                                        disabledHint: Text(_catSel == null ? 'Seleccione Categoría' : 'Sin subcategorías'),
+                                      ),
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    elevation: 2,
-                                  ),
+                                    if (_loadingSubs) const Padding(padding: EdgeInsets.only(left: 12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(child: TextFormField(controller: _cicloCtl, decoration: _blueInputDeco('Ciclo', Icons.calendar_month))),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: TextFormField(
+                                      controller: _matriculaTxt,
+                                      decoration: _blueInputDeco('Fecha Matrícula', Icons.event_available),
+                                      readOnly: true,
+                                      onTap: () => _pickDate(false),
+                                    )),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
+
+                          const SizedBox(height: 40),
+
+                          // Botones
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                                  side: BorderSide(color: Colors.blue.shade800),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                child: Text('Cancelar', style: TextStyle(color: Colors.blue.shade900, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(width: 16),
+                              FilledButton.icon(
+                                onPressed: _submit,
+                                icon: const Icon(Icons.save_as, size: 20),
+                                label: const Text('GUARDAR INSCRIPCIÓN', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade800,
+                                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 4,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 40),
                         ],
                       ),
                     ),
@@ -473,485 +468,19 @@ class _CrearEstudianteMatriculaScreenState
     );
   }
 
-  Widget _buildDatosPersonales(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withOpacity(0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.1),
+  Widget _buildSectionTitle(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: Colors.blue.shade900, size: 24),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.colorScheme.secondaryContainer.withOpacity(0.4),
-                  theme.colorScheme.secondaryContainer.withOpacity(0.1),
-                ],
-              ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.secondary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.account_circle_rounded,
-                    color: theme.colorScheme.onSecondary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Datos Personales',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                _buildTextField(
-                  controller: _nombresCtl,
-                  label: 'Nombres',
-                  icon: Icons.person_outline_rounded,
-                  validator: _onlyLettersValidator,
-                  formatters: [LettersOnlyFormatter()],
-                  required: true,
-                  theme: theme,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _apellidosCtl,
-                  label: 'Apellidos',
-                  icon: Icons.person_outline_rounded,
-                  validator: _onlyLettersValidator,
-                  formatters: [LettersOnlyFormatter()],
-                  required: true,
-                  theme: theme,
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: _cedulaCtl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  style: theme.textTheme.bodyLarge,
-                  decoration: InputDecoration(
-                    labelText: 'Cédula (Ecuador)',
-                    hintText: '1234567890',
-                    prefixIcon: Icon(Icons.badge_outlined, color: theme.colorScheme.primary),
-                    suffixIcon: Container(
-                      margin: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: IconButton(
-                        tooltip: 'Verificar cédula',
-                        onPressed: () {
-                          final ok = _validarCedulaEcu(_cedulaCtl.text);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  Icon(
-                                    ok ? Icons.check_circle_rounded : Icons.error_rounded,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(ok ? '✓ Cédula válida' : '✗ Cédula inválida'),
-                                ],
-                              ),
-                              backgroundColor: ok ? Colors.green.shade600 : Colors.red.shade600,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          );
-                        },
-                        icon: Icon(
-                          Icons.verified_user_rounded,
-                          color: theme.colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                    errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.error,
-                      ),
-                    ),
-                  ),
-                  validator: (v) => _validarCedulaEcu(v) ? null : 'Cédula inválida',
-                ),
-                const SizedBox(height: 20),
-                _buildDatePicker(
-                  label: 'Fecha de Nacimiento',
-                  icon: Icons.cake_rounded,
-                  date: _nacimiento,
-                  onTap: _pickNacimiento,
-                  theme: theme,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _direccionCtl,
-                  label: 'Dirección',
-                  icon: Icons.home_rounded,
-                  maxLines: 2,
-                  theme: theme,
-                ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _telefonoCtl,
-                  label: 'Teléfono',
-                  icon: Icons.phone_rounded,
-                  keyboardType: TextInputType.phone,
-                  formatters: [digitsOnly],
-                  validator: _telefonoValidator,
-                  theme: theme,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDatosMatricula(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.shadow.withOpacity(0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.colorScheme.tertiaryContainer.withOpacity(0.4),
-                  theme.colorScheme.tertiaryContainer.withOpacity(0.1),
-                ],
-              ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.tertiary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.school_rounded,
-                    color: theme.colorScheme.onTertiary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Datos de Matrícula',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onTertiaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                DropdownButtonFormField<int>(
-                  value: _catSel,
-                  style: theme.textTheme.bodyLarge,
-                  decoration: InputDecoration(
-                    labelText: 'Categoría *',
-                    prefixIcon: Icon(Icons.category_rounded, color: theme.colorScheme.primary),
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  items: _catsList.map((c) {
-                    return DropdownMenuItem<int>(
-                      value: c['id'] as int,
-                      child: Text(c['nombre'] as String),
-                    );
-                  }).toList(),
-                  onChanged: (v) {
-                    setState(() => _catSel = v);
-                    if (v != null) _loadSubs(v);
-                  },
-                  validator: (v) => v == null ? 'Seleccione una categoría' : null,
-                ),
-                const SizedBox(height: 20),
-                DropdownButtonFormField<int>(
-                  value: _subSel,
-                  style: theme.textTheme.bodyLarge,
-                  decoration: InputDecoration(
-                    labelText: 'Subcategoría',
-                    hintText: _loadingSubs
-                        ? 'Cargando...'
-                        : (_catSel == null ? 'Primero seleccione categoría' : 'Opcional'),
-                    prefixIcon: Icon(Icons.subdirectory_arrow_right_rounded,
-                        color: theme.colorScheme.primary),
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.outline.withOpacity(0.2),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  items: _subsList.map((s) {
-                    return DropdownMenuItem<int>(
-                      value: s['id'] as int,
-                      child: Text(s['nombre'] as String),
-                    );
-                  }).toList(),
-                  onChanged: _loadingSubs || _catSel == null
-                      ? null
-                      : (v) => setState(() => _subSel = v),
-                ),
-                if (_loadingSubs)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: LinearProgressIndicator(
-                      borderRadius: BorderRadius.circular(8),
-                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                _buildTextField(
-                  controller: _cicloCtl,
-                  label: 'Ciclo',
-                  icon: Icons.calendar_view_month_rounded,
-                  hint: 'Ej: 2024-2025',
-                  theme: theme,
-                ),
-                const SizedBox(height: 20),
-                _buildDatePicker(
-                  label: 'Fecha de Matrícula',
-                  icon: Icons.event_rounded,
-                  date: _fechaMatricula,
-                  onTap: _pickFechaMatricula,
-                  theme: theme,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    required ThemeData theme,
-    String? hint,
-    String? Function(String?)? validator,
-    List<TextInputFormatter>? formatters,
-    TextInputType? keyboardType,
-    int maxLines = 1,
-    bool required = false,
-  }) {
-    return TextFormField(
-      controller: controller,
-      inputFormatters: formatters,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      style: theme.textTheme.bodyLarge,
-      decoration: InputDecoration(
-        labelText: required ? '$label *' : label,
-        hintText: hint,
-        prefixIcon: Icon(icon, color: theme.colorScheme.primary),
-        filled: true,
-        fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: theme.colorScheme.primary,
-            width: 2,
-          ),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: theme.colorScheme.error,
-          ),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: theme.colorScheme.error,
-            width: 2,
-          ),
-        ),
-      ),
-      validator: validator,
-    );
-  }
-
-  Widget _buildDatePicker({
-    required String label,
-    required IconData icon,
-    required DateTime? date,
-    required VoidCallback onTap,
-    required ThemeData theme,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon, color: theme.colorScheme.primary),
-          suffixIcon: Container(
-            margin: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              Icons.calendar_today_rounded,
-              color: theme.colorScheme.onPrimaryContainer,
-              size: 20,
-            ),
-          ),
-          filled: true,
-          fillColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(
-              color: theme.colorScheme.outline.withOpacity(0.2),
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Text(
-          _fmt(date),
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: date == null
-                ? theme.colorScheme.onSurfaceVariant
-                : theme.colorScheme.onSurface,
-          ),
-        ),
-      ),
+        const SizedBox(width: 12),
+        Text(title, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+        const SizedBox(width: 12),
+        Expanded(child: Divider(color: Colors.blue.shade100, thickness: 2)),
+      ],
     );
   }
 
@@ -963,6 +492,8 @@ class _CrearEstudianteMatriculaScreenState
     _direccionCtl.dispose();
     _telefonoCtl.dispose();
     _cicloCtl.dispose();
+    _nacimientoTxt.dispose();
+    _matriculaTxt.dispose();
     super.dispose();
   }
 }

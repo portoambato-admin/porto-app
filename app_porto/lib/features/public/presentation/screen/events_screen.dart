@@ -262,7 +262,7 @@ class _EventsScreenState extends State<EventsScreen> {
       height: height,
       fit: fit,
       errorBuilder: (_, __, ___) {
-        debugPrint('NO se encontró asset: $path');
+       
         return Container(
           width: width,
           height: height,

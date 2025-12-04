@@ -1,8 +1,8 @@
+import 'dart:async'; // Necesario para el Timer (Debounce)
+import 'package:app_porto/core/services/session_token_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:characters/characters.dart';
-
-import '../../../../core/services/session.dart';
 import '../../../../core/services/api_service.dart';
 
 class ProfesoresTab extends StatefulWidget {
@@ -19,18 +19,20 @@ enum _ViewMode { table, cards }
 class _ProfesoresTabState extends State<ProfesoresTab> {
   // Estado base
   final _searchCtrl = TextEditingController();
+  Timer? _debounce; // Timer para la búsqueda en tiempo real
+
   bool _loading = false;
   String? _error;
 
   int _page = 1;
   int _pageSize = 10;
-  String _sort = 'id_profesor'; // Compat con API (usa 'cedula' si tu API lo soporta)
+  String _sort = 'id_profesor';
   String _order = 'desc';
   int _total = 0;
   List<Map<String, dynamic>> _rows = [];
 
   // Preferencias visuales
-  _ViewMode _viewMode = _ViewMode.cards; // 👉 por defecto: Tarjetas
+  _ViewMode _viewMode = _ViewMode.cards;
   bool _dense = false;
 
   late final VoidCallback _tabListener;
@@ -63,14 +65,24 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   void dispose() {
     widget.tab.removeListener(_tabListener);
     _searchCtrl.dispose();
+    _debounce?.cancel(); // Cancelar timer si se cierra
     super.dispose();
+  }
+
+  // ====== Lógica de Debounce (Búsqueda suave) ======
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      setState(() => _page = 1);
+      _load();
+    });
   }
 
   // ====== Carga de datos ======
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final token = await Session.getToken();
+      final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
       final q = _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim();
 
@@ -117,25 +129,49 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   }
 
   Future<void> _toggleActivo(Map<String, dynamic> r) async {
+    // 1. Guardar estado anterior por si hay error
+    final bool wasActive = r['activo'] == true;
+    final int targetIndex = _rows.indexOf(r);
+
+    // 2. ACTUALIZACIÓN OPTIMISTA (Visual inmediata)
+    setState(() {
+      r['activo'] = !wasActive; // Cambiamos el valor localmente al instante
+    });
+
     try {
-      final token = await Session.getToken();
+      final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
       final id = (r['id_profesor'] as num).toInt();
-      final activo = r['activo'] == true;
 
-      if (activo) {
-        await ApiService.deleteProfesor(token: token, idProfesor: id);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profesor desactivado')));
+      // 3. Llamada silenciosa a la API
+      if (wasActive) {
+        await ApiService.deleteProfesor(token: token, idProfesor: id); // Desactivar
       } else {
-        await ApiService.activarProfesor(token: token, idProfesor: id);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profesor activado')));
+        await ApiService.activarProfesor(token: token, idProfesor: id); // Activar
       }
-      _load();
-    } catch (e) {
+      
+      // Feedback sutil (opcional, a veces no es necesario si es obvio)
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(wasActive ? 'Profesor desactivado' : 'Profesor activado'),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+        width: 200, // Snack pequeño flotante
+      ));
+
+    } catch (e) {
+      // 4. ROLLBACK (Si falla, volvemos al estado anterior)
+      if (!mounted) return;
+      setState(() {
+        if (targetIndex != -1 && targetIndex < _rows.length) {
+           _rows[targetIndex]['activo'] = wasActive;
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Error al cambiar estado: $e'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ));
     }
   }
 
@@ -147,7 +183,7 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     if (ok == true) _load();
   }
 
-  // ========= Detalle (sin IDs ni fechas) =========
+  // ========= Detalle con Animación HERO =========
   Future<void> _openDetails(Map<String, dynamic> r) async {
     final cs = Theme.of(context).colorScheme;
 
@@ -165,57 +201,76 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     final esp = (r['especialidad'] ?? '').toString();
     final avatar = (r['avatar_url'] ?? '').toString();
     final activo = r['activo'] == true;
+    final initialsText = _getInitials(nombre);
+    final avatarColor = _getAvatarColor('$nombre$doc');
 
     final header = ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        radius: 26,
-        backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-        child: avatar.isEmpty ? const Icon(Icons.person) : null,
+      leading: Hero(
+        tag: 'prof_avatar_${r['id_profesor']}', // Tag para animación
+        child: CircleAvatar(
+          radius: 30,
+          backgroundColor: avatarColor.withOpacity(0.2),
+          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+          child: avatar.isEmpty 
+            ? Text(initialsText, style: TextStyle(color: avatarColor, fontWeight: FontWeight.bold, fontSize: 20))
+            : null,
+        ),
       ),
       title: Text(
         nombre.isEmpty ? '(Sin nombre)' : nombre,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
       ),
-      subtitle: Row(
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Flexible(
-            child: Text(
-              correo.isEmpty ? '(Sin correo)' : correo,
-              overflow: TextOverflow.ellipsis,
+          if (correo.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: InkWell(
+                onTap: () => _copy(context, 'Correo', correo),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.mail_outline, size: 14, color: cs.primary),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        correo,
+                        style: TextStyle(color: cs.primary, fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          if (correo.isNotEmpty) ...[
-            const SizedBox(width: 4),
-            IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              tooltip: 'Copiar correo',
-              iconSize: 18,
-              onPressed: () => _copy(context, 'Correo', correo),
-              icon: const Icon(Icons.copy_rounded),
-            ),
-          ],
         ],
       ),
-      trailing: Chip(
-        label: Text(activo ? 'Activo' : 'Inactivo'),
-        avatar: Icon(
-          activo ? Icons.check_circle : Icons.cancel,
-          size: 18,
-          color: activo ? cs.onPrimaryContainer : cs.onErrorContainer,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: activo ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3))
         ),
-        backgroundColor: activo ? cs.primaryContainer : cs.errorContainer,
-        side: BorderSide(color: cs.outlineVariant),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.circle, size: 8, color: activo ? Colors.green : Colors.red),
+            const SizedBox(width: 6),
+            Text(activo ? "ACTIVO" : "INACTIVO", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: activo ? Colors.green.shade700 : Colors.red.shade700)),
+          ],
+        ),
       ),
     );
 
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 4),
-        Divider(color: cs.outlineVariant),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
+        Divider(color: cs.outlineVariant.withOpacity(0.5)),
+        const SizedBox(height: 12),
 
         _kvIcon(context, 'Cédula', doc, Icons.badge_outlined,
             copyable: doc != 'Sin identificar', copyLabel: 'Cédula'),
@@ -225,19 +280,22 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         _kvIcon(context, 'Dirección', dir.isEmpty ? '—' : dir, Icons.location_on_outlined,
             copyable: dir.isNotEmpty, copyLabel: 'Dirección'),
 
-        const SizedBox(height: 4),
+        const SizedBox(height: 12),
 
         if (doc == 'Sin identificar')
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Chip(
-                avatar: const Icon(Icons.warning_amber_rounded, size: 18),
-                label: const Text('Sin cédula registrada'),
-                backgroundColor: cs.secondaryContainer,
-                side: BorderSide(color: cs.outlineVariant),
-              ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange[800]),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Este profesor no tiene cédula registrada.', style: TextStyle(color: Colors.orange[900]))),
+              ],
             ),
           ),
       ],
@@ -247,145 +305,59 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
       FilledButton.icon(
         onPressed: () { Navigator.pop(context); _openEdit(r); },
-        icon: const Icon(Icons.edit),
+        icon: const Icon(Icons.edit, size: 18),
         label: const Text('Editar'),
       ),
     ];
 
-    final isNarrow = MediaQuery.of(context).size.width < 640;
-
-    if (isNarrow) {
+    // Responsive Dialog
+    final width = MediaQuery.of(context).size.width;
+    if (width < 640) {
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: cs.surface,
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         builder: (_) => SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
-              left: 16, right: 16,
-              top: 12,
+              left: 20, right: 20,
               bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
             ),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Align(
-                    child: Container(
-                      width: 36, height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: cs.outlineVariant, borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ),
-                  Text('Información del profesor',
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 8),
                   header,
                   content,
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: actions,
-                  ),
+                  const SizedBox(height: 24),
+                  Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
                 ],
               ),
             ),
           ),
         ),
       );
-      return;
+    } else {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Información del profesor'),
+          content: SizedBox(width: 500, child: Column(mainAxisSize: MainAxisSize.min, children: [header, content])),
+          actions: actions,
+        ),
+      );
     }
-
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Información del profesor'),
-        content: SizedBox(width: 560, child: Column(mainAxisSize: MainAxisSize.min, children: [header, content])),
-        actions: actions,
-      ),
-    );
   }
 
-  // ========= UI principal =========
+  // ========= UI PRINCIPAL =========
   @override
   Widget build(BuildContext context) {
     final isNarrow = MediaQuery.of(context).size.width < 820;
-
-    final headerRow = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: LayoutBuilder(
-        builder: (_, cc) {
-          final compact = cc.maxWidth < 720;
-
-          final chips = Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              // Vista
-              InputChip(
-                label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
-                avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
-                onPressed: () => setState(() {
-                  _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
-                }),
-              ),
-              // Densidad
-              InputChip(
-                label: Text(_dense ? 'Denso' : 'Cómodo'),
-                avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
-                onPressed: () => setState(() => _dense = !_dense),
-              ),
-              // Filtro de búsqueda activo (informativo)
-              if (_searchCtrl.text.trim().isNotEmpty)
-                InputChip(
-                  avatar: const Icon(Icons.search, size: 18),
-                  label: Text('Búsqueda: "${_searchCtrl.text.trim()}"'),
-                  onDeleted: () { _searchCtrl.clear(); _page = 1; _load(); },
-                ),
-            ],
-          );
-
-          final actions = Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _rows.isEmpty ? null : _exportCsv,
-                icon: const Icon(Icons.download),
-                label: const Text('Exportar CSV'),
-              ),
-              FilledButton.icon(
-                onPressed: _loading ? null : _load,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Actualizar'),
-              ),
-            ],
-          );
-
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                chips,
-                const SizedBox(height: 8),
-                Align(alignment: Alignment.centerRight, child: actions),
-              ],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: chips),
-              actions,
-            ],
-          );
-        },
-      ),
-    );
 
     final coreContent = _loading && _rows.isEmpty
         ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
@@ -394,32 +366,65 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
             : (_rows.isEmpty
                 ? const _EmptyState(
                     title: 'Sin profesores',
-                    subtitle: 'Ajusta la búsqueda o crea un profesor.',
+                    subtitle: 'Ajusta la búsqueda o crea un nuevo profesor.',
                     primary: ('Refrescar', null),
                   )
-                : (_viewMode == _ViewMode.cards
-                    ? _cards(context, _rows)
-                    : _table(context, _rows))));
+                : RefreshIndicator( // Pull to refresh nativo
+                    onRefresh: _load,
+                    child: _viewMode == _ViewMode.cards
+                        ? _cards(context, _rows)
+                        : _table(context, _rows),
+                  )));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _toolbar(),   // búsqueda + tamaño de página
-        headerRow,    // chips + acciones
+        // 1. Cabecera Moderna Unificada
+        _buildModernHeader(context),
+        
+        // 2. Contenido con Loading superpuesto discreto
         Expanded(
           child: Stack(
             children: [
               AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+                duration: const Duration(milliseconds: 300),
                 child: coreContent,
               ),
               if (_loading && _rows.isNotEmpty)
-                const Positioned(right: 12, top: 8, child: _LoadingChip()),
+                Positioned(
+                  top: 16, 
+                  left: 0, 
+                  right: 0, 
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.inverseSurface,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0,2))]
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onInverseSurface)),
+                          const SizedBox(width: 10),
+                          Text('Actualizando...', style: TextStyle(color: Theme.of(context).colorScheme.onInverseSurface, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  )
+                ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+
+        // 3. Paginador
+        Container(
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
+            color: Theme.of(context).colorScheme.surface,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: _Paginator(
             page: _page,
             pageSize: _pageSize,
@@ -431,349 +436,347 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     );
   }
 
-  // ====== Toolbar (búsqueda + page size) ======
-  Widget _toolbar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: LayoutBuilder(
-        builder: (ctx, c) {
-          final search = Expanded(
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Buscar por nombre, cédula, teléfono o correo…',
-              ),
-              onSubmitted: (_) { _page = 1; _load(); },
-            ),
-          );
-
-          final perPage = SizedBox(
-            width: 160,
-            child: DropdownButtonFormField<int>(
-              value: _pageSize,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.format_list_numbered),
-                labelText: 'Por página',
-              ),
-              items: const [
-                DropdownMenuItem(value: 5, child: Text('5')),
-                DropdownMenuItem(value: 10, child: Text('10')),
-                DropdownMenuItem(value: 20, child: Text('20')),
-                DropdownMenuItem(value: 50, child: Text('50')),
-              ],
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() { _pageSize = v; _page = 1; });
-                _load();
-              },
-            ),
-          );
-
-          final narrow = c.maxWidth < 900;
-          if (narrow) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                search,
-                const SizedBox(height: 8),
-                perPage,
-              ],
-            );
-          }
-          return Row(
+  // ====== Widget Header Moderno ======
+  Widget _buildModernHeader(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        children: [
+          Row(
             children: [
-              search,
+              // Búsqueda tipo Píldora
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: _onSearchChanged, // Debounce activado
+                  decoration: InputDecoration(
+                    hintText: 'Buscar profesor...',
+                    hintStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7)),
+                    prefixIcon: Icon(Icons.search, color: cs.primary),
+                    filled: true,
+                    fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: cs.primary.withOpacity(0.5), width: 1)),
+                    suffixIcon: _searchCtrl.text.isNotEmpty 
+                      ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: (){ _searchCtrl.clear(); _onSearchChanged(''); })
+                      : null,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              
+              // Toggle View
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant),
+                      tooltip: 'Tarjetas',
+                      onPressed: () => setState(() => _viewMode = _ViewMode.cards),
+                    ),
+                    Container(width: 1, height: 20, color: cs.outlineVariant),
+                    IconButton(
+                      icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant),
+                      tooltip: 'Tabla',
+                      onPressed: () => setState(() => _viewMode = _ViewMode.table),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(width: 8),
-              perPage,
+              
+              // Exportar
+              IconButton(
+                icon: const Icon(Icons.download_rounded),
+                tooltip: 'Exportar CSV',
+                onPressed: _rows.isEmpty ? null : _exportCsv,
+              ),
             ],
-          );
-        },
+          ),
+          // Filtro de tamaño de página (opcional, expandible)
+          if (_loading) const SizedBox(height: 2) else const SizedBox.shrink(),
+        ],
       ),
     );
   }
 
-  // ====== Vista TABLA (sin columna "Especialidad") ======
+  // ====== Vista TABLA (Zebra Striped) ======
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-    final textStyle = _dense
-        ? Theme.of(context).textTheme.bodySmall
-        : Theme.of(context).textTheme.bodyMedium;
+    final cs = Theme.of(context).colorScheme;
+    final textStyle = _dense ? Theme.of(context).textTheme.bodySmall : Theme.of(context).textTheme.bodyMedium;
 
     String doc(Map r) {
       final v = r['cedula'] ?? r['dni'] ?? r['numero_cedula'] ?? '';
-      final s = '$v'.trim();
-      return s.isEmpty ? 'Sin identificar' : s;
+      return '$v'.trim().isEmpty ? '—' : '$v';
     }
 
-    return ScrollConfiguration(
-      behavior: const ScrollBehavior().copyWith(scrollbars: true),
+     return Center( 
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: _dense ? 36 : 48,
-          dataRowMinHeight: _dense ? 32 : 44,
-          dataRowMaxHeight: _dense ? 40 : null,
-          columns: [
-            DataColumn(
-              label: const Text('Cédula'),
-              onSort: (_, asc) => _toggleSort('id_profesor'), // usa 'cedula' si tu API lo soporta
-            ),
-            DataColumn(
-              label: const Text('Nombre'),
-              onSort: (_, asc) => _toggleSort('nombre_usuario'),
-            ),
-            const DataColumn(label: Text('Teléfono')),
-            DataColumn(
-              label: const Text('Correo'),
-              onSort: (_, asc) => _toggleSort('correo'),
-            ),
-            const DataColumn(label: Text('Activo')),
-            const DataColumn(label: Text('Acciones')),
-          ],
-          rows: rows.map((r) {
-            final bool activo = r['activo'] == true;
-            return DataRow(
-              onSelectChanged: (_) => _openDetails(r),
-              cells: [
-                DataCell(SelectableText(doc(r), style: textStyle)),
-                DataCell(SelectableText((r['nombre_usuario'] ?? r['nombre'] ?? '').toString(), style: textStyle)),
-                DataCell(SelectableText('${r['telefono'] ?? '—'}', style: textStyle)),
-                DataCell(SelectableText('${r['correo'] ?? ''}', style: textStyle)),
-                DataCell(Icon(
-                  activo ? Icons.check_circle : Icons.cancel,
-                  color: activo ? Colors.green : Colors.grey,
-                  size: _dense ? 18 : 20,
-                  semanticLabel: activo ? 'Activo' : 'Inactivo',
-                )),
-                DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
-              ],
-            );
-          }).toList(),
+      padding: const EdgeInsets.all(16),
+      child: Card( // Tarjeta contenedora de la tabla
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: cs.outlineVariant.withOpacity(0.4))),
+        clipBehavior: Clip.antiAlias,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
+            headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
+            dataRowMinHeight: _dense ? 36 : 48,
+            dataRowMaxHeight: _dense ? 48 : 60,
+            columnSpacing: 24,
+            horizontalMargin: 20,
+            columns: [
+              DataColumn(label: const Text('Cédula'), onSort: (_,__) => _toggleSort('id_profesor')),
+              DataColumn(label: const Text('Nombre'), onSort: (_,__) => _toggleSort('nombre_usuario')),
+              const DataColumn(label: Text('Teléfono')),
+              DataColumn(label: const Text('Correo'), onSort: (_,__) => _toggleSort('correo')),
+              const DataColumn(label: Text('Estado')),
+              const DataColumn(label: Text('Acciones')),
+            ],
+            // Zebra Striping Logic
+            rows: rows.asMap().entries.map((entry) {
+              final index = entry.key;
+              final r = entry.value;
+              final bool activo = r['activo'] == true;
+              final isEven = index % 2 == 0;
+
+              return DataRow(
+                color: MaterialStateProperty.resolveWith<Color?>((states) {
+                  return isEven ? Colors.transparent : cs.surfaceContainerHighest.withOpacity(0.2);
+                }),
+                cells: [
+                  DataCell(Text(doc(r), style: textStyle)),
+                  DataCell(Text((r['nombre_usuario'] ?? r['nombre'] ?? '').toString(), style: textStyle?.copyWith(fontWeight: FontWeight.w500))),
+                  DataCell(Text('${r['telefono'] ?? '—'}', style: textStyle)),
+                  DataCell(Text('${r['correo'] ?? ''}', style: textStyle)),
+                  DataCell(
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        activo ? 'Activo' : 'Inactivo',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: activo ? Colors.green : Colors.red),
+                      ),
+                    )
+                  ),
+                  DataCell(_rowActions(r: r, activo: activo, dense: true)),
+                ],
+              );
+            }).toList(),
+          ),
         ),
       ),
+    )
     );
   }
-
-  // ====== Vista TARJETAS ======
+  // ====== Vista TARJETAS (Modern Card) ======
   Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
-    final compactPad = EdgeInsets.symmetric(horizontal: 12, vertical: _dense ? 4 : 6);
-
-    String doc(Map r) {
-      final v = r['cedula'] ?? r['dni'] ?? r['numero_cedula'] ?? '';
-      final s = '$v'.trim();
-      return s.isEmpty ? 'Sin identificar' : s;
-    }
-
-    String initials(String? nombre) {
-      final n = (nombre ?? '').trim().split(' ').where((e) => e.isNotEmpty).toList();
-      if (n.isEmpty) return '👤';
-      final i1 = n.first.characters.first;
-      final i2 = n.length > 1 ? n[1].characters.first : '';
-      final r = (i1 + i2).toUpperCase();
-      return r.isEmpty ? '👤' : r;
-    }
-
-    Color avatarColor(String seed) {
-      final h = seed.hashCode & 0xFFFFFF;
-      return Color(0xFF000000 | h).withOpacity(1);
-    }
-
-    Widget miniChip(BuildContext ctx, String text, IconData icon) {
-      final theme = Theme.of(ctx);
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: theme.dividerColor),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14),
-            const SizedBox(width: 4),
-            Text(text, style: theme.textTheme.labelSmall),
-          ],
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 16),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Padding extra abajo para el FAB si lo hubiera
       itemCount: rows.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
       itemBuilder: (_, i) {
         final r = rows[i];
         final activo = r['activo'] == true;
         final nombre = (r['nombre_usuario'] ?? r['nombre'] ?? '').toString();
         final telefono = r['telefono']?.toString() ?? '—';
-        final correo = r['correo']?.toString() ?? '';
-        final cedula = doc(r);
-        final initialsText = initials(nombre);
-        final color = avatarColor('$nombre$cedula');
+        final cedula = r['cedula']?.toString() ?? '—';
+        final initialsText = _getInitials(nombre);
+        final color = _getAvatarColor('$nombre$cedula');
 
-        return Card(
-          elevation: 0,
-          margin: const EdgeInsets.symmetric(horizontal: 0),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Theme.of(context).dividerColor),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
           ),
-          child: ListTile(
-            dense: true,
-            contentPadding: compactPad,
-            onTap: () => _openDetails(r),
-            leading: CircleAvatar(
-              radius: _dense ? 14 : 16,
-              backgroundColor: color.withOpacity(0.15),
-              child: Text(
-                initialsText,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: color,
+          child: Material( // Material para el efecto Ripple
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openDetails(r),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar con Hero Animation
+                    Hero(
+                      tag: 'prof_avatar_${r['id_profesor']}',
+                      child: CircleAvatar(
+                        radius: 26,
+                        backgroundColor: color.withOpacity(0.15),
+                        child: Text(
+                          initialsText,
+                          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
                     ),
+                    const SizedBox(width: 16),
+                    
+                    // Info Central
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  nombre.isEmpty ? 'Sin nombre' : nombre,
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              // Pill de estado
+                              Container(
+                                margin: const EdgeInsets.only(left: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: activo ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: activo ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3))
+                                ),
+                                child: Text(
+                                  activo ? "ACTIVO" : "INACTIVO", 
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: activo ? Colors.green[700] : Colors.grey[700])
+                                ),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
+                            children: [
+                              _iconText(context, Icons.badge_outlined, cedula),
+                              if (telefono != '—') _iconText(context, Icons.phone_outlined, telefono),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Botón menú contextual
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: IconButton(
+                        icon: Icon(Icons.more_vert, color: Theme.of(context).hintColor),
+                        onPressed: () => _openDetails(r),
+                      ),
+                    )
+                  ],
+                ),
               ),
             ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    nombre.isEmpty ? 'Sin nombre' : nombre,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  activo ? Icons.check_circle : Icons.cancel,
-                  size: 16,
-                  color: activo ? Colors.green : Colors.grey,
-                  semanticLabel: activo ? 'Activo' : 'Inactivo',
-                ),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  miniChip(context, 'Cédula: $cedula', Icons.badge_outlined),
-                  if (telefono.trim().isNotEmpty && telefono != '—')
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.call, size: 14),
-                        const SizedBox(width: 3),
-                        Text(telefono, style: Theme.of(context).textTheme.labelSmall),
-                      ],
-                    ),
-                  if (correo.trim().isNotEmpty)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.mail, size: 14),
-                        const SizedBox(width: 3),
-                        Text(correo, style: Theme.of(context).textTheme.labelSmall),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-            trailing: _rowActions(r: r, activo: activo, dense: true),
           ),
         );
       },
     );
   }
-
-  // ===== Acciones por fila =====
-  Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
-    final double iconSize = dense ? 18 : 24;
-    final EdgeInsets padding = EdgeInsets.all(dense ? 4 : 8);
-    final BoxConstraints? k = dense ? const BoxConstraints(minWidth: 36, minHeight: 36) : null;
-    final VisualDensity vd = dense ? VisualDensity.compact : VisualDensity.standard;
-
+  
+  Widget _iconText(BuildContext context, IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Tooltip(
-          message: 'Ver',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            constraints: k,
-            visualDensity: vd,
-            icon: const Icon(Icons.visibility_outlined),
-            onPressed: () => _openDetails(r),
-          ),
+        Icon(icon, size: 14, color: Theme.of(context).hintColor),
+        const SizedBox(width: 4),
+        Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor)),
+      ],
+    );
+  }
+
+  // ===== Utils =====
+  String _getInitials(String? nombre) {
+    final n = (nombre ?? '').trim().split(' ').where((e) => e.isNotEmpty).toList();
+    if (n.isEmpty) return '👤';
+    final i1 = n.first.characters.first;
+    final i2 = n.length > 1 ? n[1].characters.first : '';
+    return (i1 + i2).toUpperCase();
+  }
+
+  Color _getAvatarColor(String seed) {
+    final colors = [
+      Colors.blue, Colors.teal, Colors.indigo, Colors.purple, 
+      Colors.deepOrange, Colors.pink, Colors.green
+    ];
+    return colors[seed.hashCode.abs() % colors.length];
+  }
+
+  Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Editar',
+          iconSize: 20,
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: () => _openEdit(r),
         ),
-        Tooltip(
-          message: 'Editar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            constraints: k,
-            visualDensity: vd,
-            icon: const Icon(Icons.edit),
-            onPressed: () => _openEdit(r),
-          ),
-        ),
-        Tooltip(
-          message: activo ? 'Desactivar' : 'Activar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            constraints: k,
-            visualDensity: vd,
-            icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => _toggleActivo(r),
-          ),
+        IconButton(
+          tooltip: activo ? 'Desactivar' : 'Activar',
+          iconSize: 20,
+          icon: Icon(activo ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+          color: activo ? Colors.grey : Colors.green,
+          onPressed: () => _toggleActivo(r),
         ),
       ],
     );
   }
 
-  // ========= Helpers UI =========
-  Widget _kvIcon(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon, {
-    bool copyable = false,
-    String? copyLabel,
-  }) {
+  Widget _kvIcon(BuildContext context, String label, String value, IconData icon, {bool copyable = false, String? copyLabel}) {
     final cs = Theme.of(context).colorScheme;
-    final isMuted = value.trim().isEmpty || value == '—' || value == 'Sin identificar';
-
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 128,
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: cs.primary),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value.isEmpty ? '—' : value,
-              style: TextStyle(
-                color: isMuted ? cs.onSurfaceVariant : cs.onSurface,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+              ],
             ),
           ),
-          if (copyable && value.trim().isNotEmpty)
+          if (copyable)
             IconButton(
-              tooltip: 'Copiar ${copyLabel ?? label.toLowerCase()}',
               icon: const Icon(Icons.copy_rounded, size: 18),
               onPressed: () => _copy(context, copyLabel ?? label, value),
-            ),
+            )
         ],
       ),
     );
@@ -781,12 +784,9 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
 
   void _copy(BuildContext context, String label, String value) {
     Clipboard.setData(ClipboardData(text: value));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label copiado')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copiado'), behavior: SnackBarBehavior.floating));
   }
 
-  // ===== Export CSV simple (copiar desde diálogo) =====
   void _exportCsv() {
     final csv = StringBuffer()..writeln('Cedula,Nombre,Telefono,Correo,Activo');
     for (final r in _rows) {
@@ -797,14 +797,12 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
       final act = (r['activo'] == true) ? '1' : '0';
       csv.writeln('${_csv(ced)},${_csv(nom)},${_csv(tel)},${_csv(cor)},$act');
     }
-    _showCsvDialog(csv.toString(), 'profesores_page$_page.csv');
+    _showCsvDialog(csv.toString(), 'profesores_export.csv');
   }
 
   static String _csv(Object? v) {
     final s = v?.toString() ?? '';
-    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-      return '"${s.replaceAll('"', '""')}"';
-    }
+    if (s.contains(',') || s.contains('"') || s.contains('\n')) return '"${s.replaceAll('"', '""')}"';
     return s;
   }
 
@@ -815,14 +813,11 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         title: Text('CSV: $filename'),
         content: SizedBox(width: 600, height: 360, child: SelectableText(data)),
         actions: [
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: data));
-              if (mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado al portapapeles')));
-            },
-            child: const Text('Copiar'),
-          ),
+          TextButton(onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: data));
+            if (mounted) Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado')));
+          }, child: const Text('Copiar')),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
         ],
       ),
@@ -830,15 +825,10 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   }
 }
 
+// =================== WIDGETS AUXILIARES ===================
 
 class _Paginator extends StatelessWidget {
-  const _Paginator({
-    required this.page,
-    required this.pageSize,
-    required this.total,
-    required this.onPage,
-  });
-
+  const _Paginator({required this.page, required this.pageSize, required this.total, required this.onPage});
   final int page, pageSize, total;
   final void Function(int) onPage;
 
@@ -846,68 +836,45 @@ class _Paginator extends StatelessWidget {
   Widget build(BuildContext context) {
     final to = (page * pageSize > total) ? total : (page * pageSize);
     final from = (total == 0) ? 0 : ((page - 1) * pageSize + 1);
-
-    return SafeArea(
-      top: false,
-      child: Row(
-        children: [
-          Text('Mostrando $from–$to de $total'),
-          const Spacer(),
-          IconButton(
-            tooltip: 'Anterior',
-            onPressed: page > 1 ? () => onPage(page - 1) : null,
-            icon: const Icon(Icons.chevron_left),
-          ),
-          Text('$page'),
-          IconButton(
-            tooltip: 'Siguiente',
-            onPressed: (to < total) ? () => onPage(page + 1) : null,
-            icon: const Icon(Icons.chevron_right),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        Text('$from-$to de $total', style: const TextStyle(fontWeight: FontWeight.w500)),
+        const Spacer(),
+        IconButton.filledTonal(
+          onPressed: page > 1 ? () => onPage(page - 1) : null,
+          icon: const Icon(Icons.chevron_left),
+          visualDensity: VisualDensity.compact,
+        ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          onPressed: (to < total) ? () => onPage(page + 1) : null,
+          icon: const Icon(Icons.chevron_right),
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
     );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  final String title;
-  final String subtitle;
+  final String title, subtitle;
   final (String, VoidCallback?) primary;
-  final (String, VoidCallback)? secondary;
-
-  const _EmptyState({
-    required this.title,
-    required this.subtitle,
-    required this.primary, 
-    // ignore: unused_element_parameter
-    this.secondary,
-  });
+  const _EmptyState({required this.title, required this.subtitle, required this.primary});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Theme.of(context).hintColor),
-            const SizedBox(height: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [
-                FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
-                if (secondary != null)
-                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
-              ],
-            ),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_off_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)),
+          const SizedBox(height: 16),
+          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).hintColor)),
+          const SizedBox(height: 24),
+          FilledButton.icon(onPressed: primary.$2, icon: const Icon(Icons.refresh), label: Text(primary.$1)),
+        ],
       ),
     );
   }
@@ -916,111 +883,60 @@ class _EmptyState extends StatelessWidget {
 class _ErrorView extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
-
   const _ErrorView({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
-            const SizedBox(height: 12),
-            Text('Error al cargar datos', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline_rounded, size: 60, color: Colors.red),
+          const SizedBox(height: 16),
+          Text('Ocurrió un error', style: Theme.of(context).textTheme.titleMedium),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(error, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).hintColor)),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Reintentar')),
+        ],
       ),
-    );
-  }
-}
-
-class _LoadingChip extends StatelessWidget {
-  const _LoadingChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(
-      avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-      label: const Text('Cargando…'),
-      visualDensity: VisualDensity.compact,
     );
   }
 }
 
 class _LoadingPlaceholder extends StatelessWidget {
-  final bool isNarrow;
+  final bool isNarrow, dense;
   final _ViewMode viewMode;
-  final bool dense;
-
   const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
 
   @override
   Widget build(BuildContext context) {
-    if (viewMode == _ViewMode.cards || isNarrow) {
-      return ListView.builder(
-        itemCount: 6,
-        itemBuilder: (_, i) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: _Skeleton(height: dense ? 84 : 104),
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: 6,
+      separatorBuilder: (_,__) => const SizedBox(height: 12),
+      itemBuilder: (_, i) => Container(
+        height: viewMode == _ViewMode.cards ? 100 : 50,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12),
         ),
-      );
-    }
-    return Column(
-      children: [
-        _Skeleton(height: dense ? 44 : 52),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            itemCount: 8,
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _Skeleton(height: dense ? 36 : 44),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Skeleton extends StatelessWidget {
-  final double height;
-  const _Skeleton({required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor),
       ),
     );
   }
 }
 
-/* =========================
-   Diálogo de EDICIÓN (solo profesor)
-   ========================= */
-
 class _ProfesorDialog extends StatefulWidget {
   const _ProfesorDialog({required this.data});
   final Map<String, dynamic> data;
-
   @override
   State<_ProfesorDialog> createState() => _ProfesorDialogState();
 }
 
 class _ProfesorDialogState extends State<_ProfesorDialog> {
   final _formKey = GlobalKey<FormState>();
+  // Controladores para los campos editables
   final _espCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
   final _dirCtrl = TextEditingController();
@@ -1030,6 +946,7 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
   @override
   void initState() {
     super.initState();
+    // Inicializar valores existentes
     final d = widget.data;
     _espCtrl.text = d['especialidad'] ?? '';
     _telCtrl.text = d['telefono'] ?? '';
@@ -1049,9 +966,10 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final token = await Session.getToken();
+      final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
 
+      // Enviar solo los campos que la API espera para update
       await ApiService.putProfesor(
         token: token,
         idProfesor: (widget.data['id_profesor'] as num).toInt(),
@@ -1061,7 +979,7 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
         activo: _activo,
       );
 
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop(true); // Retorna true si guardó
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -1072,50 +990,105 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Preparar datos de solo lectura
     final nombre = (widget.data['nombre_usuario'] ?? widget.data['nombre'] ?? '').toString();
     final correo = (widget.data['correo'] ?? '').toString();
+    final cs = Theme.of(context).colorScheme;
 
     return AlertDialog(
       title: const Text('Editar profesor'),
+      scrollable: true, // Hace que el contenido sea scrolleable si es muy alto
       content: SizedBox(
-        width: 520,
+        width: 420, // Un poco más ancho para la dirección
         child: Form(
           key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                TextFormField(
-                  enabled: false,
-                  initialValue: '$nombre · $correo',
-                  decoration: const InputDecoration(labelText: 'Usuario'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Campo de solo lectura (Nombre y Correo restaurados)
+              TextFormField(
+                initialValue: '$nombre\n$correo',
+                enabled: false,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Usuario (Solo lectura)',
+                  prefixIcon: Icon(Icons.person_outline, color: cs.onSurfaceVariant),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12)
                 ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _espCtrl,
-                  decoration: const InputDecoration(labelText: 'Especialidad'),
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+
+              // Campos editables con iconos
+              TextFormField(
+                controller: _espCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Especialidad',
+                  prefixIcon: Icon(Icons.school_outlined),
+                  border: OutlineInputBorder(),
                 ),
-                TextFormField(
-                  controller: _telCtrl,
-                  decoration: const InputDecoration(labelText: 'Teléfono'),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+  controller: _telCtrl,
+  keyboardType: TextInputType.phone,
+  decoration: const InputDecoration(labelText: 'Teléfono', prefixIcon: Icon(Icons.phone_outlined), border: OutlineInputBorder()),
+  // AGREGAR ESTO:
+  validator: (value) {
+    if (value != null && value.isNotEmpty) {
+      if (value.length < 7) return 'Número muy corto';
+      // Regex simple para permitir solo números, espacios y guiones
+      if (!RegExp(r'^[0-9\-\+\s]+$').hasMatch(value)) return 'Caracteres no válidos';
+    }
+    return null;
+  },
+),
+              const SizedBox(height: 16),
+              // Campo de Dirección RESTAURADO
+              TextFormField(
+  controller: _dirCtrl,
+  maxLines: 2,
+  decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined), border: OutlineInputBorder()),
+  // AGREGAR ESTO:
+  validator: (value) {
+    if (value == null || value.trim().isEmpty) return 'La dirección es obligatoria';
+    return null;
+  },
+),
+              const SizedBox(height: 16),
+              
+              // Switch de Activo estilizado
+              Container(
+                decoration: BoxDecoration(
+                  color: _activo ? cs.primaryContainer.withOpacity(0.2) : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _activo ? cs.primary.withOpacity(0.3) : cs.outlineVariant)
                 ),
-                TextFormField(
-                  controller: _dirCtrl,
-                  decoration: const InputDecoration(labelText: 'Dirección'),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   value: _activo,
                   onChanged: (v) => setState(() => _activo = v),
-                  title: const Text('Activo'),
+                  title: Text('Usuario Activo', style: TextStyle(fontWeight: FontWeight.w600, color: _activo ? cs.primary : cs.onSurface)),
+                  secondary: Icon(Icons.check_circle_outline, color: _activo ? cs.primary : cs.onSurfaceVariant),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(false), child: const Text('Cancelar')),
-        FilledButton(onPressed: _saving ? null : _save, child: const Text('Guardar')),
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+          label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
+        ),
       ],
     );
   }

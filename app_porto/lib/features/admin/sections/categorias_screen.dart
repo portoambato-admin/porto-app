@@ -24,10 +24,10 @@ class AdminCategoriasScreen extends StatefulWidget {
   State<AdminCategoriasScreen> createState() => _AdminCategoriasScreenState();
 }
 
-// ==== Intents propios para atajos (Ctrl+F / Ctrl+N / Ctrl+R) ====
-class _FocusSearchIntent extends Intent { const _FocusSearchIntent(); } // Ctrl+F
-class _NewIntent extends Intent { const _NewIntent(); }                 // Ctrl+N
-class _ReloadIntent extends Intent { const _ReloadIntent(); }           // Ctrl+R
+// ==== Intents propios para atajos ====
+class _FocusSearchIntent extends Intent { const _FocusSearchIntent(); }
+class _NewIntent extends Intent { const _NewIntent(); }
+class _ReloadIntent extends Intent { const _ReloadIntent(); }
 
 enum _ViewMode { table, cards }
 
@@ -51,8 +51,8 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
   bool _loading = false;
   String? _error;
 
-  // Preferencias visuales (solo UI)
-  _ViewMode _viewMode = _ViewMode.table;
+  // Preferencias visuales
+  _ViewMode _viewMode = _ViewMode.cards;
   bool _dense = false;
 
   // Paginación por pestaña
@@ -89,7 +89,7 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     super.dispose();
   }
 
-  // ===== Debouncer de búsqueda =====
+  // ===== Lógica de Búsqueda y Carga =====
   void _onSearchChanged() {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
@@ -121,7 +121,6 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     await _loadData(_tab.index);
   }
 
-  // ==== Helpers de orden natural por nombre ("Sub-4" < "Sub-10") ====
   int? _numFromName(String? s) {
     if (s == null) return null;
     final m = RegExp(r'(\d+)').firstMatch(s);
@@ -134,10 +133,10 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     final na = _numFromName(sa);
     final nb = _numFromName(sb);
 
-    if (na != null && nb != null) return na.compareTo(nb);      // natural (numérico)
-    if (na != null) return -1;                                  // con número primero
+    if (na != null && nb != null) return na.compareTo(nb);
+    if (na != null) return -1;
     if (nb != null) return 1;
-    return sa.toLowerCase().compareTo(sb.toLowerCase());        // alfabético
+    return sa.toLowerCase().compareTo(sb.toLowerCase());
   }
 
   Future<void> _loadData(int tabIndex) async {
@@ -157,12 +156,11 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
         page: page,
         pageSize: pageSize,
         q: _q,
-        sort: 'nombre_categoria', // el backend ordena lexicográfico; aquí corregimos a natural
+        sort: 'nombre_categoria',
         order: 'asc',
         onlyActive: onlyActive,
       );
 
-      // Orden natural por nombre (Sub-4 < Sub-10) **dentro de la página**
       final items = List<Map<String, dynamic>>.from(res['items'] as List)
         ..sort((a, b) => _compareCategoria(a['nombre'], b['nombre']));
 
@@ -204,10 +202,31 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
         await _repo.activate((r['id'] as num).toInt());
         _showSnack('Categoría activada');
       }
+      _actItems.clear(); 
+      _inaItems.clear();
+      _allItems.clear();
       await _loadCurrent();
     } catch (e) {
       _showSnack('Error: $e');
     }
+  }
+
+  // ========================= DIÁLOGO MODERNO =========================
+  
+  InputDecoration _modernInputDeco(String label, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.8)),
+      prefixIcon: Icon(icon, color: cs.primary.withOpacity(0.7), size: 22),
+      filled: true,
+      fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.transparent)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cs.primary, width: 1.5)),
+      errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cs.error.withOpacity(0.5))),
+    );
   }
 
   Future<bool?> _openForm({Map<String, dynamic>? row}) async {
@@ -216,129 +235,198 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     final edadMin = TextEditingController(text: row?['edadMin']?.toString() ?? '');
     final edadMax = TextEditingController(text: row?['edadMax']?.toString() ?? '');
     bool activa = row?['activo'] == true || row == null;
+    bool isSaving = false;
+    final cs = Theme.of(context).colorScheme;
 
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(row == null ? 'Nueva categoría' : 'Editar categoría'),
-          content: SizedBox(
-            width: 480,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nombre,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre de categoría',
-                      prefixIcon: Icon(Icons.label),
+      builder: (ctx) => StatefulBuilder(
+        builder: (innerCtx, setInnerState) {
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            backgroundColor: cs.surface,
+            elevation: 8,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header con Gradiente
+                    Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.blue.shade800, Colors.blue.shade400],
+                              begin: Alignment.topLeft, end: Alignment.bottomRight,
+                            ),
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8, right: 8,
+                          child: IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            onPressed: () => Navigator.pop(innerCtx, false),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: -40,
+                          child: Hero(
+                            tag: row != null ? 'cat_icon_${row['id']}' : 'new_cat_icon',
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: cs.surface,
+                                shape: BoxShape.circle,
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+                              ),
+                              child: CircleAvatar(
+                                radius: 38,
+                                backgroundColor: Colors.blue.shade50,
+                                child: Icon(Icons.category_rounded, size: 36, color: Colors.blue.shade700),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    maxLength: 60,
-                    validator: (v) {
-                      final s = v?.trim() ?? '';
-                      if (s.isEmpty) return 'Requerido';
-                      if (s.length < 3) return 'Muy corto';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: edadMin,
-                          decoration: const InputDecoration(
-                            labelText: 'Edad mínima (opcional)',
-                            prefixIcon: Icon(Icons.cake_outlined),
-                          ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    const SizedBox(height: 50),
+                    
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(row == null ? 'Nueva Categoría' : 'Editar Categoría', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: cs.onSurface)),
+                    ),
+
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: nombre,
+                              decoration: _modernInputDeco('Nombre de categoría', Icons.label_outline),
+                              maxLength: 60,
+                              validator: (v) {
+                                final s = v?.trim() ?? '';
+                                if (s.isEmpty) return 'Requerido';
+                                if (s.length < 3) return 'Muy corto';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: edadMin,
+                                    decoration: _modernInputDeco('Edad mínima', Icons.arrow_downward),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: edadMax,
+                                    decoration: _modernInputDeco('Edad máxima', Icons.arrow_upward),
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Switch Estilizado
+                            Container(
+                              decoration: BoxDecoration(
+                                color: activa ? Colors.green.withOpacity(0.1) : cs.surfaceContainerHighest.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: activa ? Colors.green.withOpacity(0.3) : cs.outlineVariant)
+                              ),
+                              child: SwitchListTile(
+                                value: activa,
+                                onChanged: (v) => setInnerState(() => activa = v),
+                                title: Text('Categoría Activa', style: TextStyle(fontWeight: FontWeight.w600, color: activa ? Colors.green.shade700 : cs.onSurface)),
+                                secondary: Icon(Icons.check_circle_outline, color: activa ? Colors.green : cs.onSurfaceVariant),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                            const SizedBox(height: 32),
+
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: FilledButton(
+                                onPressed: isSaving ? null : () async {
+                                  if (!formKey.currentState!.validate()) return;
+                                  setInnerState(() => isSaving = true);
+                                  try {
+                                    if (row == null) {
+                                      await _repo.crear(
+                                        nombre: nombre.text.trim(),
+                                        edadMin: int.tryParse(edadMin.text.trim()),
+                                        edadMax: int.tryParse(edadMax.text.trim()),
+                                        activa: activa,
+                                      );
+                                    } else {
+                                      await _repo.update(
+                                        idCategoria: (row['id'] as num).toInt(),
+                                        nombre: nombre.text.trim(),
+                                        edadMin: int.tryParse(edadMin.text.trim()),
+                                        edadMax: int.tryParse(edadMax.text.trim()),
+                                        activa: activa,
+                                      );
+                                    }
+                                    if (mounted) Navigator.pop(innerCtx, true);
+                                  } catch (e) {
+                                    setInnerState(() => isSaving = false);
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: cs.error));
+                                  }
+                                },
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade700,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                                ),
+                                child: isSaving 
+                                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : Text(row == null ? 'CREAR CATEGORÍA' : 'GUARDAR CAMBIOS', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextFormField(
-                          controller: edadMax,
-                          decoration: const InputDecoration(
-                            labelText: 'Edad máxima (opcional)',
-                            prefixIcon: Icon(Icons.cake),
-                          ),
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    value: activa,
-                    onChanged: (v) => activa = v,
-                    title: const Text('Activa'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                try {
-                  if (row == null) {
-                    await _repo.crear(
-                      nombre: nombre.text.trim(),
-                      edadMin: int.tryParse(edadMin.text.trim()),
-                      edadMax: int.tryParse(edadMax.text.trim()),
-                      activa: activa,
-                    );
-                  } else {
-                    await _repo.update(
-                      idCategoria: (row['id'] as num).toInt(),
-                      nombre: nombre.text.trim(),
-                      edadMin: int.tryParse(edadMin.text.trim()),
-                      edadMax: int.tryParse(edadMax.text.trim()),
-                      activa: activa,
-                    );
-                  }
-                  if (mounted) Navigator.pop(ctx, true);
-                } catch (e) {
-                  _showSnack('Error: $e');
-                }
-              },
-              child: Text(row == null ? 'Crear' : 'Guardar'),
-            ),
-          ],
-        );
-      },
+          );
+        }
+      ),
     );
   }
 
   // ===================== EXPORTACIONES ======================
 
-  // Menú de formatos
   Future<void> _showExportOptions() async {
     final sel = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Exportar categorías'),
         children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'csv'),
-            child: const ListTile(leading: Icon(Icons.table_rows), title: Text('CSV')),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'xlsx'),
-            child: const ListTile(leading: Icon(Icons.grid_on), title: Text('Excel (.xlsx)')),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, 'pdf'),
-            child: const ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('PDF')),
-          ),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'csv'), child: const ListTile(leading: Icon(Icons.table_rows), title: Text('CSV'))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'xlsx'), child: const ListTile(leading: Icon(Icons.grid_on), title: Text('Excel (.xlsx)'))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'pdf'), child: const ListTile(leading: Icon(Icons.picture_as_pdf), title: Text('PDF'))),
         ],
       ),
     );
@@ -350,17 +438,13 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     }
   }
 
-  // Obtiene datos y nombre base según pestaña
   (List<Map<String, dynamic>> data, String baseName) _currentExportData() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
-    final name = tab == 0
-        ? 'categorias_activas'
-        : (tab == 1 ? 'categorias_inactivas' : 'categorias_todas');
+    final name = tab == 0 ? 'categorias_activas' : (tab == 1 ? 'categorias_inactivas' : 'categorias_todas');
     return (data, name);
   }
 
-  // Guarda bytes de forma cross-platform
   Future<void> _saveBytes(Uint8List bytes, String filename, String mimeType, {List<String>? exts}) async {
     if (kIsWeb) {
       final blob = html.Blob([bytes], mimeType);
@@ -370,20 +454,16 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
       html.Url.revokeObjectUrl(url);
       return;
     }
-    // Nativo: intenta "Descargas", si no existe usa "Documentos"
     dynamic dir = await getDownloadsDirectory();
     dir ??= await getApplicationDocumentsDirectory();
     final String targetPath = '${dir.path}/$filename';
-
     final xf = XFile.fromData(bytes, name: filename, mimeType: mimeType);
     await xf.saveTo(targetPath);
     _showSnack('Guardado en: $targetPath');
   }
 
-  // ===== CSV =====
   void _exportCsvCurrent() {
     final (data, base) = _currentExportData();
-
     final csv = StringBuffer()..writeln('ID,Categoria,EdadMin,EdadMax,Activo,Creado');
     for (final r in data) {
       final id = r['id'] ?? '';
@@ -395,64 +475,34 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
       csv.writeln('$id,$nom,$eMin,$eMax,$act,$cre');
     }
     final content = csv.toString();
-    final bytes = Uint8List.fromList(<int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content))); // BOM para Excel
+    final bytes = Uint8List.fromList(<int>[0xEF, 0xBB, 0xBF]..addAll(utf8.encode(content))); 
     _saveBytes(bytes, '$base.csv', 'text/csv', exts: const ['csv']);
   }
 
   static String _csvEscape(Object? v) {
     final s = v?.toString() ?? '';
-    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-      return '"${s.replaceAll('"', '""')}"';
-    }
+    if (s.contains(',') || s.contains('"') || s.contains('\n')) return '"${s.replaceAll('"', '""')}"';
     return s;
   }
 
-  // ===== Excel (.xlsx) =====
   Future<void> _exportExcelCurrent() async {
     final (data, base) = _currentExportData();
-
     final book = xls.Excel.createExcel();
     const sheetName = 'Categorias';
     final defaultSheet = book.getDefaultSheet();
-    if (defaultSheet != null) {
-      book.rename(defaultSheet, sheetName);
-    }
+    if (defaultSheet != null) book.rename(defaultSheet, sheetName);
     final sheet = book[sheetName];
-
-    // Encabezados como TextCellValue
-    sheet.appendRow( [
-      xls.TextCellValue('ID'),
-      xls.TextCellValue('Categoría'),
-      xls.TextCellValue('EdadMin'),
-      xls.TextCellValue('EdadMax'),
-      xls.TextCellValue('Activo'),
-      xls.TextCellValue('Creado'),
-    ]);
-
-    // Filas con CellValue
+    sheet.appendRow([xls.TextCellValue('ID'), xls.TextCellValue('Categoría'), xls.TextCellValue('EdadMin'), xls.TextCellValue('EdadMax'), xls.TextCellValue('Activo'), xls.TextCellValue('Creado')]);
     for (final r in data) {
       sheet.appendRow([
-        xls.TextCellValue('${r['id'] ?? ''}'),
-        xls.TextCellValue('${r['nombre'] ?? ''}'),
-        xls.TextCellValue('${r['edadMin'] ?? ''}'),
-        xls.TextCellValue('${r['edadMax'] ?? ''}'),
-        xls.TextCellValue(r['activo'] == true ? '1' : '0'),
-        xls.TextCellValue((r['creadoEn']?.toString().split('T').first) ?? ''),
+        xls.TextCellValue('${r['id'] ?? ''}'), xls.TextCellValue('${r['nombre'] ?? ''}'), xls.TextCellValue('${r['edadMin'] ?? ''}'), xls.TextCellValue('${r['edadMax'] ?? ''}'), xls.TextCellValue(r['activo'] == true ? '1' : '0'), xls.TextCellValue((r['creadoEn']?.toString().split('T').first) ?? '')
       ]);
     }
-
     final bytes = Uint8List.fromList(book.encode()!);
-    await _saveBytes(
-      bytes,
-      '$base.xlsx',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      exts: const ['xlsx'],
-    );
+    await _saveBytes(bytes, '$base.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', exts: const ['xlsx']);
   }
-
-  // ======== Helpers de PDF mejorado ========
+  
   String _two(int n) => n < 10 ? '0$n' : '$n';
-
   String get _tabLabel {
     switch (_tab.index) {
       case 0: return 'Activas';
@@ -460,166 +510,44 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
       default: return 'Todas';
     }
   }
+  pw.Widget _badge(String text) => pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4), margin: const pw.EdgeInsets.only(right: 6), decoration: pw.BoxDecoration(color: PdfColor.fromInt(0xFFEFF6FF), border: pw.Border.all(color: PdfColor.fromInt(0xFFBFD7FF)), borderRadius: pw.BorderRadius.circular(8)), child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)));
+  pw.Widget _hCell(String t) => pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(t, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)));
+  pw.Widget _cCell(String t) => pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: pw.Text(t, style: const pw.TextStyle(fontSize: 10)));
 
-  pw.Widget _badge(String text) => pw.Container(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        margin: const pw.EdgeInsets.only(right: 6),
-        decoration: pw.BoxDecoration(
-          color: PdfColor.fromInt(0xFFEFF6FF),
-          border: pw.Border.all(color: PdfColor.fromInt(0xFFBFD7FF)),
-          borderRadius: pw.BorderRadius.circular(8),
-        ),
-        child: pw.Text(text, style: const pw.TextStyle(fontSize: 10)),
-      );
-
-  pw.Widget _hCell(String t) => pw.Padding(
-        padding: const pw.EdgeInsets.all(6),
-        child: pw.Text(t, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
-      );
-
-  pw.Widget _cCell(String t) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-        child: pw.Text(t, style: const pw.TextStyle(fontSize: 10)),
-      );
-
-  // ===== PDF (formato mejorado) =====
   Future<void> _exportPdfCurrent() async {
     final (data, base) = _currentExportData();
-
     final now = DateTime.now();
-    final fecha = '${now.year}-${_two(now.month)}-${_two(now.day)} '
-        '${_two(now.hour)}:${_two(now.minute)}';
-
+    final fecha = '${now.year}-${_two(now.month)}-${_two(now.day)} ${_two(now.hour)}:${_two(now.minute)}';
     final headerBg = PdfColor.fromInt(0xFFEFEFEF);
     final altRowBg = PdfColor.fromInt(0xFFF7F7F7);
     final borderClr = PdfColor.fromInt(0xFFBBBBBB);
-
     final doc = pw.Document();
-
-    // Filas del cuerpo (zebra)
     final bodyRows = <pw.TableRow>[];
     for (var i = 0; i < data.length; i++) {
       final r = data[i];
       final isAlt = i.isOdd;
-      bodyRows.add(
-        pw.TableRow(
-          decoration: isAlt ? pw.BoxDecoration(color: altRowBg) : null,
-          children: [
-            _cCell('${r['id'] ?? ''}'),
-            _cCell('${r['nombre'] ?? ''}'),
-            _cCell('${r['edadMin'] ?? ''}'),
-            _cCell('${r['edadMax'] ?? ''}'),
-            _cCell((r['activo'] == true) ? 'Sí' : 'No'),
-            _cCell((r['creadoEn']?.toString().split('T').first) ?? ''),
-          ],
-        ),
-      );
+      bodyRows.add(pw.TableRow(decoration: isAlt ? pw.BoxDecoration(color: altRowBg) : null, children: [_cCell('${r['id'] ?? ''}'), _cCell('${r['nombre'] ?? ''}'), _cCell('${r['edadMin'] ?? ''}'), _cCell('${r['edadMax'] ?? ''}'), _cCell((r['activo'] == true) ? 'Sí' : 'No'), _cCell((r['creadoEn']?.toString().split('T').first) ?? '')]));
     }
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 36),
-        footer: (ctx) => pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text(
-            'Página ${ctx.pageNumber} / ${ctx.pagesCount}',
-            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-          ),
-        ),
-        build: (ctx) => [
-          // ===== Encabezado del reporte =====
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Reporte de Categorías',
-                        style: pw.TextStyle(
-                          fontSize: 18,
-                          fontWeight: pw.FontWeight.bold,
-                        )),
-                    pw.SizedBox(height: 2),
-                    pw.Text('Academia de Fútbol PortoAmbato',
-                        style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
-                  ],
-                ),
-              ),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text('Exportado: $fecha', style: const pw.TextStyle(fontSize: 10)),
-                  pw.Text('Vista: $_tabLabel', style: const pw.TextStyle(fontSize: 10)),
-                ],
-              ),
-            ],
-          ),
-          pw.SizedBox(height: 8),
-
-          // ===== Chips de criterios (si aplica) =====
-          if (_q != null && _q!.isNotEmpty) pw.Row(children: [_badge('Búsqueda: "${_q!}"')]),
-          if (_q != null && _q!.isNotEmpty) pw.SizedBox(height: 8),
-
-          // ===== Tabla =====
-          pw.Container(
-            decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: borderClr, width: 0.5),
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Table(
-              border: pw.TableBorder(
-                left: pw.BorderSide(color: borderClr, width: 0.5),
-                right: pw.BorderSide(color: borderClr, width: 0.5),
-                horizontalInside: pw.BorderSide(color: borderClr, width: 0.5),
-              ),
-              columnWidths: <int, pw.TableColumnWidth>{
-                0: const pw.FixedColumnWidth(40),   // ID
-                1: const pw.FlexColumnWidth(3),     // Categoría
-                2: const pw.FixedColumnWidth(45),   // EdadMin
-                3: const pw.FixedColumnWidth(45),   // EdadMax
-                4: const pw.FixedColumnWidth(45),   // Activo
-                5: const pw.FixedColumnWidth(80),   // Creado
-              },
-              children: [
-                // Header
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: headerBg),
-                  children: [
-                    _hCell('ID'),
-                    _hCell('Categoría'),
-                    _hCell('EdadMin'),
-                    _hCell('EdadMax'),
-                    _hCell('Activo'),
-                    _hCell('Creado'),
-                  ],
-                ),
-                // Body
-                ...bodyRows,
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 8),
-
-          // ===== Total =====
-          pw.Align(
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text('Total: ${data.length}',
-                style:  pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-
+    doc.addPage(pw.MultiPage(
+      pageFormat: PdfPageFormat.a4.landscape, margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 36),
+      footer: (ctx) => pw.Align(alignment: pw.Alignment.centerRight, child: pw.Text('Página ${ctx.pageNumber} / ${ctx.pagesCount}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))),
+      build: (ctx) => [
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Text('Reporte de Categorías', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)), pw.SizedBox(height: 2), pw.Text('Academia de Fútbol PortoAmbato', style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700))])), pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [pw.Text('Exportado: $fecha', style: const pw.TextStyle(fontSize: 10)), pw.Text('Vista: $_tabLabel', style: const pw.TextStyle(fontSize: 10))])]),
+        pw.SizedBox(height: 8),
+        if (_q != null && _q!.isNotEmpty) pw.Row(children: [_badge('Búsqueda: "${_q!}"')]),
+        if (_q != null && _q!.isNotEmpty) pw.SizedBox(height: 8),
+        pw.Container(decoration: pw.BoxDecoration(border: pw.Border.all(color: borderClr, width: 0.5), borderRadius: pw.BorderRadius.circular(6)), child: pw.Table(border: pw.TableBorder(left: pw.BorderSide(color: borderClr, width: 0.5), right: pw.BorderSide(color: borderClr, width: 0.5), horizontalInside: pw.BorderSide(color: borderClr, width: 0.5)), columnWidths: <int, pw.TableColumnWidth>{0: const pw.FixedColumnWidth(40), 1: const pw.FlexColumnWidth(3), 2: const pw.FixedColumnWidth(45), 3: const pw.FixedColumnWidth(45), 4: const pw.FixedColumnWidth(45), 5: const pw.FixedColumnWidth(80)}, children: [pw.TableRow(decoration: pw.BoxDecoration(color: headerBg), children: [_hCell('ID'), _hCell('Categoría'), _hCell('EdadMin'), _hCell('EdadMax'), _hCell('Activo'), _hCell('Creado')]), ...bodyRows])),
+        pw.SizedBox(height: 8),
+        pw.Align(alignment: pw.Alignment.centerRight, child: pw.Text('Total: ${data.length}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold))),
+      ],
+    ));
     final bytes = await doc.save();
     await _saveBytes(bytes, '$base.pdf', 'application/pdf', exts: const ['pdf']);
   }
 
-  // ===================== FIN EXPORTACIONES ======================
+  void _showSnack(String msg) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg))); }
 
-  // ===== Paginación =====
+  // ===== Paginación (Corrección: Métodos dentro de la clase) =====
   void _onPageChange(int tabIndex, int newPage) {
     if (newPage < 1) return;
     int totalItems, pageSize;
@@ -655,21 +583,12 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     _loadCurrent();
   }
 
-  // ===== Helpers UI =====
-  void _showSnack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
   // ====================================================================
   // ============================ BUILD =================================
   // ====================================================================
   @override
   Widget build(BuildContext context) {
-    final isFirstLoad = _loading &&
-        _actItems.isEmpty &&
-        _inaItems.isEmpty &&
-        _allItems.isEmpty;
+    final isFirstLoad = _loading && _actItems.isEmpty && _inaItems.isEmpty && _allItems.isEmpty;
 
     final core = LayoutBuilder(
       builder: (ctx, c) {
@@ -677,7 +596,7 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
         const double maxContentWidth = 1200;
         final double width = c.maxWidth > maxContentWidth ? maxContentWidth : c.maxWidth;
 
-        final header = _buildHeader(context, isNarrow);
+        final header = _buildModernHeader(context);
 
         final tabs = TabBar(
           controller: _tab,
@@ -716,16 +635,9 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
                 Expanded(
                   child: Stack(
                     children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: content,
-                      ),
+                      AnimatedSwitcher(duration: const Duration(milliseconds: 220), child: content),
                       if (_loading && !isFirstLoad)
-                        const Positioned(
-                          right: 12,
-                          top: 8,
-                          child: _LoadingChip(),
-                        ),
+                        const Positioned(right: 12, top: 8, child: _LoadingChip()),
                     ],
                   ),
                 ),
@@ -745,148 +657,50 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
   }
 
   // ===== Header alineado al formato =====
-  Widget _buildHeader(BuildContext context, bool isNarrow) {
-    final activeFilters = Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        if (_q != null)
-          InputChip(
-            label: Text('Búsqueda: "${_q!}"'),
-            onDeleted: () { _searchCtrl.clear(); _loadCurrent(); },
-            avatar: const Icon(Icons.search, size: 18),
-          ),
-        InputChip(
-          label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
-          avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
-          onPressed: () => setState(() {
-            _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
-          }),
-        ),
-        InputChip(
-          label: Text(_dense ? 'Denso' : 'Cómodo'),
-          avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
-          onPressed: () => setState(() => _dense = !_dense),
-        ),
-      ],
-    );
-
-    final searchField = TextField(
-      controller: _searchCtrl,
-      focusNode: _searchFocus,
-      decoration: InputDecoration(
-        hintText: 'Buscar por nombre…',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Tooltip(
-              message: 'Limpiar',
-              child: IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: () { _searchCtrl.clear(); _loadCurrent(); },
-              ),
-            ),
-            Tooltip(
-              message: 'Recargar (Ctrl+R)',
-              child: IconButton(icon: const Icon(Icons.refresh), onPressed: _loadCurrent),
-            ),
-          ],
-        ),
+  Widget _buildModernHeader(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
       ),
-      onSubmitted: (_) => _loadCurrent(),
-      textInputAction: TextInputAction.search,
-    );
-
-    final viewSelector = SegmentedButton<_ViewMode>(
-      segments: const [
-        ButtonSegment<_ViewMode>(value: _ViewMode.table, icon: Icon(Icons.table_chart), label: Text('Tabla')),
-        ButtonSegment<_ViewMode>(value: _ViewMode.cards,  icon: Icon(Icons.view_agenda), label: Text('Tarjetas')),
-      ],
-      selected: {_viewMode},
-      onSelectionChanged: (s) => setState(() => _viewMode = s.first),
-    );
-
-    final perPage = DropdownButtonFormField<int>(
-      value: switch (_tab.index) {
-        0 => _actPageSize,
-        1 => _inaPageSize,
-        _ => _allPageSize,
-      },
-      decoration: const InputDecoration(
-        prefixIcon: Icon(Icons.format_list_numbered),
-        labelText: 'Por página',
-      ),
-      items: const [
-        DropdownMenuItem(value: 10, child: Text('10')),
-        DropdownMenuItem(value: 20, child: Text('20')),
-        DropdownMenuItem(value: 50, child: Text('50')),
-      ],
-      onChanged: (v) {
-        if (v == null) return;
-        setState(() {
-          if (_tab.index == 0) { _actPageSize = v; _actPage = 1; }
-          else if (_tab.index == 1) { _inaPageSize = v; _inaPage = 1; }
-          else { _allPageSize = v; _allPage = 1; }
-        });
-        _loadCurrent();
-      },
-    );
-
-    // ⬇️ Botón Exportar -> abre diálogo para CSV / Excel / PDF
-    final exportBtn = OutlinedButton.icon(
-      onPressed: _showExportOptions,
-      icon: const Icon(Icons.download),
-      label: const Text('Exportar'),
-    );
-
-    // ✅ Botón azul “Nueva”
-    final add = FilledButton.icon(
-      onPressed: _onNew,
-      icon: const Icon(Icons.add),
-      label: const Text('Nueva'),
-    );
-
-    if (isNarrow) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          searchField,
-          const SizedBox(height: 8),
-          viewSelector,
-          const SizedBox(height: 8),
-          perPage,
-          const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            exportBtn,
-            const SizedBox(width: 8),
-            add,
-          ]),
-          const SizedBox(height: 8),
-          activeFilters,
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              focusNode: _searchFocus,
+              decoration: InputDecoration(
+                hintText: 'Buscar por nombre…',
+                prefixIcon: Icon(Icons.search, color: cs.primary),
+                filled: true,
+                fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                suffixIcon: _searchCtrl.text.isNotEmpty ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _searchCtrl.clear(); _loadCurrent(); }) : null,
+              ),
+              onChanged: (_) => _onSearchChanged(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withOpacity(0.4), borderRadius: BorderRadius.circular(12)),
+            child: Row(
+              children: [
+                IconButton(icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.cards)),
+                Container(width: 1, height: 20, color: cs.outlineVariant),
+                IconButton(icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.table)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconButton(tooltip: 'Exportar', icon: const Icon(Icons.download_rounded), onPressed: _showExportOptions),
+          const SizedBox(width: 8),
+          FilledButton.icon(onPressed: _onNew, icon: const Icon(Icons.add), label: const Text('Nueva')),
         ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(child: searchField),
-            const SizedBox(width: 8),
-            SizedBox(width: 240, child: viewSelector),
-            const SizedBox(width: 8),
-            SizedBox(width: 180, child: perPage),
-            const Spacer(),
-            exportBtn,
-            const SizedBox(width: 8),
-            add, // ← visible en desktop
-          ],
-        ),
-        const SizedBox(height: 8),
-        activeFilters,
-      ],
+      ),
     );
   }
 
@@ -910,14 +724,6 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
       default: currentPage = _actPage; totalItems = _actTotal; pageSize = _actPageSize; break;
     }
 
-    final paginator = _PaginationControls(
-      currentPage: currentPage,
-      totalItems: totalItems,
-      pageSize: pageSize,
-      onPageChange: (newPage) => _onPageChange(tabIndex, newPage),
-      onPageSizeChange: (newSize) => _onPageSizeChange(tabIndex, newSize),
-    );
-
     if (items.isEmpty && !_loading) {
       return Column(
         children: [
@@ -933,8 +739,6 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
               }),
             ),
           ),
-          const SizedBox(height: 8),
-          paginator,
         ],
       );
     }
@@ -946,36 +750,30 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     return Column(
       children: [
         Expanded(child: content),
-        if (totalItems > pageSize) paginator,
+        _PaginationControls(
+          currentPage: currentPage,
+          totalItems: totalItems,
+          pageSize: pageSize,
+          onPageChange: (newPage) => _onPageChange(tabIndex, newPage),
+          onPageSizeChange: (newSize) => _onPageSizeChange(tabIndex, newSize),
+        ),
       ],
     );
   }
 
-  // Encabezado “seguro” para DataColumn (evita overflow)
-  Widget _th(String s) => FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Text(s),
-      );
+  Widget _th(String s) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(s));
 
-  // ===== Tabla (desktop) =====
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-    final isNarrow = MediaQuery.of(context).size.width < 820;
-    final textStyle = _dense
-        ? Theme.of(context).textTheme.bodySmall
-        : Theme.of(context).textTheme.bodyMedium;
-
-    return ScrollConfiguration(
-      behavior: const ScrollBehavior().copyWith(scrollbars: true),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ClipRect( // evita artefactos de overflow en modo debug
+    final cs = Theme.of(context).colorScheme;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: cs.outlineVariant.withOpacity(0.4))),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
           child: DataTable(
-            columnSpacing: isNarrow ? 16 : 24,
-            horizontalMargin: 12,
-            headingRowHeight: _dense ? 36 : 48,
-            dataRowMinHeight: _dense ? 32 : 44,
-            dataRowMaxHeight: _dense ? 40 : null,
+            headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
             columns: [
               DataColumn(label: _th('ID')),
               DataColumn(label: _th('Categoría')),
@@ -986,22 +784,17 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
             ],
             rows: rows.map((r) {
               final bool activo = r['activo'] == true;
-              final String edades = [
-                r['edadMin']?.toString(),
-                r['edadMax']?.toString(),
-              ].where((e) => (e != null && e.isNotEmpty)).join(' - ');
-              final estadoIcon = Icon(
-                activo ? Icons.check_circle : Icons.cancel,
-                color: activo ? Colors.green : Colors.grey,
-                size: _dense ? 18 : 20,
-                semanticLabel: activo ? 'Activa' : 'Inactiva',
-              );
+              final String edades = [r['edadMin']?.toString(), r['edadMax']?.toString()].where((e) => (e != null && e.isNotEmpty)).join(' - ');
               return DataRow(cells: [
-                DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-                DataCell(SelectableText(r['nombre']?.toString() ?? '', style: textStyle)),
-                DataCell(SelectableText(edades.isEmpty ? '—' : edades, style: textStyle)),
-                DataCell(estadoIcon),
-                DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
+                DataCell(Text(r['id']?.toString() ?? '', style: const TextStyle(fontFamily: 'monospace'))),
+                DataCell(Text(r['nombre']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.w600))),
+                DataCell(Text(edades.isEmpty ? '—' : edades)),
+                DataCell(Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: activo ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text(activo ? 'Activa' : 'Inactiva', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: activo ? Colors.green.shade700 : Colors.grey.shade700))
+                )),
+                DataCell(Text(r['creadoEn']?.toString().split('T').first ?? '')),
                 DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
               ]);
             }).toList(),
@@ -1011,56 +804,46 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     );
   }
 
-  // ===== Tarjetas (móvil) =====
   Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
-    final spacing = _dense ? 6.0 : 8.0;
-    final padding = EdgeInsets.all(_dense ? 10 : 12);
-
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 16),
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: rows.length,
-      separatorBuilder: (_, __) => SizedBox(height: spacing),
       itemBuilder: (ctx, i) {
         final r = rows[i];
         final bool activo = r['activo'] == true;
-        final String edades = [
-          r['edadMin']?.toString(),
-          r['edadMax']?.toString(),
-        ].where((e) => (e != null && e.isNotEmpty)).join(' - ');
+        final String edades = [r['edadMin']?.toString(), r['edadMax']?.toString()].where((e) => (e != null && e.isNotEmpty)).join(' - ');
 
-        return Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Theme.of(context).dividerColor),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Padding(
-            padding: padding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        r['nombre']?.toString() ?? '',
-                        style: Theme.of(context).textTheme.titleMedium,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      activo ? Icons.check_circle : Icons.cancel,
-                      size: 18,
-                      color: activo ? Colors.green : Colors.grey,
-                      semanticLabel: activo ? 'Activa' : 'Inactiva',
-                    ),
-                  ],
+                Hero(
+                  tag: 'cat_icon_${r['id']}',
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                    child: Icon(Icons.category_rounded, color: Colors.blue.shade700),
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(edades.isEmpty ? 'Sin rango de edad' : 'Edad: $edades'),
-                const SizedBox(height: 8),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(r['nombre']?.toString() ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      Text(edades.isEmpty ? 'Sin rango' : 'Edad: $edades', style: TextStyle(color: Theme.of(context).hintColor)),
+                    ],
+                  ),
+                ),
                 _rowActions(r: r, activo: activo, dense: true),
               ],
             ),
@@ -1070,38 +853,20 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     );
   }
 
-  // ===== Botonera por fila =====
   Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
-    final double iconSize = dense ? 20 : 24;
-    final EdgeInsets padding = EdgeInsets.all(dense ? 6 : 8);
-
-    return OverflowBar(
-      spacing: dense ? 4 : 8,
-      overflowSpacing: dense ? 4 : 8,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Tooltip(
-          message: 'Editar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            icon: const Icon(Icons.edit),
-            onPressed: () => _onEditDialog(r),
-          ),
-        ),
-        Tooltip(
-          message: activo ? 'Desactivar' : 'Activar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => _toggleEstado(r),
-          ),
+        IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _onEditDialog(r)),
+        IconButton(
+          icon: Icon(activo ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+          color: activo ? Colors.grey : Colors.green,
+          onPressed: () => _toggleEstado(r),
         ),
       ],
     );
   }
 
-  // ===== Atajos de teclado (Ctrl+F / Ctrl+N / Ctrl+R) =====
   Widget _withShortcuts(Widget child) {
     return FocusTraversalGroup(
       child: Shortcuts(
@@ -1112,15 +877,9 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
         },
         child: Actions(
           actions: <Type, Action<Intent>>{
-            _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-              onInvoke: (_) { _searchFocus.requestFocus(); return null; },
-            ),
-            _NewIntent: CallbackAction<_NewIntent>(
-              onInvoke: (_) { _onNew(); return null; },
-            ),
-            _ReloadIntent: CallbackAction<_ReloadIntent>(
-              onInvoke: (_) { _loadCurrent(); return null; },
-            ),
+            _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(onInvoke: (_) { _searchFocus.requestFocus(); return null; }),
+            _NewIntent: CallbackAction<_NewIntent>(onInvoke: (_) { _onNew(); return null; }),
+            _ReloadIntent: CallbackAction<_ReloadIntent>(onInvoke: (_) { _loadCurrent(); return null; }),
           },
           child: Focus(autofocus: true, child: child),
         ),
@@ -1132,213 +891,68 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
 // ======================= Widgets de apoyo UI =======================
 
 class _PaginationControls extends StatelessWidget {
-  final int currentPage;
-  final int totalItems;
-  final int pageSize;
+  final int currentPage, totalItems, pageSize;
   final void Function(int) onPageChange;
   final void Function(int) onPageSizeChange;
-
-  const _PaginationControls({
-    required this.currentPage,
-    required this.totalItems,
-    required this.pageSize,
-    required this.onPageChange,
-    required this.onPageSizeChange,
-  });
-
+  const _PaginationControls({required this.currentPage, required this.totalItems, required this.pageSize, required this.onPageChange, required this.onPageSizeChange});
   @override
   Widget build(BuildContext context) {
     int totalPages = (totalItems + pageSize - 1) ~/ pageSize;
     if (totalPages < 1) totalPages = 1;
-    final bool canGoBack = currentPage > 1;
-    final bool canGoFwd = currentPage < totalPages;
     final int from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-    final int rawTo = currentPage * pageSize;
-    final int to = rawTo > totalItems ? totalItems : rawTo;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      margin: const EdgeInsets.only(top: 8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Row(
-          children: [
-            Text('Mostrando $from–$to de $totalItems'),
-            const Spacer(),
-            DropdownButton<int>(
-              value: pageSize,
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(value: 10, child: Text('10 / pág.')),
-                DropdownMenuItem(value: 20, child: Text('20 / pág.')),
-                DropdownMenuItem(value: 50, child: Text('50 / pág.')),
-              ],
-              onChanged: (v) { if (v != null) onPageSizeChange(v); },
-            ),
-            IconButton(
-              icon: const Icon(Icons.first_page),
-              tooltip: 'Primera página',
-              onPressed: canGoBack ? () => onPageChange(1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Página anterior',
-              onPressed: canGoBack ? () => onPageChange(currentPage - 1) : null,
-            ),
-            Text('$currentPage / $totalPages'),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Página siguiente',
-              onPressed: canGoFwd ? () => onPageChange(currentPage + 1) : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.last_page),
-              tooltip: 'Última página',
-              onPressed: canGoFwd ? () => onPageChange(totalPages) : null,
-            ),
-          ],
-        ),
-      ),
+    final int to = (currentPage * pageSize) > totalItems ? totalItems : (currentPage * pageSize);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5)))),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text('$from-$to de $totalItems', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontWeight: FontWeight.w500)),
+        Row(children: [
+          IconButton(icon: const Icon(Icons.chevron_left), onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null),
+          IconButton(icon: const Icon(Icons.chevron_right), onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null),
+        ])
+      ]),
     );
   }
 }
 
 class _EmptyState extends StatelessWidget {
-  final String title;
-  final String subtitle;
+  final String title, subtitle;
   final (String, VoidCallback) primary;
   final (String, VoidCallback)? secondary;
-
-  const _EmptyState({
-    required this.title,
-    required this.subtitle,
-    required this.primary,
-    this.secondary,
-  });
-
+  const _EmptyState({required this.title, required this.subtitle, required this.primary, this.secondary});
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Theme.of(context).hintColor),
-            const SizedBox(height: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [
-                FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
-                if (secondary != null)
-                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.category_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)), const SizedBox(height: 16), Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 8), Text(subtitle, style: Theme.of(context).textTheme.bodyMedium), const SizedBox(height: 16), Wrap(spacing: 8, children: [FilledButton(onPressed: primary.$2, child: Text(primary.$1)), if (secondary != null) OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1))])]));
   }
 }
 
 class _ErrorView extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
+  final String error; final VoidCallback onRetry;
   const _ErrorView({required this.error, required this.onRetry});
-
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
-            const SizedBox(height: 12),
-            Text('Error al cargar datos', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56), const SizedBox(height: 12), Text('Error al cargar', style: Theme.of(context).textTheme.titleLarge), Text(error), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar'))]));
   }
 }
 
 class _LoadingChip extends StatelessWidget {
   const _LoadingChip();
-
   @override
-  Widget build(BuildContext context) {
-    return Chip(
-      avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-      label: const Text('Cargando…'),
-      visualDensity: VisualDensity.compact,
-    );
-  }
+  Widget build(BuildContext context) => Chip(avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)), label: const Text('Cargando…'));
 }
 
 class _LoadingPlaceholder extends StatelessWidget {
-  final bool isNarrow;
-  final _ViewMode viewMode;
-  final bool dense;
-
+  final bool isNarrow; final _ViewMode viewMode; final bool dense;
   const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
-
   @override
   Widget build(BuildContext context) {
-    if (viewMode == _ViewMode.cards || isNarrow) {
-      return ListView.builder(
-        itemCount: 6,
-        itemBuilder: (_, i) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: _Skeleton(height: dense ? 84 : 104),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        _Skeleton(height: dense ? 44 : 52),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            itemCount: 8,
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _Skeleton(height: dense ? 36 : 44),
-            ),
-          ),
-        ),
-      ],
-    );
+    return ListView.builder(itemCount: 6, itemBuilder: (_, __) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: _Skeleton(height: dense ? 84 : 104)));
   }
 }
 
 class _Skeleton extends StatelessWidget {
   final double height;
   const _Skeleton({required this.height});
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(height: height, decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4), borderRadius: BorderRadius.circular(12)));
 }

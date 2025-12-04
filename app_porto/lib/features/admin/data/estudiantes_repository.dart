@@ -12,21 +12,31 @@ class EstudiantesRepository {
       };
 
   Map<String, dynamic> _from(Map<String, dynamic> r) => {
-        'id': r['id_estudiante'] ?? r['id'],
-        'cedula': r['cedula'] ?? r['dni'] ?? r['documento'],
-        'nombres': r['nombres'],
-        'apellidos': r['apellidos'],
-        'telefono': r['telefono'],
-        'direccion': r['direccion'],
-        'fechaNacimiento': r['fecha_nacimiento'] ?? r['fechaNacimiento'],
-        'fecha_nacimiento': r['fecha_nacimiento'] ?? r['fechaNacimiento'],
-        'idAcademia': r['id_academia'] ?? r['idAcademia'],
-        'activo': r['activo'],
-        'idMatricula': r['id_matricula'] ?? r['idMatricula'],
-        'idCategoria': r['id_categoria'] ?? r['idCategoria'],
-        'categoriaNombre': r['nombre_categoria'] ?? r['categoriaNombre'],
-        'creadoEn': r['creado_en'] ?? r['creadoEn'],
-      };
+  'id': r['id_estudiante'] ?? r['id'],
+  'cedula': r['cedula'] ?? r['dni'] ?? r['documento'],
+  'nombres': r['nombres'],
+  'apellidos': r['apellidos'],
+  'telefono': r['telefono'],
+  'direccion': r['direccion'],
+  'fechaNacimiento': r['fecha_nacimiento'] ?? r['fechaNacimiento'],
+  'fecha_nacimiento': r['fecha_nacimiento'] ?? r['fechaNacimiento'],
+  'idAcademia': r['id_academia'] ?? r['idAcademia'],
+  'activo': r['activo'],
+  'idMatricula': r['id_matricula'] ?? r['idMatricula'],
+  'idCategoria': r['id_categoria'] ?? r['idCategoria'],
+  'categoriaNombre': r['nombre_categoria'] ?? r['categoriaNombre'],
+
+  // 🟦🟦🟦 AGREGA ESTO PARA QUE LA SUBCATEGORÍA SE MUESTRE 🟦🟦🟦
+  'idSubcategoria': r['id_subcategoria'] ?? r['idSubcategoria'],
+  'subcategoriaNombre': 
+      r['subcategoriaNombre'] ??
+      r['nombre_subcategoria'] ??
+      r['subcategoria'] ??
+      r['subcategoria_nombre'],
+
+  'creadoEn': r['creado_en'] ?? r['creadoEn'],
+};
+
 
   Future<Map<String, dynamic>> paged({
     int page = 1,
@@ -55,8 +65,8 @@ class EstudiantesRepository {
       final list = (res is List) ? res : [];
       final items = List<Map<String, dynamic>>.from(list).map(_from).toList();
       return {'items': items, 'total': items.length, 'page': 1, 'pageSize': items.length};
-    } catch (e, st) {
-      debugPrint('EstudiantesRepository.paged error: $e\n$st');
+    } catch (e) {
+      
       rethrow;
     }
   }

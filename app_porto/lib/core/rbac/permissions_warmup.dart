@@ -26,32 +26,28 @@ class _PermissionsWarmupState extends State<PermissionsWarmup> {
   }
 
   Future<void> _warmup() async {
-    debugPrint('[PermissionsWarmup] 🔄 Iniciando warmup...');
+;
     
     final auth = AuthScope.of(context);
 
     // 1. Cargar sesión guardada (token + user)
     await auth.load();
-    debugPrint('[PermissionsWarmup] ✅ AuthState cargado');
+
 
     // 2. Verificar token
     final token = await SessionTokenProvider.instance.readToken();
-    debugPrint('[PermissionsWarmup] 🔑 Token => ${token?.substring(0, 20) ?? 'null'}');
+    
 
     final store = Permissions.of(context);
 
     if (token != null && token.isNotEmpty) {
-      debugPrint('[PermissionsWarmup] 🔄 Refrescando permisos...');
       await store.refresh();
-      debugPrint('[PermissionsWarmup] ✅ Permisos cargados');
     } else {
-      debugPrint('[PermissionsWarmup] ⚠️ Sin token, limpiando permisos');
       store.clear();
     }
 
     if (mounted) {
       setState(() => _ready = true);
-      debugPrint('[PermissionsWarmup] 🏁 Warmup completado');
     }
   }
 

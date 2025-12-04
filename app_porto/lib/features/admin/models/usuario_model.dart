@@ -102,7 +102,7 @@ class Usuario {
         verificado: json['verificado'] == true || json['verificado'] == 1,
       );
     } catch (e) {
-      debugPrint('[Usuario.fromJson] Error: $e');
+      
       rethrow;
     }
   }

@@ -1,19 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:characters/characters.dart'; // para .characters
+import 'package:characters/characters.dart';
 
 import '../../../app/app_scope.dart';
 import 'crear_estudiante_matricula_screen.dart';
 
-// === Export helpers (multiplataforma) ===
+// === Export helpers ===
 import 'package:cross_file/cross_file.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
 class AdminEstudiantesScreen extends StatefulWidget {
@@ -22,7 +23,7 @@ class AdminEstudiantesScreen extends StatefulWidget {
   State<AdminEstudiantesScreen> createState() => _AdminEstudiantesScreenState();
 }
 
-// ==== Atajos (Ctrl+F / Ctrl+N / Ctrl+R) ====
+// ==== Atajos ====
 class _FocusSearchIntent extends Intent { const _FocusSearchIntent(); }
 class _NewIntent extends Intent { const _NewIntent(); }
 class _ReloadIntent extends Intent { const _ReloadIntent(); }
@@ -32,30 +33,35 @@ enum _ViewMode { table, cards }
 class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   // Repo
   late final _repo = AppScope.of(context).estudiantes;
+  late final _catRepo = AppScope.of(context).categorias;
 
   // Estado base
   bool _loading = false;
   String? _error;
 
-  // ===== Filtros (NO se modifican) =====
+  // Filtros
   final _q = TextEditingController();
   int? _catId;
-  bool? _onlyActive;
+  bool? _onlyActive = true;
+  List<Map<String, dynamic>> _catOptions = [];
 
-  // Datos + paginación (server-side)
+  // Paginación y Datos
   List<Map<String, dynamic>> _rows = [];
   int _total = 0, _page = 1, _pageSize = 20;
+  
+  // Selección Múltiple (RESTAURADA)
+  final Set<int> _selected = {};
 
-  // Preferencias visuales (solo UI)
-  _ViewMode _viewMode = _ViewMode.cards; // 👉 por defecto: Tarjetas
+  // UI
+  _ViewMode _viewMode = _ViewMode.cards;
   bool _dense = false;
-
-  // Focus para Ctrl+F
   final _searchFocus = FocusNode();
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
+    _loadCats();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -63,7 +69,23 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   void dispose() {
     _q.dispose();
     _searchFocus.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadCats() async {
+    try {
+      final list = await _catRepo.simpleList();
+      if (mounted) setState(() => _catOptions = List<Map<String, dynamic>>.from(list));
+    } catch (_) {}
+  }
+
+  void _onSearchChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _page = 1;
+      _load();
+    });
   }
 
   Future<void> _load() async {
@@ -79,6 +101,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       setState(() {
         _rows = List<Map<String, dynamic>>.from(res['items']);
         _total = (res['total'] as num).toInt();
+        _selected.clear(); // Limpiar selección al recargar
       });
     } catch (e) {
       setState(() => _error = e.toString());
@@ -87,6 +110,127 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     }
   }
 
+  // --- NAVEGACIÓN AL DETALLE ---
+  void _openDetail(int id) {
+    Navigator.pushNamed(
+      context,
+      '/admin/estudiantes/detalle', 
+      arguments: {'id': id},
+    );
+  }
+
+  // ================= EXPORTACIÓN (CSV + EXCEL + PDF) =================
+  
+  List<Map<String, dynamic>> get _dataToExport {
+    if (_selected.isEmpty) return _rows;
+    return _rows.where((r) => _selected.contains(r['id'])).toList();
+  }
+
+  Future<void> _saveBytes(Uint8List bytes, String name, String mime) async {
+    try {
+      final path = await getSaveLocation(suggestedName: name);
+      if (path != null) {
+        final xf = XFile.fromData(bytes, name: name, mimeType: mime);
+        await xf.saveTo(path.path);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Guardado en ${path.path}')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+    }
+  }
+
+  // --- CSV ---
+  Future<void> _exportCsv() async {
+    final data = _dataToExport;
+    final buf = StringBuffer()..writeln('ID,Nombres,Apellidos,Cedula,Telefono,Categoria,Estado,Creado');
+    
+    String csvEsc(dynamic v) {
+      final s = v?.toString() ?? '';
+      if (s.contains(',') || s.contains('"') || s.contains('\n')) return '"${s.replaceAll('"', '""')}"';
+      return s;
+    }
+
+    for (final r in data) {
+      buf.writeln([
+        r['id'],
+        csvEsc(r['nombres']),
+        csvEsc(r['apellidos']),
+        csvEsc(r['cedula']),
+        csvEsc(r['telefono']),
+        csvEsc(r['categoriaNombre']),
+        r['activo'] == true ? 'Activo' : 'Inactivo',
+        r['creadoEn']?.toString().split('T').first ?? ''
+      ].join(','));
+    }
+    
+    await _saveBytes(Uint8List.fromList(utf8.encode(buf.toString())), 'estudiantes_export.csv', 'text/csv');
+  }
+
+  // --- Excel ---
+  Future<void> _exportExcel() async {
+    final data = _dataToExport;
+    final book = xls.Excel.createExcel();
+    final sheet = book['Estudiantes'];
+    sheet.appendRow([
+      xls.TextCellValue('ID'), xls.TextCellValue('Nombres'), xls.TextCellValue('Apellidos'), 
+      xls.TextCellValue('Cédula'), xls.TextCellValue('Teléfono'), xls.TextCellValue('Categoría'), 
+      xls.TextCellValue('Estado')
+    ]);
+    for (final r in data) {
+      sheet.appendRow([
+        xls.TextCellValue('${r['id']}'), xls.TextCellValue('${r['nombres']}'), xls.TextCellValue('${r['apellidos']}'), 
+        xls.TextCellValue('${r['cedula'] ?? ''}'), xls.TextCellValue('${r['telefono'] ?? ''}'), 
+        xls.TextCellValue('${r['categoriaNombre'] ?? ''}'), 
+        xls.TextCellValue(r['activo'] == true ? 'Activo' : 'Inactivo')
+      ]);
+    }
+    await _saveBytes(Uint8List.fromList(book.encode()!), 'estudiantes_export.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  // --- PDF ---
+  Future<void> _exportPdf() async {
+    final data = _dataToExport;
+    final doc = pw.Document();
+    final tableData = [
+      ['ID', 'Nombre', 'Cédula', 'Categoría', 'Estado'],
+      ...data.map((r) => [
+        '${r['id']}', '${r['nombres']} ${r['apellidos']}', '${r['cedula'] ?? '-'}', '${r['categoriaNombre'] ?? '-'}', r['activo'] == true ? 'Activo' : 'Inactivo'
+      ])
+    ];
+
+    doc.addPage(pw.MultiPage(
+      build: (ctx) => [
+        pw.Header(level: 0, child: pw.Text('Reporte de Estudiantes')),
+        pw.Table.fromTextArray(
+          headers: tableData.first,
+          data: tableData.sublist(1),
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          cellStyle: const pw.TextStyle(fontSize: 10),
+        ),
+      ]
+    ));
+    await _saveBytes(await doc.save(), 'estudiantes_export.pdf', 'application/pdf');
+  }
+
+  Future<void> _showExportMenu() async {
+    final option = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Exportar datos'),
+        children: [
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'csv'), child: const ListTile(leading: Icon(Icons.table_rows, color: Colors.blue), title: Text('CSV (.csv)'))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'excel'), child: const ListTile(leading: Icon(Icons.grid_on, color: Colors.green), title: Text('Excel (.xlsx)'))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, 'pdf'), child: const ListTile(leading: Icon(Icons.picture_as_pdf, color: Colors.red), title: Text('PDF (.pdf)'))),
+        ],
+      ),
+    );
+    if (option == 'csv') _exportCsv();
+    if (option == 'excel') _exportExcel();
+    if (option == 'pdf') _exportPdf();
+  }
+
+  // ================= DIÁLOGO EDICIÓN =================
   Future<void> _edit({required Map<String, dynamic> row}) async {
     final formKey = GlobalKey<FormState>();
     final nombres   = TextEditingController(text: row['nombres'] ?? '');
@@ -94,977 +238,568 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     final fecha     = TextEditingController(text: row['fechaNacimiento'] ?? '');
     final direccion = TextEditingController(text: row['direccion'] ?? '');
     final telefono  = TextEditingController(text: row['telefono'] ?? '');
-    int? idAcademia = row['idAcademia'];
+    int? idAcademia = row['idAcademia'] ?? 1;
+    final cs = Theme.of(context).colorScheme;
 
-    final ok = await showDialog<bool>(
+    InputDecoration blueDeco(String label, IconData icon) {
+      return InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: Colors.blue.shade800),
+        prefixIcon: Icon(icon, color: Colors.blue.shade700),
+        filled: true,
+        fillColor: Colors.blue.shade50.withOpacity(0.5),
+        contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.transparent)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.blue.shade800, width: 1.5)),
+        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.red.shade300)),
+      );
+    }
+
+    Future<void> pickDate() async {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
+        firstDate: DateTime(1990),
+        lastDate: DateTime.now(),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: Colors.blue.shade800)),
+            child: child!,
+          );
+        },
+      );
+      if (picked != null) {
+        fecha.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+      }
+    }
+
+    await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Editar estudiante'),
-        content: SizedBox(
-          width: 480,
-          child: Form(
-            key: formKey,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        elevation: 10,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextFormField(
-                  controller: nombres,
-                  decoration: const InputDecoration(labelText: 'Nombres'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                // Header Gradiente
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue.shade900, Colors.blue.shade600],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: Row(
+                    children: [
+                      Hero(
+                        tag: 'est_avatar_${row['id']}',
+                        child: CircleAvatar(
+                          radius: 26,
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                          child: const Icon(Icons.edit, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(child: Text('Editar Estudiante', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold))),
+                      IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: apellidos,
-                  decoration: const InputDecoration(labelText: 'Apellidos'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: fecha,
-                  decoration: const InputDecoration(labelText: 'Fecha nacimiento (YYYY-MM-DD, opcional)'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: telefono,
-                  decoration: const InputDecoration(labelText: 'Teléfono (opcional)'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: direccion,
-                  decoration: const InputDecoration(labelText: 'Dirección (opcional)'),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  initialValue: idAcademia?.toString() ?? '1',
-                  decoration: const InputDecoration(labelText: 'ID Academia'),
-                  onChanged: (v) => idAcademia = int.tryParse(v),
+                
+                // Form
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      children: [
+                        TextFormField(controller: nombres, decoration: blueDeco('Nombres', Icons.badge_outlined), textCapitalization: TextCapitalization.words, validator: (v) => v!.isEmpty ? 'Requerido' : null),
+                        const SizedBox(height: 16),
+                        TextFormField(controller: apellidos, decoration: blueDeco('Apellidos', Icons.person_outline), textCapitalization: TextCapitalization.words, validator: (v) => v!.isEmpty ? 'Requerido' : null),
+                        const SizedBox(height: 16),
+                        Row(children: [
+                          Expanded(child: TextFormField(controller: telefono, decoration: blueDeco('Teléfono', Icons.phone_outlined))), 
+                          const SizedBox(width: 12), 
+                          Expanded(child: TextFormField(controller: fecha, readOnly: true, onTap: pickDate, decoration: blueDeco('Nacimiento', Icons.calendar_month_outlined)))
+                        ]),
+                        const SizedBox(height: 16),
+                        TextFormField(controller: direccion, decoration: blueDeco('Dirección', Icons.location_on_outlined)),
+                        const SizedBox(height: 16),
+                        // Campo ID Academia (Restaurado)
+                        TextFormField(
+                          initialValue: idAcademia.toString(),
+                          decoration: blueDeco('ID Academia', Icons.school_outlined),
+                          keyboardType: TextInputType.number,
+                          onChanged: (v) => idAcademia = int.tryParse(v) ?? 1,
+                        ),
+                        const SizedBox(height: 32),
+                        
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.blue.shade800, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 4),
+                            onPressed: () async {
+                              if (!formKey.currentState!.validate()) return;
+                              try {
+                                await _repo.update(
+                                  idEstudiante: (row['id'] as num).toInt(),
+                                  nombres: nombres.text.trim(),
+                                  apellidos: apellidos.text.trim(),
+                                  fechaNacimiento: fecha.text.trim().isEmpty ? null : fecha.text.trim(),
+                                  direccion: direccion.text.trim().isEmpty ? null : direccion.text.trim(),
+                                  telefono: telefono.text.trim().isEmpty ? null : telefono.text.trim(),
+                                  idAcademia: idAcademia,
+                                );
+                                if (mounted) {
+                                  Navigator.pop(ctx, true);
+                                  _load();
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Actualizado correctamente'), behavior: SnackBarBehavior.floating));
+                                }
+                              } catch (e) {
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+                              }
+                            },
+                            child: const Text('GUARDAR CAMBIOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-              try {
-                await _repo.update(
-                  idEstudiante: (row['id'] as num).toInt(),
-                  nombres: nombres.text.trim(),
-                  apellidos: apellidos.text.trim(),
-                  fechaNacimiento: fecha.text.trim().isEmpty ? null : fecha.text.trim(),
-                  direccion: direccion.text.trim().isEmpty ? null : direccion.text.trim(),
-                  telefono: telefono.text.trim().isEmpty ? null : telefono.text.trim(),
-                  idAcademia: idAcademia,
-                );
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante actualizado')));
-                Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
-
-    if (ok == true) _load();
   }
 
   Future<void> _toggleEstado(Map<String, dynamic> r) async {
     final activo = r['activo'] == true;
     final id = (r['id'] as num).toInt();
+    
+    setState(() { r['activo'] = !activo; }); // Optimistic
+
     try {
       if (activo) {
         await _repo.deactivate(id);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante desactivado')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante desactivado'), duration: Duration(seconds: 1)));
       } else {
         await _repo.activate(id);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante activado')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Estudiante activado'), duration: Duration(seconds: 1)));
       }
-      _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      setState(() { r['activo'] = activo; }); // Rollback
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
     }
   }
 
-  // ======== EXPORT (página actual) ========
-  // CSV helpers
-  static String _csvEsc(Object? v) {
-    final s = v?.toString() ?? '';
-    return (s.contains(',') || s.contains('"') || s.contains('\n'))
-        ? '"${s.replaceAll('"', '""')}"'
-        : s;
-  }
+  // ========================= UI PRINCIPAL =========================
 
-  String _csvFrom(List<Map<String, dynamic>> rows) {
-    final buf = StringBuffer()..writeln('ID,Estudiante,Categoría,Teléfono,Estado,Creado');
-    for (final r in rows) {
-      final id  = r['id'] ?? '';
-      final est = _csvEsc('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}'.trim());
-      final cat = _csvEsc(r['categoriaNombre']);
-      final tel = _csvEsc(r['telefono']);
-      final estd = (r['activo'] == true) ? 'Activo' : 'Inactivo';
-      final cre = r['creadoEn']?.toString().split('T').first ?? '';
-      buf.writeln('$id,$est,$cat,$tel,$estd,$cre');
-    }
-    return buf.toString();
-  }
-
-  // file_selector
-  Future<String?> _pickSavePath({
-    required String suggestedName,
-    required List<String> extensions,
-    String? label,
-    List<String>? mimeTypes,
-  }) async {
-    final location = await getSaveLocation(
-      acceptedTypeGroups: [
-        XTypeGroup(
-          label: label ?? 'Archivo',
-          extensions: extensions,
-          mimeTypes: mimeTypes,
-        ),
-      ],
-      suggestedName: suggestedName,
-    );
-    return location?.path;
-  }
-
-  Future<void> _saveBytes(
-    Uint8List bytes, {
-    required String defaultFileName,
-    required List<String> extensions,
-    String? mimeType,
-  }) async {
-    try {
-      final path = await _pickSavePath(
-        suggestedName: defaultFileName,
-        extensions: extensions,
-        mimeTypes: mimeType == null ? null : [mimeType],
-      );
-      if (path == null) return; // cancelado
-      final xf = XFile.fromData(bytes, name: defaultFileName, mimeType: mimeType);
-      await xf.saveTo(path);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Archivo guardado en: $path')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e')));
-    }
-  }
-
-  Future<void> _exportCsv() async {
-    final content = _csvFrom(_rows); // 👉 página actual
-    await _saveBytes(
-      Uint8List.fromList(utf8.encode(content)),
-      defaultFileName: 'estudiantes_page$_page.csv',
-      extensions: ['csv'],
-      mimeType: 'text/csv',
-    );
-  }
-
-  // Excel
-  xls.CellValue _cv(dynamic v) {
-    if (v == null) return  xls.TextCellValue('');
-    if (v is bool) return xls.BoolCellValue(v);
-    if (v is int)  return xls.IntCellValue(v);
-    if (v is double) return xls.DoubleCellValue(v);
-    return xls.TextCellValue('$v');
-  }
-
-  Uint8List _excelBytes(List<Map<String, dynamic>> rows) {
-    final book = xls.Excel.createExcel();
-    final sheet = book['Estudiantes'];
-    sheet.appendRow([
-      xls.TextCellValue('ID'),
-      xls.TextCellValue('Estudiante'),
-      xls.TextCellValue('Categoría'),
-      xls.TextCellValue('Teléfono'),
-      xls.TextCellValue('Estado'),
-      xls.TextCellValue('Creado'),
-    ]);
-    for (final r in rows) {
-      final nombre = ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}').trim();
-      sheet.appendRow([
-        _cv(r['id']),
-        _cv(nombre),
-        _cv(r['categoriaNombre'] ?? '—'),
-        _cv(r['telefono'] ?? '—'),
-        _cv(r['activo'] == true ? 'Activo' : 'Inactivo'),
-        _cv(r['creadoEn']?.toString().split('T').first ?? ''),
-      ]);
-    }
-    return Uint8List.fromList(book.encode()!);
-  }
-
-  Future<void> _exportExcel() async {
-    await _saveBytes(
-      _excelBytes(_rows), // 👉 página actual
-      defaultFileName: 'estudiantes_page$_page.xlsx',
-      extensions: ['xlsx'],
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-  }
-
-  // PDF
-  Future<Uint8List> _pdfBytes(List<Map<String, dynamic>> rows) async {
-    final doc = pw.Document();
-    final headers = ['ID','Estudiante','Categoría','Teléfono','Estado','Creado'];
-    final data = [
-      for (final r in rows)
-        [
-          '${r['id'] ?? ''}',
-          ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}').trim(),
-          '${r['categoriaNombre'] ?? '—'}',
-          '${r['telefono'] ?? '—'}',
-          (r['activo']==true) ? 'Activo' : 'Inactivo',
-          r['creadoEn']?.toString().split('T').first ?? '',
-        ]
-    ];
-
-    doc.addPage(
-      pw.MultiPage(
-        pageTheme: const pw.PageTheme(margin: pw.EdgeInsets.all(24)),
-        header: (ctx) => pw.Text(
-          'Estudiantes — Página $_page',
-          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-        ),
-        build: (ctx) => [
-          pw.SizedBox(height: 8),
-          pw.Table.fromTextArray(
-            headers: headers,
-            data: data,
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            cellStyle: const pw.TextStyle(fontSize: 10),
-            cellAlignment: pw.Alignment.centerLeft,
-            border: pw.TableBorder.all(width: 0.2),
-          ),
-        ],
-      ),
-    );
-    return doc.save();
-  }
-
-  Future<void> _exportPdf() async {
-    final bytes = await _pdfBytes(_rows); // 👉 página actual
-    await _saveBytes(
-      bytes,
-      defaultFileName: 'estudiantes_page$_page.pdf',
-      extensions: ['pdf'],
-      mimeType: 'application/pdf',
-    );
-  }
-
-  Future<void> _previewPdf() async {
-    final bytes = await _pdfBytes(_rows); // 👉 página actual
-    await Printing.layoutPdf(onLayout: (_) async => bytes);
-  }
-
-  // ======= BUILD =======
   @override
   Widget build(BuildContext context) {
     final isFirstLoad = _loading && _rows.isEmpty;
 
     final core = LayoutBuilder(
-      builder: (_, c) {
+      builder: (ctx, c) {
         final isNarrow = c.maxWidth < 820;
-
-        // ====== Header con chips + Acciones (Exportar / Nuevo) ======
-        final headerRow = Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: LayoutBuilder(
-            builder: (_, cc) {
-              final compact = cc.maxWidth < 720;
-
-              final chips = Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  // Vista
-                  InputChip(
-                    label: Text(_viewMode == _ViewMode.table ? 'Tabla' : 'Tarjetas'),
-                    avatar: Icon(_viewMode == _ViewMode.table ? Icons.table_chart : Icons.view_agenda, size: 18),
-                    onPressed: () => setState(() {
-                      _viewMode = _viewMode == _ViewMode.table ? _ViewMode.cards : _ViewMode.table;
-                    }),
-                  ),
-                  // Densidad
-                  InputChip(
-                    label: Text(_dense ? 'Denso' : 'Cómodo'),
-                    avatar: Icon(_dense ? Icons.compress : Icons.unfold_more, size: 18),
-                    onPressed: () => setState(() => _dense = !_dense),
-                  ),
-                  // Filtros activos (informativos)
-                  if (_q.text.trim().isNotEmpty)
-                    InputChip(
-                      avatar: const Icon(Icons.search, size: 18),
-                      label: Text('Búsqueda: "${_q.text.trim()}"'),
-                      onDeleted: () { _q.clear(); _page = 1; _load(); },
-                    ),
-                  if (_catId != null)
-                    InputChip(
-                      avatar: const Icon(Icons.category, size: 18),
-                      label: Text('Categoría: $_catId'),
-                      onDeleted: () { setState(() { _catId = null; _page = 1; }); _load(); },
-                    ),
-                  if (_onlyActive != null)
-                    InputChip(
-                      avatar: const Icon(Icons.filter_alt, size: 18),
-                      label: Text(_onlyActive == true ? 'Estado: Activos' : 'Estado: Inactivos'),
-                      onDeleted: () { setState(() { _onlyActive = null; _page = 1; }); _load(); },
-                    ),
-                ],
-              );
-
-              final actions = Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  // === Menú Exportar (página actual) ===
-                  PopupMenuButton<String>(
-  tooltip: 'Exportar',
-  onSelected: (v) async {
-    switch (v) {
-      case 'csv':  await _exportCsv(); break;
-      case 'xlsx': await _exportExcel(); break;
-      case 'pdf':  await _exportPdf(); break;
-      case 'preview': await _previewPdf(); break;
-    }
-  },
-  itemBuilder: (ctx) => const [
-    PopupMenuItem(value: 'csv',    child: ListTile(leading: Icon(Icons.file_download), title: Text('CSV (página)'))),
-    PopupMenuItem(value: 'xlsx',   child: ListTile(leading: Icon(Icons.grid_on),       title: Text('Excel (página)'))),
-    PopupMenuItem(value: 'pdf',    child: ListTile(leading: Icon(Icons.picture_as_pdf),title: Text('PDF (página)'))),
-    PopupMenuItem(value: 'preview',child: ListTile(leading: Icon(Icons.print),         title: Text('Vista previa PDF'))),
-  ],
-  // 👇 Este wrapper evita que el hijo consuma el tap,
-  //    pero mantiene el look "habilitado"
-  child: IgnorePointer(
-    ignoring: true,
-    child: OutlinedButton.icon(
-      onPressed: () {}, // solo para que se vea habilitado
-      icon: const Icon(Icons.download),
-      label: const Text('Exportar'),
-    ),
-  ),
-)
-,
-                  FilledButton.icon(
-                    onPressed: () async {
-                      final created = await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()),
-                      );
-                      if (created == true) _load();
-                    },
-                    icon: const Icon(Icons.add),
-                    label: const Text('Nuevo'),
-                  ),
-                ],
-              );
-
-              if (compact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    chips,
-                    const SizedBox(height: 8),
-                    Align(alignment: Alignment.centerRight, child: actions),
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(child: chips),
-                  actions,
-                ],
-              );
-            },
-          ),
-        );
+        
+        final header = _selected.isNotEmpty 
+          ? _buildSelectionBar(context) 
+          : _buildModernHeader(context, isNarrow);
 
         final content = isFirstLoad
             ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
             : _error != null
                 ? _ErrorView(error: _error!, onRetry: _load)
-                : (_rows.isEmpty
-                    ? const _EmptyState(
-                        title: 'Sin estudiantes',
-                        subtitle: 'Ajusta los filtros o crea un nuevo estudiante.',
-                        primary: ('Refrescar', null),
-                      )
-                    : (_viewMode == _ViewMode.cards
-                        ? _cards(context, _rows)
-                        : _table(context, _rows)));
+                : (_rows.isEmpty 
+                    ? _EmptyState(
+                        title: 'Sin estudiantes', 
+                        subtitle: 'No se encontraron registros.', 
+                        primary: ('Refrescar', _load),
+                        secondary: ('Limpiar filtros', () { _q.clear(); _catId = null; _onlyActive = null; _load(); })
+                      ) 
+                    : (_viewMode == _ViewMode.cards ? _buildCards(_rows) : _buildTable(_rows)));
 
-        return Column(
+        final body = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _toolbar(),     // ❗️Filtros intactos
-            headerRow,      // Acciones y chips
+            header,
+            if (_error != null) Container(color: Colors.red.shade50, padding: const EdgeInsets.all(8), child: Text(_error!, style: TextStyle(color: Colors.red.shade900), textAlign: TextAlign.center)),
             Expanded(
               child: Stack(
                 children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: content,
-                  ),
-                  if (_loading && !isFirstLoad)
-                    const Positioned(right: 12, top: 8, child: _LoadingChip()),
+                  AnimatedSwitcher(duration: const Duration(milliseconds: 220), child: content),
+                  if (_loading && !isFirstLoad) const Positioned(right: 12, top: 8, child: _LoadingChip()),
                 ],
               ),
             ),
-            // --- Solo info de página, sin paginador ---
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Align(alignment: Alignment.centerLeft, child: _pageInfoText()),
+            _PaginationControls(
+              currentPage: _page, 
+              totalItems: _total, 
+              pageSize: _pageSize, 
+              onPageChange: (p) { setState(() => _page = p); _load(); }, 
+              onPageSizeChange: (s) { setState(() { _pageSize = s; _page = 1; }); _load(); }
             ),
           ],
         );
+
+        return _withShortcuts(body);
       },
     );
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Estudiantes'),
-        actions: [
-          IconButton(
-            tooltip: 'Refrescar',
-            onPressed: _loading ? null : _load,
-            icon: _loading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.refresh),
-          ),
-          const SizedBox(width: 8),
-        ],
+        title: const Text('Estudiantes', style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refrescar')],
       ),
-      // ❌ Quitamos FAB; ya hay botón azul en el header
-      body: _withShortcuts(core),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final created = await Navigator.push(context, MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()));
+          if (created == true) _load();
+        },
+        icon: const Icon(Icons.person_add),
+        label: const Text('Nuevo'),
+      ),
+      body: Padding(padding: const EdgeInsets.all(12), child: core),
     );
   }
 
-  // ====== Info “Mostrando X–Y de Z” ======
-  Widget _pageInfoText() {
-    final from = _total == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
-    final to = _total == 0 ? 0 : ((_page - 1) * _pageSize) + _rows.length;
-    return Text('Mostrando $from–$to de $_total');
+  // Header normal con filtros
+  Widget _buildModernHeader(BuildContext context, bool isNarrow) {
+    final cs = Theme.of(context).colorScheme;
+    final search = TextField(
+      controller: _q, focusNode: _searchFocus,
+      decoration: InputDecoration(
+        hintText: 'Buscar estudiante...', prefixIcon: Icon(Icons.search, color: cs.primary),
+        filled: true, fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        suffixIcon: _q.text.isNotEmpty ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _q.clear(); _onSearchChanged(); }) : null,
+      ),
+      onChanged: (_) => _onSearchChanged(),
+    );
+
+    final catFilter = SizedBox(
+      width: 180,
+      child: DropdownButtonFormField<int?>(
+        value: _catId,
+        decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: cs.surface, prefixIcon: const Icon(Icons.category_outlined, size: 20), hintText: 'Categoría'),
+        items: [const DropdownMenuItem(value: null, child: Text('Todas')), ..._catOptions.map((e) => DropdownMenuItem(value: e['id'] as int, child: Text(e['nombre'])))],
+        onChanged: (v) { setState(() { _catId = v; _page = 1; }); _load(); },
+      ),
+    );
+
+    final statusFilter = SizedBox(
+      width: 160,
+      child: DropdownButtonFormField<bool?>(
+        value: _onlyActive,
+        decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: cs.surface, prefixIcon: const Icon(Icons.filter_alt_outlined, size: 20)),
+        items: const [DropdownMenuItem(value: null, child: Text('Todos')), DropdownMenuItem(value: true, child: Text('Activos')), DropdownMenuItem(value: false, child: Text('Inactivos'))],
+        onChanged: (v) { setState(() { _onlyActive = v; _page = 1; }); _load(); },
+      ),
+    );
+
+    final viewToggle = Container(
+      decoration: BoxDecoration(color: cs.surfaceContainerHighest.withOpacity(0.4), borderRadius: BorderRadius.circular(12)),
+      child: Row(children: [
+        IconButton(icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.cards)),
+        Container(width: 1, height: 20, color: cs.outlineVariant),
+        IconButton(icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant), onPressed: () => setState(() => _viewMode = _ViewMode.table)),
+      ]),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(color: cs.surface, border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))]),
+      child: isNarrow 
+        ? Column(children: [search, const SizedBox(height: 8), Row(children: [Expanded(child: catFilter), const SizedBox(width: 8), Expanded(child: statusFilter)]), const SizedBox(height: 8), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [viewToggle, IconButton(icon: const Icon(Icons.download), onPressed: _showExportMenu)])])
+        : Row(children: [Expanded(child: search), const SizedBox(width: 12), catFilter, const SizedBox(width: 12), statusFilter, const SizedBox(width: 12), viewToggle, const SizedBox(width: 12), IconButton(icon: const Icon(Icons.download), onPressed: _showExportMenu, tooltip: 'Exportar')]),
+    );
   }
 
-  // ====== Vista TABLA ======
-  Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
-  final textStyle = _dense
-      ? Theme.of(context).textTheme.bodySmall
-      : Theme.of(context).textTheme.bodyMedium;
+  Widget _buildSelectionBar(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: Row(
+        children: [
+          IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _selected.clear())),
+          const SizedBox(width: 8),
+          Text('${_selected.length} seleccionados', style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontWeight: FontWeight.bold, fontSize: 16)),
+          const Spacer(),
+          IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcel, tooltip: 'Exportar selección a Excel'),
+          IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _exportPdf, tooltip: 'Exportar selección a PDF'),
+          IconButton(icon: const Icon(Icons.table_rows), onPressed: _exportCsv, tooltip: 'Exportar selección a CSV'),
+        ],
+      ),
+    );
+  }
 
-  String fullName(Map r) =>
-      ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-
-  return ScrollConfiguration(
-    behavior: const ScrollBehavior().copyWith(scrollbars: true),
-    child: LayoutBuilder(
-      builder: (ctx, constraints) {
-        // Scroll vertical exterior + scroll horizontal interior
-        return SingleChildScrollView(
-          // deja espacio para que no se solape con el footer
-          padding: const EdgeInsets.only(bottom: 80),
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              // asegura que como mínimo ocupe el ancho disponible
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: DataTable(
-                headingRowHeight: _dense ? 36 : 48,
-                dataRowMinHeight: _dense ? 32 : 44,
-                dataRowMaxHeight: _dense ? 40 : null,
-                columns: const [
-                  DataColumn(label: Text('ID')),
-                  DataColumn(label: Text('Estudiante')),
-                  DataColumn(label: Text('Categoría')),
-                  DataColumn(label: Text('Teléfono')),
-                  DataColumn(label: Text('Estado')),
-                  DataColumn(label: Text('Creado')),
-                  DataColumn(label: Text('Acciones')),
-                ],
-                rows: rows.map((r) {
-                  final bool activo = r['activo'] == true;
-                  final estadoIcon = Icon(
-                    activo ? Icons.check_circle : Icons.cancel,
-                    color: activo ? Colors.green : Colors.grey,
-                    size: _dense ? 18 : 20,
-                    semanticLabel: activo ? 'Activo' : 'Inactivo',
-                  );
-                  return DataRow(cells: [
-                    DataCell(SelectableText(r['id']?.toString() ?? '', style: textStyle)),
-                    DataCell(SelectableText(fullName(r), style: textStyle)),
-                    DataCell(SelectableText(r['categoriaNombre']?.toString() ?? '—', style: textStyle)),
-                    DataCell(SelectableText(r['telefono']?.toString() ?? '—', style: textStyle)),
-                    DataCell(estadoIcon),
-                    DataCell(SelectableText(r['creadoEn']?.toString().split('T').first ?? '', style: textStyle)),
-                    DataCell(_rowActions(r: r, activo: activo, dense: _dense)),
-                  ]);
-                }).toList(),
-              ),
-            ),
-          ),
-        );
-      },
-    ),
-  );
-}
-
-  // ====== Vista TARJETAS (compacta y estética) ======
-  Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
-    final compactPad = EdgeInsets.symmetric(horizontal: 12, vertical: _dense ? 4 : 6);
-
-    String fullName(Map r) =>
-        ('${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
-
-    Widget miniChip(BuildContext ctx, String text, IconData icon) {
-      final theme = Theme.of(ctx);
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: theme.dividerColor),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14),
-            const SizedBox(width: 4),
-            Text(text, style: theme.textTheme.labelSmall),
-          ],
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 16),
+  // --- Cards View ---
+  // --- Cards View ---
+  Widget _buildCards(List<Map<String, dynamic>> rows) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
       itemCount: rows.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
       itemBuilder: (_, i) {
         final r = rows[i];
         final activo = r['activo'] == true;
-        final nombre = fullName(r);
-        final cat = r['categoriaNombre']?.toString() ?? '—';
-        final tel = r['telefono']?.toString() ?? '—';
-        final creado = r['creadoEn']?.toString().split('T').first ?? '—';
-        final initials = _initials(r['nombres'], r['apellidos']);
-        final avatarColor = _avatarColor('$nombre$cat');
+        final id = (r['id'] as num).toInt();
+        final isSelected = _selected.contains(id);
 
         return Card(
-          elevation: 0,
-          margin: const EdgeInsets.symmetric(horizontal: 0),
+          elevation: isSelected ? 4 : 0,
+          margin: const EdgeInsets.only(bottom: 12),
+          color: isSelected
+              ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+              : null,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Theme.of(context).dividerColor),
-          ),
-          child: ListTile(
-            dense: true,
-            contentPadding: compactPad,
-            onTap: () => Navigator.pushNamed(
-              context,
-              '/admin/estudiantes/detalle',
-              arguments: {'id': (r['id'] as num).toInt()},
-            ),
-            leading: CircleAvatar(
-              radius: _dense ? 14 : 16,
-              backgroundColor: avatarColor.withOpacity(0.15),
-              child: Text(
-                initials,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: avatarColor,
-                    ),
-              ),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    nombre.isEmpty ? 'Sin nombre' : nombre,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  activo ? Icons.check_circle : Icons.cancel,
-                  size: 16,
-                  color: activo ? Colors.green : Colors.grey,
-                  semanticLabel: activo ? 'Activo' : 'Inactivo',
-                ),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                  color: isSelected
+                      ? Theme.of(context).primaryColor
+                      : Theme.of(context).dividerColor,
+                  width: isSelected ? 2 : 1)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => _openDetail(id),
+            onLongPress: () => setState(
+                () => isSelected ? _selected.remove(id) : _selected.add(id)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  miniChip(context, cat, Icons.category),
-                  if (tel.trim().isNotEmpty && tel != '—')
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                  if (_selected.isNotEmpty) ...[
+                    Checkbox(
+                        value: isSelected,
+                        onChanged: (v) => setState(() =>
+                            v! ? _selected.add(id) : _selected.remove(id))),
+                    const SizedBox(width: 8),
+                  ],
+                  // ... (El avatar y textos se mantienen igual) ...
+                  Hero(
+                    tag: 'est_avatar_${r['id']}',
+                    child: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.blue.shade50,
+                      child: Text(
+                          '${r['nombres']}'.characters.first.toUpperCase(),
+                          style: TextStyle(
+                              color: Colors.blue.shade800,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.call, size: 14),
-                        const SizedBox(width: 3),
-                        Text(tel, style: Theme.of(context).textTheme.labelSmall),
+                        Text('${r['nombres']} ${r['apellidos']}',
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
+                        Text(r['cedula'] ?? 'Sin cédula',
+                            style: TextStyle(color: Theme.of(context).hintColor)),
+                        const SizedBox(height: 4),
+                        Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                                color: activo
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4)),
+                            child: Text(activo ? 'Activo' : 'Inactivo',
+                                style: TextStyle(
+                                    color: activo ? Colors.green : Colors.red,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ]),
                       ],
                     ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.event, size: 14),
-                      const SizedBox(width: 3),
-                      Text(creado, style: Theme.of(context).textTheme.labelSmall),
-                    ],
                   ),
+                  Column(children: [
+                    PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (v) {
+                          if (v == 'edit') _edit(row: r);
+                          if (v == 'detail') _openDetail(id);
+                        },
+                        itemBuilder: (ctx) => const [
+                              PopupMenuItem(
+                                  value: 'detail',
+                                  child: Row(children: [
+                                    Icon(Icons.visibility, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Ver perfil')
+                                  ])),
+                              PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(children: [
+                                    Icon(Icons.edit, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Editar')
+                                  ])),
+                            ]),
+                    
+                    // --- CAMBIO DE ICONO AQUI TAMBIEN ---
+                    IconButton(
+                        icon: Icon(
+                            activo ? Icons.block : Icons.check_circle_outline, 
+                            color: activo ? Colors.red.shade300 : Colors.green, 
+                            size: 20
+                        ),
+                        onPressed: () => _toggleEstado(r)),
+                  ]),
                 ],
               ),
             ),
-            // acciones compactas a la derecha
-            trailing: _rowActions(r: r, activo: activo, dense: true),
           ),
         );
       },
     );
   }
 
-  Widget _kv(BuildContext ctx, String label, String value, {IconData? icon}) {
-    final styleLabel = Theme.of(ctx).textTheme.bodySmall;
-    final styleValue = Theme.of(ctx).textTheme.bodyMedium;
+  // --- Table View ---
+  // --- Table View ---
+  Widget _buildTable(List<Map<String, dynamic>> rows) {
+    return Center(
+      child:  (SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(context).dividerColor)),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            // Habilitar checkbox nativo del DataTable
+            showCheckboxColumn: true,
+            columns: const [
+              DataColumn(label: Text('Nombre')),
+              DataColumn(label: Text('Cédula')),
+              // Columna actualizada
+              DataColumn(label: Text('Subcategoría')),
+              DataColumn(label: Text('Estado')),
+              DataColumn(label: Text('Acciones')),
+            ],
+            rows: rows.map((r) {
+              final activo = r['activo'] == true;
+              final id = (r['id'] as num).toInt();
+              final isSelected = _selected.contains(id);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 18),
-            const SizedBox(width: 6),
-          ],
-          SizedBox(width: 90, child: Text(label, style: styleLabel)),
-          Expanded(child: Text(value, style: styleValue, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
-  }
+              return DataRow(
+                  selected: isSelected,
+                  onSelectChanged: (v) => setState(
+                      () => v! ? _selected.add(id) : _selected.remove(id)),
+                  cells: [
+                    DataCell(Text('${r['nombres']} ${r['apellidos']}',
+                        style: const TextStyle(fontWeight: FontWeight.w500))),
+                    DataCell(Text(r['cedula'] ?? '—')),
+                    
+                    // --- CORRECCIÓN BASADA EN TU SQL ---
+                    // Se usa 'nombre_subcategoria' tal como está en la base de datos
+                    DataCell(Text(r['subcategoriaNombre']?.toString() ?? '—')),
 
-  // ===== Acciones por fila =====
-  Widget _rowActions({required Map<String, dynamic> r, required bool activo, bool dense = false}) {
-    final double iconSize = dense ? 18 : 24;
-    final EdgeInsets padding = EdgeInsets.all(dense ? 4 : 8);
-    final BoxConstraints? k = dense ? const BoxConstraints(minWidth: 36, minHeight: 36) : null;
-    final VisualDensity vd = dense ? VisualDensity.compact : VisualDensity.standard;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Tooltip(
-          message: 'Editar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            constraints: k,
-            visualDensity: vd,
-            icon: const Icon(Icons.edit),
-            onPressed: () => _edit(row: r),
+                    
+                    DataCell(Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: activo
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(activo ? 'Activo' : 'Inactivo',
+                          style: TextStyle(
+                              color: activo
+                                  ? Colors.green.shade700
+                                  : Colors.red.shade700,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
+                    )),
+                    DataCell(Row(children: [
+                      IconButton(
+                          tooltip: 'Ver detalle',
+                          icon: const Icon(Icons.visibility),
+                          onPressed: () => _openDetail(id)),
+                      IconButton(
+                          tooltip: 'Editar',
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: () => _edit(row: r)),
+                      IconButton(
+                          tooltip: activo ? 'Desactivar' : 'Activar',
+                          icon: Icon(
+                            activo ? Icons.block : Icons.check_circle_outline,
+                            color: activo
+                                ? Colors.red.shade400
+                                : Colors.green.shade600,
+                          ),
+                          onPressed: () => _toggleEstado(r)),
+                    ])),
+                  ]);
+            }).toList(),
           ),
         ),
-        Tooltip(
-          message: activo ? 'Desactivar' : 'Activar',
-          child: IconButton(
-            iconSize: iconSize,
-            padding: padding,
-            constraints: k,
-            visualDensity: vd,
-            icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => _toggleEstado(r),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ====== Filtros (intactos, sin cambios) ======
-  Widget _toolbar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: LayoutBuilder(
-        builder: (ctx, c) {
-          final search = Expanded(
-            child: TextField(
-              controller: _q,
-              focusNode: _searchFocus, // para Ctrl+F
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nombre…'),
-              onSubmitted: (_) { _page = 1; _load(); },
-            ),
-          );
-
-          final catDropdown = FutureBuilder<List<Map<String, dynamic>>>(
-            future: AppScope.of(context).categorias.simpleList(),
-            builder: (_, snap) {
-              final list = snap.data ?? const <Map<String, dynamic>>[];
-              return SizedBox(
-                width: 260,
-                child: DropdownButtonFormField<int>(
-                  value: _catId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Categoría', prefixIcon: Icon(Icons.category)),
-                  items: [
-                    const DropdownMenuItem<int>(value: null, child: Text('Todas')),
-                    ...list.map((c) => DropdownMenuItem<int>(
-                          value: c['id'] as int,
-                          child: Text(c['nombre'] as String),
-                        )),
-                  ],
-                  onChanged: (v) { setState(() { _catId = v; _page = 1; }); _load(); },
-                ),
-              );
-            },
-          );
-
-          final estado = SizedBox(
-            width: 220,
-            child: DropdownButtonFormField<bool>(
-              value: _onlyActive,
-              decoration: const InputDecoration(labelText: 'Estado', prefixIcon: Icon(Icons.filter_alt)),
-              items: const [
-                DropdownMenuItem<bool>(value: null, child: Text('Todos')),
-                DropdownMenuItem<bool>(value: true, child: Text('Activos')),
-                DropdownMenuItem<bool>(value: false, child: Text('Inactivos')),
-              ],
-              onChanged: (v) { setState(() { _onlyActive = v; _page = 1; }); _load(); },
-            ),
-          );
-
-          final perPage = SizedBox(
-            width: 140,
-            child: DropdownButtonFormField<int>(
-              value: _pageSize,
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.format_list_numbered), labelText: 'Por página'),
-              items: const [
-                DropdownMenuItem(value: 10, child: Text('10')),
-                DropdownMenuItem(value: 20, child: Text('20')),
-                DropdownMenuItem(value: 50, child: Text('50')),
-              ],
-              onChanged: (v) { if (v != null) { setState(() { _pageSize = v; _page = 1; }); _load(); } },
-            ),
-          );
-
-          final narrow = c.maxWidth < 900;
-          if (narrow) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [search, const SizedBox(height: 8), catDropdown, const SizedBox(height: 8), estado, const SizedBox(height: 8), perPage],
-            );
-          }
-          return Row(children: [search, const SizedBox(width: 8), catDropdown, const SizedBox(width: 8), estado, const SizedBox(width: 8), perPage]);
-        },
       ),
+    )
+    )
     );
   }
 
-  // ====== Atajos ======
   Widget _withShortcuts(Widget child) {
-    return Shortcuts(
-      shortcuts: <LogicalKeySet, Intent>{
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): const _FocusSearchIntent(),
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyN): const _NewIntent(),
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyR): const _ReloadIntent(),
-      },
-      child: Actions(
-        actions: <Type, Action<Intent>>{
-          _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-            onInvoke: (_) { _searchFocus.requestFocus(); return null; },
-          ),
-          _NewIntent: CallbackAction<_NewIntent>(
-            onInvoke: (_) async {
-              final created = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()),
-              );
-              if (created == true) _load();
-              return null;
-            },
-          ),
-          _ReloadIntent: CallbackAction<_ReloadIntent>(
-            onInvoke: (_) { _load(); return null; },
-          ),
-        },
-        child: Focus(autofocus: true, child: child),
-      ),
-    );
-  }
-
-  // ===== Helpers para tarjetas =====
-  String _initials(String? nombres, String? apellidos) {
-    final n = (nombres ?? '').trim().split(' ').where((e) => e.isNotEmpty).toList();
-    final a = (apellidos ?? '').trim().split(' ').where((e) => e.isNotEmpty).toList();
-    final i1 = n.isNotEmpty ? n.first.characters.first : '';
-    final i2 = a.isNotEmpty ? a.first.characters.first : '';
-    final r = (i1 + i2).toUpperCase();
-    return r.isEmpty ? '👤' : r;
-  }
-
-  Color _avatarColor(String seed) {
-    final h = seed.hashCode & 0xFFFFFF;
-    return Color(0xFF000000 | h).withOpacity(1);
+    return Shortcuts(shortcuts: {LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): const _FocusSearchIntent(), LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyR): const _ReloadIntent()}, child: Actions(actions: {_FocusSearchIntent: CallbackAction<_FocusSearchIntent>(onInvoke: (_) { _searchFocus.requestFocus(); return null; }), _ReloadIntent: CallbackAction<_ReloadIntent>(onInvoke: (_) { _load(); return null; })}, child: Focus(autofocus: true, child: child)));
   }
 }
 
-// ======================= Widgets de apoyo UI =======================
-
-class _EmptyState extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final (String, VoidCallback?) primary;
-  final (String, VoidCallback)? secondary;
-
-  const _EmptyState({
-    required this.title,
-    required this.subtitle,
-    required this.primary,
-    // ignore: unused_element_parameter
-    this.secondary,
-  });
-
+// === WIDGETS DE APOYO ===
+class _PaginationControls extends StatelessWidget {
+  final int currentPage, totalItems, pageSize; final void Function(int) onPageChange; final void Function(int) onPageSizeChange;
+  const _PaginationControls({required this.currentPage, required this.totalItems, required this.pageSize, required this.onPageChange, required this.onPageSizeChange});
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: Theme.of(context).hintColor),
-            const SizedBox(height: 12),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(subtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              children: [
-                FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
-                if (secondary != null)
-                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    int totalPages = (totalItems + pageSize - 1) ~/ pageSize; if (totalPages < 1) totalPages = 1;
+    final from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    final to = (currentPage * pageSize) > totalItems ? totalItems : (currentPage * pageSize);
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5)))), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('$from-$to de $totalItems', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontWeight: FontWeight.w500)), Row(children: [IconButton(icon: const Icon(Icons.chevron_left), onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null), IconButton(icon: const Icon(Icons.chevron_right), onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null)])]));
   }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String title, subtitle; final (String, VoidCallback) primary; final (String, VoidCallback)? secondary;
+  const _EmptyState({required this.title, required this.subtitle, required this.primary, this.secondary});
+  @override
+  Widget build(BuildContext context) => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.school_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)), const SizedBox(height: 16), Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 8), Text(subtitle, style: Theme.of(context).textTheme.bodyMedium), const SizedBox(height: 16), Wrap(spacing: 8, children: [FilledButton(onPressed: primary.$2, child: Text(primary.$1)), if (secondary != null) OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1))])]));
 }
 
 class _ErrorView extends StatelessWidget {
-  final String error;
-  final VoidCallback onRetry;
-
+  final String error; final VoidCallback onRetry;
   const _ErrorView({required this.error, required this.onRetry});
-
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
-            const SizedBox(height: 12),
-            Text('Error al cargar datos', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 6),
-            Text(error, textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.error_outline, color: Colors.red, size: 56), const SizedBox(height: 12), Text('Error', style: TextStyle(fontSize: 18)), Text(error), const SizedBox(height: 12), FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar'))]));
 }
 
-class _LoadingChip extends StatelessWidget {
-  const _LoadingChip({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(
-      avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-      label: const Text('Cargando…'),
-      visualDensity: VisualDensity.compact,
-    );
-  }
-}
+class _LoadingChip extends StatelessWidget { const _LoadingChip(); @override Widget build(BuildContext context) => Chip(avatar: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)), label: const Text('Cargando...')); }
 
 class _LoadingPlaceholder extends StatelessWidget {
-  final bool isNarrow;
-  final _ViewMode viewMode;
-  final bool dense;
-
-  const _LoadingPlaceholder({super.key, required this.isNarrow, required this.viewMode, required this.dense});
-
+  final bool isNarrow; final _ViewMode viewMode; final bool dense;
+  const _LoadingPlaceholder({required this.isNarrow, required this.viewMode, required this.dense});
   @override
-  Widget build(BuildContext context) {
-    if (viewMode == _ViewMode.cards || isNarrow) {
-      return ListView.builder(
-        itemCount: 6,
-        itemBuilder: (_, i) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: _Skeleton(height: dense ? 84 : 104),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        _Skeleton(height: dense ? 44 : 52),
-        const SizedBox(height: 8),
-        Expanded(
-          child: ListView.builder(
-            itemCount: 8,
-            itemBuilder: (_, i) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: _Skeleton(height: dense ? 36 : 44),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Skeleton extends StatelessWidget {
-  final double height;
-  const _Skeleton({super.key, required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ListView.builder(itemCount: 6, itemBuilder: (_, __) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Container(height: 80, decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)))));
 }

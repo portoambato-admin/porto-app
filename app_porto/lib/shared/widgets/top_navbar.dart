@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/state/auth_state.dart';
-import '../../core/rbac/permission_gate.dart' show Permissions; // ✅ usar permisos reales
+import '../../core/rbac/permission_gate.dart' show Permissions;
 
 class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   const TopNavBar({super.key});
@@ -22,6 +22,13 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     Navigator.pushNamed(context, '/auth', arguments: {'redirectTo': current});
   }
 
+  // ✅ Helper para obtener valores de forma segura
+  String _getUserField(Map<String, dynamic>? user, String field, {String defaultValue = ''}) {
+    if (user == null) return defaultValue;
+    final value = user[field];
+    return value?.toString() ?? defaultValue;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSmall = MediaQuery.of(context).size.width < 900;
@@ -30,7 +37,6 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     final user = auth.user;
     final isLogged = auth.isLoggedIn;
 
-    // ✅ canSeePanel ahora se basa en permisos RBAC (con fallback por rol antiguo)
     bool canSeePanel = auth.isAdmin || auth.isTeacher;
     try {
       final perms = Permissions.of(context);
@@ -107,7 +113,9 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                       child: const Text('Ingresar'))
                 else
                   _UserMenu(
-                    user: user!,
+                    userName: _getUserField(user, 'nombre', defaultValue: 'Usuario'),
+                    userEmail: _getUserField(user, 'correo'),
+                    avatarUrl: _getUserField(user, 'avatar_url'),
                     canSeePanel: canSeePanel,
                     onSignOut: () async {
                       await auth.signOut();
@@ -168,9 +176,9 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                             else ...[
                               ListTile(
                                 leading: _AvatarCircle(
-                                    url: user?['avatar_url'] as String?),
-                                title: Text(user?['nombre'] ?? ''),
-                                subtitle: Text(user?['correo'] ?? ''),
+                                    url: _getUserField(user, 'avatar_url')),
+                                title: Text(_getUserField(user, 'nombre', defaultValue: 'Usuario')),
+                                subtitle: Text(_getUserField(user, 'correo')),
                                 onTap: () =>
                                     _navAndClose(sheetCtx, '/perfil'),
                               ),
@@ -243,12 +251,16 @@ class _NavButton extends StatelessWidget {
 
 class _UserMenu extends StatelessWidget {
   const _UserMenu({
-    required this.user,
+    required this.userName,
+    required this.userEmail,
+    required this.avatarUrl,
     required this.canSeePanel,
     required this.onSignOut,
   });
 
-  final Map<String, dynamic> user;
+  final String userName;
+  final String userEmail;
+  final String avatarUrl;
   final bool canSeePanel;
   final Future<void> Function() onSignOut;
 
@@ -276,16 +288,16 @@ class _UserMenu extends StatelessWidget {
           enabled: false,
           child: Row(
             children: [
-              _AvatarCircle(url: user['avatar_url'] as String?),
+              _AvatarCircle(url: avatarUrl),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user['nombre'] ?? '',
+                    Text(userName,
                         style:
                             const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(user['correo'] ?? '',
+                    Text(userEmail,
                         style: const TextStyle(
                             fontSize: 12, color: Colors.black54)),
                   ],
@@ -314,9 +326,9 @@ class _UserMenu extends StatelessWidget {
       ],
       child: Row(
         children: [
-          _AvatarCircle(url: user['avatar_url'] as String?),
+          _AvatarCircle(url: avatarUrl),
           const SizedBox(width: 8),
-          Text(user['nombre'] ?? ''),
+          Text(userName),
           const SizedBox(width: 6),
           const Icon(Icons.arrow_drop_down),
         ],
@@ -326,18 +338,17 @@ class _UserMenu extends StatelessWidget {
 }
 
 class _AvatarCircle extends StatelessWidget {
-  // ignore: unused_element_parameter
-  const _AvatarCircle({this.url, this.radius = 16});
-  final String? url;
+  const _AvatarCircle({this.url = '', this.radius = 16});
+  final String url;
   final double radius;
 
   @override
   Widget build(BuildContext context) {
-    final img = (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null;
+    final hasUrl = url.isNotEmpty;
     return CircleAvatar(
       radius: radius,
-      backgroundImage: img,
-      child: img == null ? const Icon(Icons.person, size: 16) : null,
+      backgroundImage: hasUrl ? NetworkImage(url) : null,
+      child: !hasUrl ? const Icon(Icons.person, size: 16) : null,
     );
   }
 }

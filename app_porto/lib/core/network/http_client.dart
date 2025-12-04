@@ -30,11 +30,7 @@ class HttpClient {
 
   Future<String?> _resolveToken() async {
     final token = await SessionTokenProvider.instance.readToken();
-    if (token != null && token.isNotEmpty) {
-      debugPrint('[HttpClient] 🔑 Token resuelto: ${token.substring(0, 20)}...');
-    } else {
-      debugPrint('[HttpClient] ⚠️ No hay token disponible');
-    }
+    
     return token;
   }
 
@@ -60,11 +56,9 @@ class HttpClient {
 
   dynamic _checkResponse(http.Response r) {
     if (r.statusCode == 401 || r.statusCode == 403) {
-      debugPrint('[HttpClient] 🔥 ${r.statusCode}: Sesión expirada');
       throw UnauthorizedException("Sesión expirada");
-    }
-    if (r.statusCode < 200 || r.statusCode >= 300) {
-      debugPrint('[HttpClient] ❌ Error ${r.statusCode}: ${r.body}');
+    }    if (r.statusCode < 200 || r.statusCode >= 300) {
+
       throw _err(r);
     }
     return _decode(r);
@@ -127,7 +121,6 @@ class HttpClient {
       final uri = _u(path, query);
       final h = await _headers(json: json, extra: headers);
 
-      debugPrint('[HttpClient] 📤 $method $uri');
 
       switch (method) {
         case 'GET':
@@ -156,7 +149,6 @@ class HttpClient {
           throw ApiError('Método HTTP no soportado: $method');
       }
     } on SocketException {
-      debugPrint('[HttpClient] 🌐 Sin conexión a internet');
       throw ApiError('Sin conexión a internet.');
     }
   }
