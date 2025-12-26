@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import '../core/state/auth_state.dart'; 
+
+import '../core/state/auth_state.dart';
 
 // Roles
-import '../features/admin/sections/roles_screen.dart' show RolesScreen;
+import '../app/app_roles.dart';
+import '../core/rbac/forbidden_screen.dart';
 
 // Rutas (constantes)
 import '../core/constants/route_names.dart';
@@ -11,16 +13,13 @@ import '../core/constants/route_names.dart';
 import '../features/public/presentation/screen/home_screen.dart';
 
 // PÚBLICAS diferidas (lazy)
-import '../features/public/presentation/screen/store_screen.dart'
-    deferred as store;
-import '../features/public/presentation/screen/events_screen.dart'
-    deferred as events;
+import '../features/public/presentation/screen/store_screen.dart' deferred as store;
+import '../features/public/presentation/screen/events_screen.dart' deferred as events;
 import '../features/public/presentation/screen/categories_screen.dart'
     deferred as categories;
 import '../features/public/presentation/screen/benefits_screen.dart'
     deferred as benefits;
-import '../features/public/presentation/screen/about_screen.dart'
-    deferred as about;
+import '../features/public/presentation/screen/about_screen.dart' deferred as about;
 
 // Auth
 import '../features/auth/presentation/screens/auth_screen.dart';
@@ -45,10 +44,8 @@ import '../features/admin/sections/usuarios_screen.dart';
 import '../features/admin/sections/asistencias_screen.dart';
 import '../features/admin/sections/categorias_screen.dart'
     show AdminCategoriasScreen;
-import '../features/admin/sections/config_screen.dart'
-    show AdminConfigScreen;
-import '../features/admin/sections/admin_pagos_screen.dart'
-    show AdminPagosScreen;
+import '../features/admin/sections/config_screen.dart' show AdminConfigScreen;
+import '../features/admin/sections/admin_pagos_screen.dart' show AdminPagosScreen;
 
 import '../features/admin/presentation/profesores/profesores_screen.dart';
 import '../features/admin/sections/estudiantes_screen.dart'
@@ -62,17 +59,26 @@ import '../features/admin/sections/detalle_subcategorias_screen.dart'
 import '../features/admin/sections/admin_subcategorias_screen.dart'
     show AdminSubcategoriasScreen;
 
-// Sesión
+// Roles screen (admin)
+import '../features/admin/sections/roles_screen.dart' show RolesScreen;
 
+// ===== Profesor (hubs propios) =====
+import '../features/profesor/presentation/hubs/profesor_academia_hub_screen.dart';
+import '../features/profesor/presentation/hubs/profesor_reportes_hub_screen.dart';
+import '../features/profesor/presentation/profesor_config_screen.dart';
+import '../features/profesor/presentation/reportes/profesor_reporte_asistencias_screen.dart';
+import '../features/profesor/presentation/reportes/profesor_reporte_estudiantes_screen.dart';
+
+// ===== Representante =====
+import '../features/representante/presentation/representante_shell_screen.dart';
+import '../features/representante/presentation/representante_mensualidades_screen.dart';
+import '../features/representante/presentation/representante_mensualidad_detalle_screen.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings s) {
-    // -------------------------------------------------------------------------
-    // CORRECCIÓN: Parseamos la URI para obtener solo el path (sin query params)
-    // Esto permite que /reset-password?token=xyz coincida con /reset-password
-    // -------------------------------------------------------------------------
+    // Parseamos la URI para obtener solo el path (sin query params)
     final uri = Uri.parse(s.name ?? RouteNames.root);
-    final path = uri.path; 
+    final path = uri.path;
 
     switch (path) {
       // ======= Públicas ======================================================
@@ -116,12 +122,8 @@ class AppRouter {
 
       // ======= Auth ==========================================================
       case RouteNames.auth:
-        return MaterialPageRoute(
-          settings: s,
-          builder: (_) => const AuthScreen(),
-        );
+        return MaterialPageRoute(settings: s, builder: (_) => const AuthScreen());
 
-      // 🔵 Recuperar contraseña
       case RouteNames.forgotPassword:
         return MaterialPageRoute(
           settings: s,
@@ -129,210 +131,336 @@ class AppRouter {
         );
 
       case RouteNames.resetPassword:
-        // Flutter Web maneja los query params internamente en Uri.base
-        // No es necesario pasarlos como argumentos.
         return MaterialPageRoute(
           settings: s,
           builder: (_) => const ResetPasswordScreen(),
         );
 
-      // ======= Protegidas (no lazy) ==========================================
+      // ======= Protegidas (cualquier logueado) ===============================
       case RouteNames.perfil:
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
 
-      // Panel centrado (alias /admin)
+      // ======= ADMIN (solo ADMIN) ============================================
       case RouteNames.panel:
       case RouteNames.adminRoot:
-        return _guardedPlain(s, builder: (_) => const PanelScreen());
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const PanelScreen(),
+        );
 
-      // ======= Hubs base =====================================================
       case RouteNames.adminPersonas:
-        return _guardedPlain(s, builder: (_) => const PersonasHubScreen());
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const PersonasHubScreen(),
+        );
 
       case RouteNames.adminAcademia:
-        return _guardedPlain(s, builder: (_) => const AcademiaHubScreen());
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const AcademiaHubScreen(),
+        );
 
       case RouteNames.adminFinanzas:
-        return _guardedPlain(s, builder: (_) => const FinanzasHubScreen());
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const FinanzasHubScreen(),
+        );
 
       case RouteNames.adminSistema:
-        return _guardedPlain(s, builder: (_) => const SistemaHubScreen());
-
-      // Hub REPORTES
-      case RouteNames.adminReportes:
-        return _guardedPlain(s, builder: (_) => const ReportesHubScreen());
-
-      // ======= Subrutas de Personas ==========================================
-      case RouteNames.adminPersonasUsuarios:
-        return _guardedPlain(
+        return _guardedRole(
           s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const SistemaHubScreen(),
+        );
+
+      // Reportes (ADMIN): soporta /admin/reportes y /admin/sistema/reportes
+      case RouteNames.adminReportes:
+      case RouteNames.adminSistemaReportes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const ReportesHubScreen(),
+        );
+
+      // ======= Subrutas de Personas (ADMIN) ==================================
+      case RouteNames.adminPersonasUsuarios:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
           builder: (_) => const PersonasHubScreen(child: UsuariosScreen()),
         );
 
       case RouteNames.adminPersonasProfesores:
-        return _guardedPlain(
+        return _guardedRole(
           s,
-          builder: (_) => PersonasHubScreen(
-            child: ProfesoresScreen(),
-          ),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => PersonasHubScreen(child: ProfesoresScreen()),
         );
 
       case RouteNames.adminPersonasRoles:
-        return _guardedPlain(
+      case RouteNames.adminRoles:
+        return _guardedRole(
           s,
-          builder: (_) => PersonasHubScreen(
-            child: RolesScreen(embedded: true),
-          ),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => PersonasHubScreen(child: RolesScreen(embedded: true)),
         );
 
-      // ======= Subrutas de Academia ==========================================
+      // ======= Subrutas de Academia (ADMIN) ==================================
       case RouteNames.adminAcademiaCategorias:
-        return _guardedPlain(
+      case RouteNames.adminCategorias:
+        return _guardedRole(
           s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminCategoriasScreen()),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const AcademiaHubScreen(child: AdminCategoriasScreen()),
         );
 
       case RouteNames.adminAcademiaSubcategorias:
-        return _guardedPlain(
+      case RouteNames.adminSubcategorias:
+        return _guardedRole(
           s,
+          allowedRoles: {AppRoles.admin},
           builder: (_) =>
               const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
         );
 
       case RouteNames.adminAcademiaEstudiantes:
-        return _guardedPlain(
+      case RouteNames.adminEstudiantes:
+        return _guardedRole(
           s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminEstudiantesScreen()),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const AcademiaHubScreen(child: AdminEstudiantesScreen()),
         );
 
       case RouteNames.adminAcademiaAsistencias:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminAsistenciasScreen()),
-        );
-
-      // Finanzas
-      case RouteNames.adminFinanzasPagos:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const FinanzasHubScreen(child: AdminPagosScreen()),
-        );
-
-      // Sistema
-      case RouteNames.adminSistemaConfig:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const SistemaHubScreen(child: AdminConfigScreen()),
-        );
-
-      // ======= Compatibilidad: rutas antiguas ================================
-      case RouteNames.adminUsuarios:
-        return _guardedPlain(
-          s,
-          builder: (_) => const PersonasHubScreen(child: UsuariosScreen()),
-        );
-
-      case RouteNames.adminProfesores:
-        return _guardedPlain(
-          s,
-          builder: (_) => PersonasHubScreen(
-            child: ProfesoresScreen(),
-          ),
-        );
-
-      case RouteNames.adminRoles:
-        return _guardedPlain(
-          s,
-          builder: (_) => PersonasHubScreen(
-            child: RolesScreen(embedded: true),
-          ),
-        );
-
-      case RouteNames.adminCategorias:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminCategoriasScreen()),
-        );
-
-      case RouteNames.adminSubcategorias:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminSubcategoriasScreen()),
-        );
-
       case RouteNames.adminAsistencias:
-        return _guardedPlain(
+        return _guardedRole(
           s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminAsistenciasScreen()),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const AcademiaHubScreen(child: AdminAsistenciasScreen()),
         );
 
+      // Finanzas (ADMIN)
+      case RouteNames.adminFinanzasPagos:
       case RouteNames.adminPagos:
-        return _guardedPlain(
+        return _guardedRole(
           s,
-          builder: (_) =>
-              const FinanzasHubScreen(child: AdminPagosScreen()),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const FinanzasHubScreen(child: AdminPagosScreen()),
         );
 
+      // Sistema (ADMIN)
+      case RouteNames.adminSistemaConfig:
       case RouteNames.adminConfig:
-        return _guardedPlain(
+        return _guardedRole(
           s,
-          builder: (_) =>
-              const SistemaHubScreen(child: AdminConfigScreen()),
+          allowedRoles: {AppRoles.admin},
+          builder: (_) => const SistemaHubScreen(child: AdminConfigScreen()),
         );
 
-      case RouteNames.adminEstudiantes:
-        return _guardedPlain(
-          s,
-          builder: (_) =>
-              const AcademiaHubScreen(child: AdminEstudiantesScreen()),
-        );
-
+      // Estudiante detalle (ADMIN)
       case RouteNames.adminEstudianteDetalle:
-        return _guardedPlain(s, builder: (_) {
-          final args = s.arguments;
-          int? id;
-          if (args is Map && args['id'] != null) {
-            final v = args['id'];
-            if (v is int) id = v;
-            else if (v is num) id = v.toInt();
-            else if (v is String) id = int.tryParse(v);
-          }
-          if (id == null) {
-            return const _ArgsErrorPage('Falta argumento: id (int)');
-          }
-          return AcademiaHubScreen(child: EstudianteDetailScreen(id: id));
-        });
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) {
+            final args = s.arguments;
+            int? id;
+            if (args is Map && args['id'] != null) {
+              final v = args['id'];
+              if (v is int) id = v;
+              else if (v is num) id = v.toInt();
+              else if (v is String) id = int.tryParse(v);
+            }
+            if (id == null) return const _ArgsErrorPage('Falta argumento: id (int)');
+            return AcademiaHubScreen(child: EstudianteDetailScreen(id: id));
+          },
+        );
 
-      // Subcategoría → Estudiantes
+      // Subcategoría → Estudiantes (ADMIN)
       case RouteNames.adminSubcatEstudiantes:
-        return _guardedPlain(s, builder: (_) {
-          final args = s.arguments is Map
-              ? Map<String, dynamic>.from(s.arguments as Map)
-              : <String, dynamic>{};
-          final idSubcat = _arg<int>(args, 'idSubcategoria');
-          final nombre = _arg<String>(args, 'nombreSubcategoria');
-          final idCat = _arg<int>(args, 'idCategoria');
-          if (idSubcat == null || nombre == null) {
-            return const _ArgsErrorPage(
-              'Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)',
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) {
+            final args = s.arguments is Map
+                ? Map<String, dynamic>.from(s.arguments as Map)
+                : <String, dynamic>{};
+            final idSubcat = _arg<int>(args, 'idSubcategoria');
+            final nombre = _arg<String>(args, 'nombreSubcategoria');
+            final idCat = _arg<int>(args, 'idCategoria');
+            if (idSubcat == null || nombre == null) {
+              return const _ArgsErrorPage(
+                'Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)',
+              );
+            }
+            return AcademiaHubScreen(
+              child: SubcategoriaEstudiantesScreen(
+                idSubcategoria: idSubcat,
+                nombreSubcategoria: nombre,
+                idCategoria: idCat,
+              ),
             );
-          }
-          return AcademiaHubScreen(
-            child: SubcategoriaEstudiantesScreen(
-              idSubcategoria: idSubcat,
-              nombreSubcategoria: nombre,
-              idCategoria: idCat,
-            ),
-          );
-        });
+          },
+        );
+
+      // ======= PROFESOR (PROFESOR o ADMIN) ===================================
+      case RouteNames.profesorRoot:
+      case RouteNames.profesorAcademia:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) => const ProfesorAcademiaHubScreen(),
+        );
+
+      case RouteNames.profesorAcademiaCategorias:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminCategoriasScreen()),
+        );
+
+      case RouteNames.profesorAcademiaSubcategorias:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminSubcategoriasScreen()),
+        );
+
+      case RouteNames.profesorAcademiaEstudiantes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminEstudiantesScreen()),
+        );
+
+      case RouteNames.profesorAcademiaAsistencias:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminAsistenciasScreen()),
+        );
+
+      // Detalle estudiante (Profesor)
+      case RouteNames.profesorEstudianteDetalle:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) {
+            final args = s.arguments;
+            int? id;
+            if (args is Map && args['id'] != null) {
+              final v = args['id'];
+              if (v is int) id = v;
+              else if (v is num) id = v.toInt();
+              else if (v is String) id = int.tryParse(v);
+            }
+            if (id == null) return const _ArgsErrorPage('Falta argumento: id (int)');
+            return ProfesorAcademiaHubScreen(child: EstudianteDetailScreen(id: id));
+          },
+        );
+
+      // Subcategoría → Estudiantes (Profesor)
+      case RouteNames.profesorSubcatEstudiantes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) {
+            final args = s.arguments is Map
+                ? Map<String, dynamic>.from(s.arguments as Map)
+                : <String, dynamic>{};
+            final idSubcat = _arg<int>(args, 'idSubcategoria');
+            final nombre = _arg<String>(args, 'nombreSubcategoria');
+            final idCat = _arg<int>(args, 'idCategoria');
+            if (idSubcat == null || nombre == null) {
+              return const _ArgsErrorPage(
+                'Faltan argumentos: idSubcategoria (int) y nombreSubcategoria (String)',
+              );
+            }
+            return ProfesorAcademiaHubScreen(
+              child: SubcategoriaEstudiantesScreen(
+                idSubcategoria: idSubcat,
+                nombreSubcategoria: nombre,
+                idCategoria: idCat,
+              ),
+            );
+          },
+        );
+
+      // Reportes profesor (limitados)
+      case RouteNames.profesorReportes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) => const ProfesorReportesHubScreen(),
+        );
+
+      case RouteNames.profesorReporteAsistencias:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) => const ProfesorReporteAsistenciasScreen(),
+        );
+
+      case RouteNames.profesorReporteEstudiantes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) => const ProfesorReporteEstudiantesScreen(),
+        );
+
+      case RouteNames.profesorConfig:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) => const ProfesorConfigScreen(),
+        );
+
+      // Compat profesor antiguos
+      case RouteNames.profesorEstudiantes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminEstudiantesScreen()),
+        );
+
+      case RouteNames.profesorAsistencias:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.profesor, AppRoles.admin},
+          builder: (_) =>
+              const ProfesorAcademiaHubScreen(child: AdminAsistenciasScreen()),
+        );
+
+      // ======= REPRESENTANTE (REPRESENTANTE o ADMIN) =========================
+      case RouteNames.representanteRoot:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.representante, AppRoles.admin},
+          builder: (_) => const RepresentanteShellScreen(),
+        );
+
+      case RouteNames.representanteMensualidades:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.representante, AppRoles.admin},
+          builder: (_) => const RepresentanteMensualidadesScreen(),
+        );
+
+      case RouteNames.representanteMensualidadDetalle:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.representante, AppRoles.admin},
+          builder: (_) => const RepresentanteMensualidadDetalleScreen(),
+        );
 
       // ======= 404 ===========================================================
       default:
@@ -364,7 +492,7 @@ class AppRouter {
     );
   }
 
- static Route<dynamic> _guardedPlain(
+  static Route<dynamic> _guardedPlain(
     RouteSettings s, {
     required WidgetBuilder builder,
   }) {
@@ -374,15 +502,9 @@ class AppRouter {
     return MaterialPageRoute(
       settings: s,
       builder: (ctx) {
-        // ✅ CORRECCIÓN: Usar AuthScope en lugar de Session
         final auth = AuthScope.of(ctx);
-        
-       
-        
-        // Si la ruta requiere auth y NO está logueado
+
         if (RouteNames.guarded.contains(redirectTo) && !auth.isLoggedIn) {
-          
-          
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (ctx.mounted) {
               Navigator.of(ctx).pushNamedAndRemoveUntil(
@@ -392,10 +514,49 @@ class AppRouter {
               );
             }
           });
-          
           return const _LoadingPage();
         }
-        
+
+        return builder(ctx);
+      },
+    );
+  }
+
+  static Route<dynamic> _guardedRole(
+    RouteSettings s, {
+    required Set<String> allowedRoles,
+    required WidgetBuilder builder,
+  }) {
+    final uri = Uri.parse(s.name ?? RouteNames.root);
+    final redirectTo = uri.path;
+
+    return MaterialPageRoute(
+      settings: s,
+      builder: (ctx) {
+        final auth = AuthScope.of(ctx);
+
+        if (RouteNames.guarded.contains(redirectTo) && !auth.isLoggedIn) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (ctx.mounted) {
+              Navigator.of(ctx).pushNamedAndRemoveUntil(
+                RouteNames.auth,
+                (r) => false,
+                arguments: {'redirectTo': redirectTo},
+              );
+            }
+          });
+          return const _LoadingPage();
+        }
+
+        final role = auth.role;
+        if (role == null) {
+          return const ForbiddenScreen(message: 'Tu sesión no tiene rol asignado.');
+        }
+
+        if (!allowedRoles.contains(role)) {
+          return ForbiddenScreen(message: 'Rol actual: $role');
+        }
+
         return builder(ctx);
       },
     );

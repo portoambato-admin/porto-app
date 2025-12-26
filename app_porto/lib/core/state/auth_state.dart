@@ -1,11 +1,10 @@
-// lib/core/state/auth_state.dart
-
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
 
 import '../services/session_token_provider.dart';
 import '../network/http_client.dart';
 import '../constants/endpoints.dart';
+import '../../app/app_roles.dart';
 
 class AuthState extends ChangeNotifier {
   String? _token;
@@ -15,9 +14,14 @@ class AuthState extends ChangeNotifier {
   bool get isLoggedIn => _user != null;
 
   int? get roleId => _user?['id_rol'] as int?;
+
+  // Tus flags actuales (se mantienen)
   bool get isAdmin => roleId == 1;
   bool get isTeacher => roleId == 2;
   bool get isParent => roleId == 3;
+
+  /// ✅ NUEVO: rol string usado por el router guard
+  String? get role => AppRoles.fromRoleId(roleId);
 
   final HttpClient _http;
   AuthState(this._http);
@@ -26,7 +30,7 @@ class AuthState extends ChangeNotifier {
    *  Carga inicial de sesión
    * ============================================================ */
   Future<void> load() async {
-    try {   
+    try {
       // 1. Leer token guardado
       _token = await SessionTokenProvider.instance.readToken();
       if (_token == null || _token!.isEmpty) {
@@ -37,7 +41,6 @@ class AuthState extends ChangeNotifier {
 
       // 2. Leer usuario desde caché
       final cached = await SessionTokenProvider.instance.readUser();
-      
       if (cached != null && cached.isNotEmpty) {
         _user = Map<String, dynamic>.from(jsonDecode(cached));
         notifyListeners();
@@ -57,17 +60,14 @@ class AuthState extends ChangeNotifier {
         // Guardar sesión
         await SessionTokenProvider.instance.saveToken(_token!);
         await SessionTokenProvider.instance.saveUser(jsonEncode(_user));
-
-
       } catch (e) {
         // Token inválido
         await SessionTokenProvider.instance.clearCache();
         _token = null;
         _user = null;
       }
-
     } catch (e) {
-      throw e;
+      rethrow;
     } finally {
       notifyListeners();
     }
@@ -80,8 +80,6 @@ class AuthState extends ChangeNotifier {
     required String token,
     required String userJson,
   }) async {
-    
-    
     _token = token;
     _user = Map<String, dynamic>.from(jsonDecode(userJson));
 
@@ -92,9 +90,9 @@ class AuthState extends ChangeNotifier {
     // Pequeña espera para asegurar persistencia en web
     await Future.delayed(const Duration(milliseconds: 50));
 
-    // Verificar que se guardó
-    final savedToken = await SessionTokenProvider.instance.readToken();
-    final savedUser = await SessionTokenProvider.instance.readUser();
+    // (Opcional) Verificar que se guardó (no es necesario usar estas variables)
+    await SessionTokenProvider.instance.readToken();
+    await SessionTokenProvider.instance.readUser();
 
     notifyListeners();
   }
@@ -107,7 +105,6 @@ class AuthState extends ChangeNotifier {
 
     if (_token != null) {
       await SessionTokenProvider.instance.saveUser(jsonEncode(_user));
-
     }
 
     notifyListeners();
@@ -117,14 +114,12 @@ class AuthState extends ChangeNotifier {
    *  Cerrar sesión
    * ============================================================ */
   Future<void> signOut() async {
-
-    
     try {
       if (_token != null) {
         await _http.post(Endpoints.authLogout, body: const {});
       }
     } catch (e) {
-      throw e;
+      rethrow;
     }
 
     await SessionTokenProvider.instance.clearCache();

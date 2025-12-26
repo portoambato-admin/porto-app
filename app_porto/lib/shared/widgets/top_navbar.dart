@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/state/auth_state.dart';
 import '../../core/rbac/permission_gate.dart' show Permissions;
+import '../../core/constants/route_names.dart';
 
 class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   const TopNavBar({super.key});
@@ -19,7 +20,7 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
 
   void _goAuth(BuildContext context, {String? redirectTo}) {
     final current = redirectTo ?? (ModalRoute.of(context)?.settings.name ?? '/');
-    Navigator.pushNamed(context, '/auth', arguments: {'redirectTo': current});
+    Navigator.pushNamed(context, RouteNames.auth, arguments: {'redirectTo': current});
   }
 
   // ✅ Helper para obtener valores de forma segura
@@ -32,24 +33,83 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final isSmall = MediaQuery.of(context).size.width < 900;
-    final currentRoute = ModalRoute.of(context)?.settings.name ?? '/';
+    final currentRoute = ModalRoute.of(context)?.settings.name ?? RouteNames.root;
+
     final auth = AuthScope.of(context);
     final user = auth.user;
     final isLogged = auth.isLoggedIn;
 
-    bool canSeePanel = auth.isAdmin || auth.isTeacher;
+    // =========================================================================
+    // ✅ Dashboard por rol (NO usar /panel para profesor/representante)
+    // =========================================================================
+    bool showDashboard = false;
+    String dashboardLabel = '';
+    String dashboardRoute = '';
+    IconData dashboardIcon = Icons.dashboard_customize;
+
+    // Fallback por id_rol (tu modelo actual)
+    if (isLogged) {
+      if (auth.isAdmin) {
+        showDashboard = true;
+        dashboardLabel = 'Panel';
+        dashboardRoute = RouteNames.panel;
+        dashboardIcon = Icons.dashboard;
+      } else if (auth.isTeacher) {
+        showDashboard = true;
+        dashboardLabel = 'Académico';
+        dashboardRoute = RouteNames.profesorRoot;
+        dashboardIcon = Icons.school;
+      } else if (auth.isParent) {
+        showDashboard = true;
+        dashboardLabel = 'Mensualidades';
+        dashboardRoute = RouteNames.representanteMensualidades;
+        dashboardIcon = Icons.payments;
+      }
+    }
+
+    // Override opcional por PermissionsHost (si existe)
+    // Mantengo tu lógica, pero la traduzco a dashboards correctos.
     try {
       final perms = Permissions.of(context);
-      canSeePanel = perms.hasAnyRole(['admin', 'staff']) ||
-                    perms.hasAny([
-                      'usuarios.read',
-                      'roles.read',
-                      'categorias.read',
-                      'estudiantes.read',
-                      'reportes.read',
-                    ]);
+
+      final isAdminByPerms = perms.hasAnyRole(['admin', 'ADMIN']);
+      final isTeacherByPerms = perms.hasAnyRole(['staff', 'teacher', 'profesor', 'PROFESOR']);
+      final isParentByPerms = perms.hasAnyRole(['parent', 'representante', 'REPRESENTANTE']);
+
+      // Si hay permisos concretos de módulos, también ayudan:
+      final canReadAdminStuff = perms.hasAny([
+        'usuarios.read',
+        'roles.read',
+        'categorias.read',
+        'estudiantes.read',
+        'reportes.read',
+      ]);
+
+      final canReadMensualidades = perms.hasAny([
+        'mensualidades.read',
+        'pagos.read',
+      ]);
+
+      if (isLogged) {
+        if (isAdminByPerms || canReadAdminStuff) {
+          showDashboard = true;
+          dashboardLabel = 'Panel';
+          dashboardRoute = RouteNames.panel;
+          dashboardIcon = Icons.dashboard;
+        } else if (isTeacherByPerms) {
+          showDashboard = true;
+          dashboardLabel = 'Académico';
+          dashboardRoute = RouteNames.profesorRoot;
+          dashboardIcon = Icons.school;
+        } else if (isParentByPerms || canReadMensualidades) {
+          showDashboard = true;
+          dashboardLabel = 'Mensualidades';
+          dashboardRoute = RouteNames.representanteMensualidades;
+          dashboardIcon = Icons.payments;
+        }
+      }
     } catch (_) {
-      // Si el PermissionsHost no está montado, usamos el fallback por rol
+      // Si el PermissionsHost no está montado, usamos el fallback por id_rol
     }
 
     return AppBar(
@@ -71,57 +131,68 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
               ),
               const SizedBox(width: 12),
               const Spacer(),
+
               if (!isSmall) ...[
                 _NavButton(
-                    text: 'Inicio',
-                    route: '/',
-                    currentRoute: currentRoute,
-                    onPressed: () => Navigator.pushNamed(context, '/')),
+                  text: 'Inicio',
+                  route: RouteNames.root,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.root),
+                ),
                 _NavButton(
-                    text: 'Tienda',
-                    route: '/tienda',
-                    currentRoute: currentRoute,
-                    onPressed: () => Navigator.pushNamed(context, '/tienda')),
+                  text: 'Tienda',
+                  route: RouteNames.tienda,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.tienda),
+                ),
                 _NavButton(
-                    text: 'Eventos',
-                    route: '/eventos',
-                    currentRoute: currentRoute,
-                    onPressed: () => Navigator.pushNamed(context, '/eventos')),
+                  text: 'Eventos',
+                  route: RouteNames.eventos,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.eventos),
+                ),
                 _NavButton(
-                    text: 'Categorías',
-                    route: '/categorias',
-                    currentRoute: currentRoute,
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/categorias')),
+                  text: 'Categorías',
+                  route: RouteNames.categorias,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.categorias),
+                ),
                 _NavButton(
-                    text: 'Sponsors',
-                    route: '/beneficios',
-                    currentRoute: currentRoute,
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/beneficios')),
+                  text: 'Sponsors',
+                  route: RouteNames.beneficios,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.beneficios),
+                ),
                 _NavButton(
-                    text: 'Conócenos',
-                    route: '/conocenos',
-                    currentRoute: currentRoute,
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/conocenos')),
+                  text: 'Conócenos',
+                  route: RouteNames.conocenos,
+                  currentRoute: currentRoute,
+                  onPressed: () => Navigator.pushNamed(context, RouteNames.conocenos),
+                ),
                 const SizedBox(width: 12),
+
                 if (!isLogged)
                   FilledButton(
-                      onPressed: () =>
-                          _goAuth(context, redirectTo: currentRoute),
-                      child: const Text('Ingresar'))
+                    onPressed: () => _goAuth(context, redirectTo: currentRoute),
+                    child: const Text('Ingresar'),
+                  )
                 else
                   _UserMenu(
                     userName: _getUserField(user, 'nombre', defaultValue: 'Usuario'),
                     userEmail: _getUserField(user, 'correo'),
                     avatarUrl: _getUserField(user, 'avatar_url'),
-                    canSeePanel: canSeePanel,
+                    showDashboard: showDashboard,
+                    dashboardLabel: dashboardLabel,
+                    dashboardRoute: dashboardRoute,
+                    dashboardIcon: dashboardIcon,
                     onSignOut: () async {
                       await auth.signOut();
                       if (context.mounted) {
                         Navigator.pushNamedAndRemoveUntil(
-                            context, '/', (r) => false);
+                          context,
+                          RouteNames.root,
+                          (r) => false,
+                        );
                       }
                     },
                   ),
@@ -136,60 +207,60 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             ListTile(
-                                title: const Text('Inicio'),
-                                onTap: () => _navAndClose(sheetCtx, '/')),
+                              title: const Text('Inicio'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.root),
+                            ),
                             ListTile(
-                                title: const Text('Tienda'),
-                                onTap: () => _navAndClose(sheetCtx, '/tienda')),
+                              title: const Text('Tienda'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.tienda),
+                            ),
                             ListTile(
-                                title: const Text('Eventos'),
-                                onTap: () =>
-                                    _navAndClose(sheetCtx, '/eventos')),
+                              title: const Text('Eventos'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.eventos),
+                            ),
                             ListTile(
-                                title: const Text('Categorías'),
-                                onTap: () =>
-                                    _navAndClose(sheetCtx, '/categorias')),
+                              title: const Text('Categorías'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.categorias),
+                            ),
                             ListTile(
-                                title: const Text('Sponsors'),
-                                onTap: () =>
-                                    _navAndClose(sheetCtx, '/beneficios')),
+                              title: const Text('Sponsors'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.beneficios),
+                            ),
                             ListTile(
-                                title: const Text('Conócenos'),
-                                onTap: () =>
-                                    _navAndClose(sheetCtx, '/conocenos')),
+                              title: const Text('Conócenos'),
+                              onTap: () => _navAndClose(sheetCtx, RouteNames.conocenos),
+                            ),
                             const Divider(height: 0),
+
                             if (!isLogged)
                               Padding(
                                 padding: const EdgeInsets.all(16),
                                 child: FilledButton(
                                   onPressed: () {
                                     Navigator.of(sheetCtx).pop();
-                                    _goAuth(context,
-                                        redirectTo: currentRoute);
+                                    _goAuth(context, redirectTo: currentRoute);
                                   },
                                   style: FilledButton.styleFrom(
-                                      minimumSize:
-                                          const Size.fromHeight(48)),
+                                    minimumSize: const Size.fromHeight(48),
+                                  ),
                                   child: const Text('Ingresar'),
                                 ),
                               )
                             else ...[
                               ListTile(
-                                leading: _AvatarCircle(
-                                    url: _getUserField(user, 'avatar_url')),
+                                leading: _AvatarCircle(url: _getUserField(user, 'avatar_url')),
                                 title: Text(_getUserField(user, 'nombre', defaultValue: 'Usuario')),
                                 subtitle: Text(_getUserField(user, 'correo')),
-                                onTap: () =>
-                                    _navAndClose(sheetCtx, '/perfil'),
+                                onTap: () => _navAndClose(sheetCtx, RouteNames.perfil),
                               ),
-                              if (canSeePanel)
+
+                              if (showDashboard)
                                 ListTile(
-                                  leading:
-                                      const Icon(Icons.dashboard_customize),
-                                  title: const Text('Panel'),
-                                  onTap: () =>
-                                      _navAndClose(sheetCtx, '/panel'),
+                                  leading: Icon(dashboardIcon),
+                                  title: Text(dashboardLabel),
+                                  onTap: () => _navAndClose(sheetCtx, dashboardRoute),
                                 ),
+
                               ListTile(
                                 leading: const Icon(Icons.logout),
                                 title: const Text('Cerrar sesión'),
@@ -198,7 +269,10 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                                   await auth.signOut();
                                   if (context.mounted) {
                                     Navigator.pushNamedAndRemoveUntil(
-                                        context, '/', (r) => false);
+                                      context,
+                                      RouteNames.root,
+                                      (r) => false,
+                                    );
                                   }
                                 },
                               ),
@@ -254,14 +328,22 @@ class _UserMenu extends StatelessWidget {
     required this.userName,
     required this.userEmail,
     required this.avatarUrl,
-    required this.canSeePanel,
+    required this.showDashboard,
+    required this.dashboardLabel,
+    required this.dashboardRoute,
+    required this.dashboardIcon,
     required this.onSignOut,
   });
 
   final String userName;
   final String userEmail;
   final String avatarUrl;
-  final bool canSeePanel;
+
+  final bool showDashboard;
+  final String dashboardLabel;
+  final String dashboardRoute;
+  final IconData dashboardIcon;
+
   final Future<void> Function() onSignOut;
 
   @override
@@ -272,10 +354,10 @@ class _UserMenu extends StatelessWidget {
       onSelected: (v) async {
         switch (v) {
           case 1:
-            Navigator.pushNamed(context, '/perfil');
+            Navigator.pushNamed(context, RouteNames.perfil);
             break;
           case 2:
-            if (canSeePanel) Navigator.pushNamed(context, '/panel');
+            if (showDashboard) Navigator.pushNamed(context, dashboardRoute);
             break;
           case 99:
             await onSignOut();
@@ -294,12 +376,11 @@ class _UserMenu extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(userName,
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(userEmail,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.black54)),
+                    Text(userName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      userEmail,
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
                   ],
                 ),
               ),
@@ -308,21 +389,28 @@ class _UserMenu extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         const PopupMenuItem(
-            value: 1,
+          value: 1,
+          child: ListTile(
+            leading: Icon(Icons.person),
+            title: Text('Perfil'),
+          ),
+        ),
+        if (showDashboard)
+          PopupMenuItem(
+            value: 2,
             child: ListTile(
-                leading: Icon(Icons.person), title: Text('Perfil'))),
-        if (canSeePanel)
-          const PopupMenuItem(
-              value: 2,
-              child: ListTile(
-                  leading: Icon(Icons.dashboard),
-                  title: Text('Panel'))),
+              leading: Icon(dashboardIcon),
+              title: Text(dashboardLabel),
+            ),
+          ),
         const PopupMenuDivider(),
         const PopupMenuItem(
-            value: 99,
-            child: ListTile(
-                leading: Icon(Icons.logout),
-                title: Text('Cerrar sesión'))),
+          value: 99,
+          child: ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Cerrar sesión'),
+          ),
+        ),
       ],
       child: Row(
         children: [
