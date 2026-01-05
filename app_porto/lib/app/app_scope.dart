@@ -13,11 +13,18 @@ import '../features/admin/data/estudiantes_repository.dart';
 import '../features/admin/data/matriculas_repository.dart';
 import '../features/admin/data/mensualidades_repository.dart';
 import '../features/admin/data/pagos_repository.dart';
+import '../features/admin/data/reportes_repository.dart';
 import '../features/admin/data/estado_mensualidad_repository.dart';
 import '../features/admin/data/subcat_est_repository.dart';
+import '../features/admin/data/representantes_estudiante_repository.dart';
 
-// ✅ NUEVO
+
+import '../features/representante/data/representante_repository.dart';
+
+
 import '../features/admin/data/asistencias_repository.dart';
+
+import '../features/admin/data/dashboard_repository.dart';
 
 class AppScope extends InheritedWidget {
   final HttpClient http;
@@ -30,11 +37,18 @@ class AppScope extends InheritedWidget {
   final MatriculasRepository matriculas;
   final MensualidadesRepository mensualidades;
   final PagosRepository pagos;
+  final ReportesRepository reportes;
   final EstadoMensualidadRepository estadoMensualidad;
   final SubcatEstRepository subcatEst;
+  final RepresentantesEstudianteRepository representantesEstudiante;
+
+  // Representante
+  final RepresentanteRepository representante;
 
   // ✅ NUEVO
   final AsistenciasRepository asistencias;
+
+  final DashboardRepository dashboard;
 
   AppScope._({
     required this.http,
@@ -46,9 +60,13 @@ class AppScope extends InheritedWidget {
     required this.matriculas,
     required this.mensualidades,
     required this.pagos,
+    required this.reportes,
     required this.estadoMensualidad,
     required this.subcatEst,
+    required this.representantesEstudiante,
+    required this.representante,
     required this.asistencias, // ✅
+    required this.dashboard,
     required super.child,
   });
 
@@ -68,8 +86,15 @@ class AppScope extends InheritedWidget {
     final matriculas        = MatriculasRepository(http);
     final mensualidades     = MensualidadesRepository(http);
     final pagos             = PagosRepository(http);
+    final reportes          = ReportesRepository(http);
     final estadoMensualidad = EstadoMensualidadRepository(http);
     final subcatEst         = SubcatEstRepository(http);
+    final representantesEstudiante = RepresentantesEstudianteRepository(http);
+
+    final dashboard         = DashboardRepository(http);    
+
+    // Representante
+    final representante     = RepresentanteRepository(http);
 
     // ✅ NUEVO
     final asistencias       = AsistenciasRepository(http);
@@ -84,9 +109,14 @@ class AppScope extends InheritedWidget {
       matriculas: matriculas,
       mensualidades: mensualidades,
       pagos: pagos,
+      reportes: reportes,
       estadoMensualidad: estadoMensualidad,
       subcatEst: subcatEst,
-      asistencias: asistencias, // ✅
+      representantesEstudiante: representantesEstudiante,
+      dashboard: dashboard,
+      representante: representante,
+      asistencias: asistencias,
+      
       child: child,
     );
   }

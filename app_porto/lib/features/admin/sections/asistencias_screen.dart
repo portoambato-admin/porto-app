@@ -1,22 +1,23 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../../../app/app_scope.dart';
-import '../../../core/constants/endpoints.dart';
-import 'package:table_calendar/table_calendar.dart';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:cross_file/cross_file.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:excel/excel.dart' as xls;
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:table_calendar/table_calendar.dart';
 
+import '../../../app/app_scope.dart';
+import '../../../core/constants/endpoints.dart';
 
 String _todayISO() => DateFormat('yyyy-MM-dd').format(DateTime.now());
 
-// ===== NUEVO: Enum de Estatus de Asistencia =====
+// ===== Enum de Estatus de Asistencia =====
 enum EstatusAsistencia {
   presente,
   tarde,
@@ -54,7 +55,6 @@ EstatusAsistencia estatusAsistenciaFromString(String? s) {
       return EstatusAsistencia.ausente;
   }
 }
-// ================================================
 
 // ===== Helpers robustos (Top-level) =====
 int? _toIntOrNull(dynamic v) {
@@ -64,6 +64,7 @@ int? _toIntOrNull(dynamic v) {
   if (v is String) return int.tryParse(v);
   return null;
 }
+
 int _toIntOrZero(dynamic v) => _toIntOrNull(v) ?? 0;
 
 int? _readIdSesion(Map<String, dynamic>? sesion) {
@@ -74,8 +75,18 @@ int? _readIdSesion(Map<String, dynamic>? sesion) {
 String _mesNombre(int? m) {
   const meses = [
     '',
-    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre'
   ];
   if (m == null || m < 1 || m > 12) return '-';
   return meses[m];
@@ -91,8 +102,8 @@ class AdminAsistenciasScreen extends StatefulWidget {
 class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   // Repos
   get _subcatsRepo => AppScope.of(context).subcategorias;
-  get _asistRepo   => AppScope.of(context).asistencias;
-  get _http        => AppScope.of(context).http;
+  get _asistRepo => AppScope.of(context).asistencias;
+  get _http => AppScope.of(context).http;
 
   // Estado UI
   int _step = 0; // 0: elegir subcategoría, 1: asistencia (tabs)
@@ -132,9 +143,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   bool _loadingReporteAlumno = false;
   List<Map<String, dynamic>> _historialAlumno = []; // Asistencias del alumno
 
-  // ===== NUEVO: Lista para las sesiones del día seleccionado (Calendario) =====
+  // Lista para las sesiones del día seleccionado (Calendario)
   List<Map<String, dynamic>> _sesionesDelDiaSeleccionado = [];
-  // ========================================================================
 
   static String _isoNDiasAtras(int n) =>
       DateFormat('yyyy-MM-dd').format(DateTime.now().subtract(Duration(days: n)));
@@ -164,14 +174,19 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     setState(() => _loading = true);
     try {
       final list = await _fetchSubcatsRobusto();
-      final parsed = list.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final parsed = list
+          .map<Map<String, dynamic>>(
+              (e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       setState(() {
         _subcats = parsed;
         _filteredSubcats = parsed;
         _loading = false;
       });
     } catch (e) {
-      setState(() { _loading = false; });
+      setState(() {
+        _loading = false;
+      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No pude cargar subcategorías: $e')),
@@ -195,7 +210,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       final r = await dyn.listar();
       if (r is List && r.isNotEmpty) return r;
     } catch (_) {}
-    final res = await _http.get(Endpoints.subcategorias, headers: const {'Accept': 'application/json'});
+    final res = await _http.get(Endpoints.subcategorias,
+        headers: const {'Accept': 'application/json'});
     return (res as List);
   }
 
@@ -207,7 +223,9 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
     setState(() {
       _filteredSubcats = _subcats.where((m) {
-        final nombre = (m['nombre'] ?? m['nombre_subcategoria'] ?? '').toString().toLowerCase();
+        final nombre = (m['nombre'] ?? m['nombre_subcategoria'] ?? '')
+            .toString()
+            .toLowerCase();
         return nombre.contains(q);
       }).toList();
     });
@@ -218,22 +236,28 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     final id = _selSubcatId;
     if (id == null) return;
 
-    setState(() { _loading = true; _rows = []; _idSesion = null; });
+    setState(() {
+      _loading = true;
+      _rows = [];
+      _idSesion = null;
+    });
 
     try {
       // Buscar sesión existente para esta fecha
-      final sesiones = await _asistRepo.listarSesiones(idSubcategoria: id, fechaISO: _fecha);
-      Map<String, dynamic>? sesion =
-          sesiones.isNotEmpty ? Map<String, dynamic>.from(sesiones.first as Map) : null;
+      final sesiones =
+          await _asistRepo.listarSesiones(idSubcategoria: id, fechaISO: _fecha);
+      Map<String, dynamic>? sesion = sesiones.isNotEmpty
+          ? Map<String, dynamic>.from(sesiones.first as Map)
+          : null;
 
       // Crear si no existe
       sesion ??= Map<String, dynamic>.from(
         await _asistRepo.crearSesion(
-          idSubcategoria: id,
-          fechaISO: _fecha,
-          horaInicio: _iniCtrl.text,
-          horaFin: _finCtrl.text,
-        ) as Map,
+              idSubcategoria: id,
+              fechaISO: _fecha,
+              horaInicio: _iniCtrl.text,
+              horaFin: _finCtrl.text,
+            ) as Map,
       );
 
       _idSesion = _readIdSesion(sesion);
@@ -243,11 +267,12 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       final map = <int, _RowAlumno>{};
       for (final e in roster) {
         final me = Map<String, dynamic>.from(e as Map);
-        final idEst = _toIntOrZero(me['id_estudiante'] ?? me['idEstudiante']);
+        final idEst =
+            _toIntOrZero(me['id_estudiante'] ?? me['idEstudiante']);
         if (idEst == 0) continue;
         final nombre = [
           (me['apellidos'] ?? me['apellido'] ?? '').toString(),
-          (me['nombres']   ?? me['nombre']   ?? '').toString(),
+          (me['nombres'] ?? me['nombre'] ?? '').toString(),
         ].where((s) => s.isNotEmpty).join(' ');
         map[idEst] = _RowAlumno(idEstudiante: idEst, nombre: nombre);
       }
@@ -257,24 +282,23 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         final marcas = await _asistRepo.detalleSesion(_idSesion!);
         for (final m in marcas) {
           final mm = Map<String, dynamic>.from(m as Map);
-          final idEst = _toIntOrNull(mm['id_estudiante'] ?? mm['idEstudiante']);
+          final idEst =
+              _toIntOrNull(mm['id_estudiante'] ?? mm['idEstudiante']);
           if (idEst == null) continue;
-          
-          // ===== MODIFICADO: Leer estatus desde la BD =====
+
           final estatusStr = (mm['estatus'] ?? mm['status'])?.toString();
           final estatus = estatusAsistenciaFromString(estatusStr);
-          // =================================================
 
           final obs = (mm['observaciones'] ?? '').toString();
           map[idEst] = (map[idEst] ?? _RowAlumno(idEstudiante: idEst, nombre: ''))
-            // ..presente = presente  <-- Se fue
-            ..estatus = estatus     // <-- Nuevo
+            ..estatus = estatus
             ..observaciones = obs;
         }
       }
 
       setState(() {
-        _rows = map.values.toList()..sort((a, b) => a.nombre.compareTo(b.nombre));
+        _rows = map.values.toList()
+          ..sort((a, b) => a.nombre.compareTo(b.nombre));
         _loading = false;
       });
     } catch (e) {
@@ -287,11 +311,13 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   }
 
   // Abre una sesión pasada (desde Historial)
-  Future<void> _abrirSesionExistente(Map<String, dynamic> sesion, TabController tabController) async {
+  Future<void> _abrirSesionExistente(
+      Map<String, dynamic> sesion, TabController tabController) async {
     final id = _selSubcatId;
     if (id == null) return;
 
-    final fechaRaw = (sesion['fecha'] ?? sesion['fechaISO'] ?? sesion['dia'])?.toString();
+    final fechaRaw = (sesion['fecha'] ?? sesion['fechaISO'] ?? sesion['dia'])
+        ?.toString();
     if (fechaRaw != null && fechaRaw.isNotEmpty) {
       final iso = fechaRaw.length >= 10 ? fechaRaw.substring(0, 10) : fechaRaw;
       setState(() => _fecha = iso);
@@ -329,7 +355,11 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       hour: (parts.isNotEmpty ? int.tryParse(parts[0]) : null) ?? 8,
       minute: (parts.length > 1 ? int.tryParse(parts[1]) : null) ?? 0,
     );
-    final t = await showTimePicker(context: context, initialTime: initial, helpText: 'Selecciona hora');
+    final t = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      helpText: 'Selecciona hora',
+    );
     if (t != null) {
       final h = t.hour.toString().padLeft(2, '0');
       final m = t.minute.toString().padLeft(2, '0');
@@ -337,22 +367,21 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
   }
 
-  // ===== MODIFICADO: Manejar estatus, no bool =====
   void _setAllStatus(EstatusAsistencia estatus) => setState(() {
-    for (final r in _rows) r.estatus = estatus;
-  });
-  // ===============================================
+        for (final r in _rows) r.estatus = estatus;
+      });
 
   Future<void> _guardar() async {
     if (_idSesion == null) return;
     try {
-      // ===== MODIFICADO: Enviar 'estatus' como string =====
-      final marcas = _rows.map((r) => {
-        'id_estudiante': r.idEstudiante,
-        'estatus': estatusAsistenciaToString(r.estatus), // <-- MODIFICADO
-        if (r.observaciones.trim().isNotEmpty) 'observaciones': r.observaciones.trim(),
-      }).toList();
-      // ====================================================
+      final marcas = _rows
+          .map((r) => {
+                'id_estudiante': r.idEstudiante,
+                'estatus': estatusAsistenciaToString(r.estatus),
+                if (r.observaciones.trim().isNotEmpty)
+                  'observaciones': r.observaciones.trim(),
+              })
+          .toList();
 
       await _asistRepo.marcarBulk(_idSesion!, marcas);
       if (!mounted) return;
@@ -369,8 +398,9 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
 
   // ====== HISTORIAL (Y CALENDARIO) ======
   Future<void> _pickRange() async {
-    final initialStart = DateTime.tryParse(_histDesde) ?? DateTime.now().subtract(const Duration(days: 30));
-    final initialEnd   = DateTime.tryParse(_histHasta) ?? DateTime.now();
+    final initialStart = DateTime.tryParse(_histDesde) ??
+        DateTime.now().subtract(const Duration(days: 30));
+    final initialEnd = DateTime.tryParse(_histHasta) ?? DateTime.now();
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(initialStart.year - 1),
@@ -395,19 +425,21 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   }) async {
     try {
       final dyn = _asistRepo as dynamic;
-      // El repo ahora soporta 'desde' y 'hasta' aquí
-      final r = await dyn.listarSesiones(idSubcategoria: subcatId, desde: desde, hasta: hasta);
+      final r =
+          await dyn.listarSesiones(idSubcategoria: subcatId, desde: desde, hasta: hasta);
       if (r is List) return r;
     } catch (_) {}
     try {
       final dyn = _asistRepo as dynamic;
-      final r = await dyn.historialSesiones(subcategoriaId: subcatId, desde: desde, hasta: hasta);
+      final r = await dyn.historialSesiones(
+          subcategoriaId: subcatId, desde: desde, hasta: hasta);
       if (r is List) return r;
     } catch (_) {}
 
-    // Fallback a HTTP directo
-    final path = '/asistencias/sesiones?subcategoria=$subcatId&desde=$desde&hasta=$hasta';
-    final res = await _http.get(path, headers: const {'Accept': 'application/json'});
+    final path =
+        '/asistencias/sesiones?subcategoria=$subcatId&desde=$desde&hasta=$hasta';
+    final res =
+        await _http.get(path, headers: const {'Accept': 'application/json'});
     return (res as List);
   }
 
@@ -416,20 +448,25 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     if (id == null) return;
     setState(() => _loadingHist = true);
     try {
-      final list = await _fetchSesionesHistorial(subcatId: id, desde: _histDesde, hasta: _histHasta);
-      final parsed = list.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map)).toList();
-      
+      final list = await _fetchSesionesHistorial(
+          subcatId: id, desde: _histDesde, hasta: _histHasta);
+      final parsed = list
+          .map<Map<String, dynamic>>(
+              (e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
       final newResumenes = <DateTime, String>{};
       for (final s in parsed) {
         final fechaStr = _pickStr(s, ['fecha', 'fechaISO', 'dia']);
         if (fechaStr.length < 10) continue;
         final fechaDt = DateTime.tryParse(fechaStr.substring(0, 10));
         if (fechaDt != null) {
-          // El backend ahora provee 'presentes_count' y 'total_estudiantes'
           final p = s['presentes'] ?? s['presentes_count'] ?? s['asistentes'];
-          final t = s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
+          final t =
+              s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
           if (p != null && t != null) {
-            newResumenes[DateTime.utc(fechaDt.year, fechaDt.month, fechaDt.day)] = '$p/$t';
+            newResumenes[DateTime.utc(fechaDt.year, fechaDt.month, fechaDt.day)] =
+                '$p/$t';
           }
         }
       }
@@ -438,18 +475,16 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         _sesionesHistorial = parsed;
         _sesionResumenes = newResumenes;
         _loadingHist = false;
-        
-        // ===== NUEVO: Refresca la lista del día seleccionado si hay uno =====
+
         if (_selectedDay != null) {
           _filtrarSesionesDelDia(_selectedDay!);
         }
-        // ===============================================================
       });
     } catch (e) {
       setState(() {
         _sesionesHistorial = [];
         _sesionResumenes = {};
-        _sesionesDelDiaSeleccionado = []; // Limpia también la lista filtrada
+        _sesionesDelDiaSeleccionado = [];
         _loadingHist = false;
       });
       if (!mounted) return;
@@ -459,36 +494,36 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
   }
 
-  // ====== REPORTE POR ALUMNO (NUEVO) ======
+  // ====== REPORTE POR ALUMNO ======
   Future<List> _fetchAsistenciasPorEstudiante({
     required int subcatId,
     required int estudianteId,
     required String desde,
     required String hasta,
   }) async {
-    // 1) Intenta con el método del repo (preferido)
     try {
       final dyn = _asistRepo as dynamic;
       final r = await dyn.asistenciaPorEstudiante(
-        idSubcategoria: subcatId, 
-        idEstudiante: estudianteId, 
-        desde: desde, 
-        hasta: hasta
+        idSubcategoria: subcatId,
+        idEstudiante: estudianteId,
+        desde: desde,
+        hasta: hasta,
       );
       if (r is List) return r;
     } catch (_) {}
-    
-    // 2) Fallback: GET directo (usa el endpoint que definimos)
-    final path = '/asistencias/historial-estudiante?subcategoria=$subcatId&estudiante=$estudianteId&desde=$desde&hasta=$hasta';
-    final res = await _http.get(path, headers: const {'Accept': 'application/json'});
+
+    final path =
+        '/asistencias/historial-estudiante?subcategoria=$subcatId&estudiante=$estudianteId&desde=$desde&hasta=$hasta';
+    final res =
+        await _http.get(path, headers: const {'Accept': 'application/json'});
     return (res as List);
   }
 
   Future<void> _loadHistorialPorEstudiante(int estudianteId) async {
     final idSubcat = _selSubcatId;
     if (idSubcat == null) return;
-    
-    setState(() { 
+
+    setState(() {
       _loadingReporteAlumno = true;
       _selAlumnoReporteId = estudianteId;
       _historialAlumno = [];
@@ -498,10 +533,13 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       final list = await _fetchAsistenciasPorEstudiante(
         subcatId: idSubcat,
         estudianteId: estudianteId,
-        desde: _histDesde, // Reutiliza los filtros de fecha
+        desde: _histDesde,
         hasta: _histHasta,
       );
-      final parsed = list.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final parsed = list
+          .map<Map<String, dynamic>>(
+              (e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       setState(() {
         _historialAlumno = parsed;
         _loadingReporteAlumno = false;
@@ -518,17 +556,18 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     }
   }
 
-  // ===== NUEVO: Filtra la lista de historial para el día seleccionado =====
+  // Filtra la lista de historial para el día seleccionado
   void _filtrarSesionesDelDia(DateTime diaSeleccionado) {
-    final diaUtc = DateTime.utc(diaSeleccionado.year, diaSeleccionado.month, diaSeleccionado.day);
-    
+    final diaUtc =
+        DateTime.utc(diaSeleccionado.year, diaSeleccionado.month, diaSeleccionado.day);
+
     final sesionesFiltradas = _sesionesHistorial.where((sesion) {
       final fechaStr = _pickStr(sesion, ['fecha', 'fechaISO', 'dia']);
       if (fechaStr.length < 10) return false;
-      
+
       final fechaDt = DateTime.tryParse(fechaStr.substring(0, 10));
       if (fechaDt == null) return false;
-      
+
       final fechaUtc = DateTime.utc(fechaDt.year, fechaDt.month, fechaDt.day);
       return isSameDay(fechaUtc, diaUtc);
     }).toList();
@@ -537,8 +576,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       _sesionesDelDiaSeleccionado = sesionesFiltradas;
     });
   }
-  // ====================================================================
-
 
   // ====== FILTRO DE ALUMNOS EN MEMORIA ======
   List<_RowAlumno> get _rowsFiltered {
@@ -546,7 +583,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     if (q.isEmpty) return _rows;
     return _rows.where((r) => r.nombre.toLowerCase().contains(q)).toList();
   }
-  void _applyAlumnoFilter() => setState(() { /* solo para rebuild */ });
+
+  void _applyAlumnoFilter() => setState(() {/*rebuild*/});
 
   // ====== UI ======
   @override
@@ -555,19 +593,23 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isStepElegir ? 'Asistencias · Subcategorías' : 'Asistencias · ${_selSubcatNombre ?? ''}'),
-        leading: isStepElegir ? null : BackButton(onPressed: () {
-          setState(() {
-            _step = 0;
-            _rows.clear();
-            _idSesion = null;
-            _sesionesHistorial = []; // Limpia historial al salir
-            _sesionResumenes = {};
-            _historialAlumno = [];
-            _selAlumnoReporteId = null;
-            _sesionesDelDiaSeleccionado = []; // Limpia lista de calendario
-          });
-        }),
+        title: Text(isStepElegir
+            ? 'Asistencias · Subcategorías'
+            : 'Asistencias · ${_selSubcatNombre ?? ''}'),
+        leading: isStepElegir
+            ? null
+            : BackButton(onPressed: () {
+                setState(() {
+                  _step = 0;
+                  _rows.clear();
+                  _idSesion = null;
+                  _sesionesHistorial = [];
+                  _sesionResumenes = {};
+                  _historialAlumno = [];
+                  _selAlumnoReporteId = null;
+                  _sesionesDelDiaSeleccionado = [];
+                });
+              }),
       ),
       body: SafeArea(
         child: AnimatedSwitcher(
@@ -602,7 +644,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                   : LayoutBuilder(
                       builder: (ctx, c) {
                         final w = c.maxWidth;
-                        final cross = w >= 1200 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
+                        final cross =
+                            w >= 1200 ? 4 : w >= 900 ? 3 : w >= 600 ? 2 : 1;
                         return GridView.builder(
                           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -614,8 +657,12 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                           itemCount: _filteredSubcats.length,
                           itemBuilder: (_, i) {
                             final it = _filteredSubcats[i];
-                            final id = _toIntOrZero(it['id'] ?? it['id_subcategoria']);
-                            final nombre = (it['nombre'] ?? it['nombre_subcategoria'] ?? 'Sin nombre').toString();
+                            final id =
+                                _toIntOrZero(it['id'] ?? it['id_subcategoria']);
+                            final nombre = (it['nombre'] ??
+                                    it['nombre_subcategoria'] ??
+                                    'Sin nombre')
+                                .toString();
 
                             return InkWell(
                               onTap: () async {
@@ -623,21 +670,20 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                                   _selSubcatId = id;
                                   _selSubcatNombre = nombre;
                                   _step = 1;
-                                  // Resetea filtros de fecha al cambiar de subcategoría
                                   _histDesde = _isoNDiasAtras(30);
                                   _histHasta = _todayISO();
                                   _focusedDay = DateTime.now();
                                   _selectedDay = null;
-                                  _sesionesDelDiaSeleccionado = []; // Limpia lista
+                                  _sesionesDelDiaSeleccionado = [];
                                 });
-                                // Carga la sesión (hoy) y también el historial por defecto
                                 await _crearOAbrirSesionYListar();
                                 await _loadHistorial();
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Card(
                                 elevation: 1,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
                                 child: Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 14),
                                   child: Row(
@@ -668,20 +714,20 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     );
   }
 
-  // Tabs: AHORA CON 4 PESTAÑAS
+  // Tabs: 4 pestañas
   Widget _buildStepAttendanceTabs() {
     return DefaultTabController(
-      length: 4, 
+      length: 4,
       child: Column(
         children: [
           const TabBar(
-            isScrollable: true, 
+            isScrollable: true,
             tabs: [
               Tab(text: 'Tomar asistencia', icon: Icon(Icons.fact_check_outlined)),
               Tab(text: 'Historial (Lista)', icon: Icon(Icons.history)),
-              Tab(text: 'Calendario', icon: Icon(Icons.calendar_month)), 
-              Tab(text: 'Por Alumno', icon: Icon(Icons.person_search)), 
-            ]
+              Tab(text: 'Calendario', icon: Icon(Icons.calendar_month)),
+              Tab(text: 'Por Alumno', icon: Icon(Icons.person_search)),
+            ],
           ),
           Expanded(
             child: TabBarView(
@@ -692,8 +738,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                     DefaultTabController.of(context),
                   ),
                 ),
-                _buildCalendarTab(), // <-- Pestaña 3 (Mejorada)
-                _buildStudentReportTab(), 
+                _buildCalendarTab(),
+                _buildStudentReportTab(),
               ],
             ),
           ),
@@ -707,7 +753,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // --- ÁREA DE FILTROS ---
         SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           scrollDirection: Axis.horizontal,
@@ -715,12 +760,15 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Wrap(
-                spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Fecha: $_fecha', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text('Fecha: $_fecha',
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
                         icon: const Icon(Icons.calendar_month),
@@ -729,37 +777,44 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                       ),
                     ],
                   ),
-                  _TimeField(controller: _iniCtrl, label: 'Inicio', onPick: () => _pickTime(_iniCtrl)),
-                  _TimeField(controller: _finCtrl,  label: 'Fin',    onPick: () => _pickTime(_finCtrl)),
+                  _TimeField(
+                      controller: _iniCtrl,
+                      label: 'Inicio',
+                      onPick: () => _pickTime(_iniCtrl)),
+                  _TimeField(
+                      controller: _finCtrl,
+                      label: 'Fin',
+                      onPick: () => _pickTime(_finCtrl)),
                   FilledButton.icon(
-                    onPressed: (_selSubcatId == null) ? null : _crearOAbrirSesionYListar,
+                    onPressed:
+                        (_selSubcatId == null) ? null : _crearOAbrirSesionYListar,
                     icon: const Icon(Icons.playlist_add_check),
                     label: const Text('Crear / abrir sesión'),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              
-              // ===== MODIFICADO: Se eliminó el Padding(bottom: 4.0) que causaba overflow =====
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ===== MODIFICADO: Botones de estatus =====
                       ElevatedButton.icon(
-                        onPressed: _rows.isEmpty ? null : () => _setAllStatus(EstatusAsistencia.presente),
+                        onPressed: _rows.isEmpty
+                            ? null
+                            : () => _setAllStatus(EstatusAsistencia.presente),
                         icon: const Icon(Icons.check_circle),
                         label: const Text('Todos Presentes'),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton.icon(
-                        onPressed: _rows.isEmpty ? null : () => _setAllStatus(EstatusAsistencia.ausente),
+                        onPressed: _rows.isEmpty
+                            ? null
+                            : () => _setAllStatus(EstatusAsistencia.ausente),
                         icon: const Icon(Icons.cancel),
                         label: const Text('Todos Ausentes'),
                       ),
-                      // ============================================
                     ],
                   ),
                   const SizedBox(width: 16),
@@ -780,7 +835,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: (_rows.isEmpty || _idSesion == null) ? null : _guardar,
+                        onPressed:
+                            (_rows.isEmpty || _idSesion == null) ? null : _guardar,
                         icon: const Icon(Icons.save),
                         label: const Text('Guardar'),
                       ),
@@ -798,7 +854,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
               : _rowsTable(
                   rows: _rowsFiltered,
                   onChanged: (idx, r) {
-                    final origIndex = _rows.indexWhere((x) => x.idEstudiante == r.idEstudiante);
+                    final origIndex =
+                        _rows.indexWhere((x) => x.idEstudiante == r.idEstudiante);
                     if (origIndex >= 0) {
                       setState(() => _rows[origIndex] = r);
                     }
@@ -824,9 +881,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       totalCapacidad += t;
     }
 
-    final porcentajeGlobal = (totalCapacidad > 0)
-        ? (totalPresentes / totalCapacidad * 100)
-        : 0.0;
+    final porcentajeGlobal =
+        (totalCapacidad > 0) ? (totalPresentes / totalCapacidad * 100) : 0.0;
 
     Widget _statCard({
       required IconData icon,
@@ -889,9 +945,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         _statCard(
           icon: Icons.bar_chart_rounded,
           label: 'Asistencia promedio',
-          value: totalCapacidad == 0
-              ? '—'
-              : '${porcentajeGlobal.toStringAsFixed(1)} %',
+          value: totalCapacidad == 0 ? '—' : '${porcentajeGlobal.toStringAsFixed(1)} %',
         ),
       ],
     );
@@ -903,7 +957,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
 
     return Column(
       children: [
-        // Filtros de rango + export
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: Card(
@@ -940,7 +993,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                     tooltip: 'Actualizar',
                   ),
                   const SizedBox(width: 8),
-                  // Exportar
                   PopupMenuButton<String>(
                     tooltip: 'Exportar Historial',
                     enabled: !_loadingHist && _sesionesHistorial.isNotEmpty,
@@ -961,8 +1013,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                         );
                       }
                     },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
                         value: 'excel',
                         child: ListTile(
                           leading: Icon(Icons.grid_on),
@@ -970,7 +1022,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                           subtitle: Text('Lista de sesiones'),
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'pdf',
                         child: ListTile(
                           leading: Icon(Icons.picture_as_pdf),
@@ -997,7 +1049,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                   ? const Center(child: Text('Sin sesiones registradas en el rango seleccionado'))
                   : Column(
                       children: [
-                        // Resumen tipo "dashboard"
                         Padding(
                           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                           child: _buildHistSummaryRow(),
@@ -1028,41 +1079,34 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                                           ),
                                           columns: const [
                                             DataColumn(
-                                              label: Text(
-                                                'Fecha',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
+                                              label: Text('Fecha',
+                                                  style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                             DataColumn(
-                                              label: Text(
-                                                'Horario',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
+                                              label: Text('Horario',
+                                                  style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                             DataColumn(
-                                              label: Text(
-                                                'Presentes',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
+                                              label: Text('Presentes',
+                                                  style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                             DataColumn(
-                                              label: Text(
-                                                '% Asistencia',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
+                                              label: Text('% Asistencia',
+                                                  style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                             DataColumn(
-                                              label: Text(
-                                                'Acciones',
-                                                style: TextStyle(fontWeight: FontWeight.bold),
-                                              ),
+                                              label: Text('Acciones',
+                                                  style: TextStyle(fontWeight: FontWeight.bold)),
                                             ),
                                           ],
                                           rows: _sesionesHistorial.map((s) {
-                                            final fechaStr = _pickStr(s, ['fecha', 'fechaISO', 'dia']);
+                                            final fechaStr =
+                                                _pickStr(s, ['fecha', 'fechaISO', 'dia']);
                                             final fecha = _fmtDate(fechaStr);
-                                            final hi = _pickStr(s, ['hora_inicio', 'horaInicio']);
-                                            final hf = _pickStr(s, ['hora_fin', 'horaFin']);
+                                            final hi =
+                                                _pickStr(s, ['hora_inicio', 'horaInicio']);
+                                            final hf =
+                                                _pickStr(s, ['hora_fin', 'horaFin']);
                                             final horario = (hi.isNotEmpty && hf.isNotEmpty)
                                                 ? '$hi – $hf'
                                                 : 'N/A';
@@ -1088,9 +1132,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                                               cells: [
                                                 DataCell(Text(fecha)),
                                                 DataCell(Text(horario)),
-                                                DataCell(
-                                                  Text('$p / $t'),
-                                                ),
+                                                DataCell(Text('$p / $t')),
                                                 DataCell(
                                                   Row(
                                                     mainAxisSize: MainAxisSize.min,
@@ -1107,9 +1149,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                                                                     : Colors.red,
                                                       ),
                                                       const SizedBox(width: 6),
-                                                      Text(
-                                                        t == 0 ? '—' : '$pct %',
-                                                      ),
+                                                      Text(t == 0 ? '—' : '$pct %'),
                                                     ],
                                                   ),
                                                 ),
@@ -1144,7 +1184,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     );
   }
 
-  // ===== PESTAÑA 3: CALENDARIO (MODIFICADA Y MEJORADA) =====
+  // ===== PESTAÑA 3: CALENDARIO =====
   Widget _buildCalendarTab() {
     return SingleChildScrollView(
       child: Column(
@@ -1158,39 +1198,31 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
               calendarFormat: _calendarFormat,
               locale: 'es_ES',
               selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-              
-              // ===== MODIFICADO: onDaySelected ahora filtra la lista =====
               onDaySelected: (selectedDay, focusedDay) {
                 setState(() {
                   _selectedDay = selectedDay;
                   _focusedDay = focusedDay;
                 });
-                // Llama a la nueva función de filtro
-                _filtrarSesionesDelDia(selectedDay); 
+                _filtrarSesionesDelDia(selectedDay);
               },
-              // ========================================================
-
-              // ===== MODIFICADO: onPageChanged limpia la selección =====
               onPageChanged: (focusedDay) {
                 _focusedDay = focusedDay;
                 final firstDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
                 final lastDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
-                
+
                 setState(() {
                   _histDesde = DateFormat('yyyy-MM-dd').format(firstDayOfMonth);
                   _histHasta = DateFormat('yyyy-MM-dd').format(lastDayOfMonth);
-                  // Limpia la selección al cambiar de mes
-                  _selectedDay = null; 
+                  _selectedDay = null;
                   _sesionesDelDiaSeleccionado = [];
                 });
-                // Recarga el historial para los marcadores del mes
-                _loadHistorial(); 
+                _loadHistorial();
               },
-              // =======================================================
-              
               onFormatChanged: (format) {
                 if (_calendarFormat != format) {
-                  setState(() { _calendarFormat = format; });
+                  setState(() {
+                    _calendarFormat = format;
+                  });
                 }
               },
               calendarBuilders: CalendarBuilders(
@@ -1208,7 +1240,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
                         ),
                         child: Text(
                           resumen,
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
                       ),
                     );
@@ -1219,18 +1252,18 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
             ),
           ),
           const Divider(),
-          
-          // ===== MODIFICADO: Lógica de la lista de sesiones =====
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Text(
               _selectedDay == null
-                ? 'Sesiones del mes'
-                : 'Sesiones para: ${DateFormat('EEE dd, MMM y', 'es').format(_selectedDay!)}',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ? 'Sesiones del mes'
+                  : 'Sesiones para: ${DateFormat('EEE dd, MMM y', 'es').format(_selectedDay!)}',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
-
           if (_selectedDay == null)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 40.0, horizontal: 20),
@@ -1242,10 +1275,10 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
               ),
             )
           else if (_loadingHist)
-             const Padding(
-               padding: EdgeInsets.all(40.0),
-               child: Center(child: CircularProgressIndicator()),
-             )
+            const Padding(
+              padding: EdgeInsets.all(40.0),
+              child: Center(child: CircularProgressIndicator()),
+            )
           else if (_sesionesDelDiaSeleccionado.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 40.0, horizontal: 20),
@@ -1260,24 +1293,22 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              // Usa la nueva lista filtrada
-              itemCount: _sesionesDelDiaSeleccionado.length, 
+              itemCount: _sesionesDelDiaSeleccionado.length,
               itemBuilder: (_, i) {
-                // Usa la nueva lista filtrada
-                final s = _sesionesDelDiaSeleccionado[i]; 
+                final s = _sesionesDelDiaSeleccionado[i];
                 return _HistorialSesionTile(
                   sesion: s,
-                  onAbrir: (sesion) => _abrirSesionExistente(sesion, DefaultTabController.of(context)),
+                  onAbrir: (sesion) =>
+                      _abrirSesionExistente(sesion, DefaultTabController.of(context)),
                 );
               },
             )
-          // ======================================================
         ],
       ),
     );
   }
 
-  // ===== NUEVO: Widget de Resumen para Reporte Alumno =====
+  // ===== Resumen para Reporte Alumno =====
   Widget _buildReporteAlumnoSummary() {
     if (_historialAlumno.isEmpty) return const SizedBox.shrink();
 
@@ -1288,7 +1319,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     final total = _historialAlumno.length;
 
     for (final item in _historialAlumno) {
-      // Asumimos que el historial ahora también trae el campo 'estatus'
       final estatus = estatusAsistenciaFromString(item['estatus']?.toString());
       switch (estatus) {
         case EstatusAsistencia.presente:
@@ -1314,40 +1344,32 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         alignment: WrapAlignment.center,
         children: [
           Chip(
-            avatar: Icon(Icons.check_circle, color: Colors.green),
+            avatar: const Icon(Icons.check_circle, color: Colors.green),
             label: Text('Presente: $presentes'),
           ),
           Chip(
-            avatar: Icon(Icons.schedule, color: Colors.orange),
+            avatar: const Icon(Icons.schedule, color: Colors.orange),
             label: Text('Tarde: $tardes'),
           ),
           Chip(
-            avatar: Icon(Icons.cancel, color: Colors.red),
+            avatar: const Icon(Icons.cancel, color: Colors.red),
             label: Text('Ausente: $ausentes'),
           ),
           Chip(
-            avatar: Icon(Icons.assignment_turned_in, color: Colors.blue),
+            avatar: const Icon(Icons.assignment_turned_in, color: Colors.blue),
             label: Text('Justificado: $justificados'),
           ),
           Chip(
-            label: Text('Total Sesiones: $total', style: TextStyle(fontWeight: FontWeight.bold)),
+            label: Text('Total Sesiones: $total',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
-  // ========================================================
 
-
-  // ===== PESTAÑA 4: REPORTE POR ALUMNO (MODIFICADO) =====
+  // ===== PESTAÑA 4: REPORTE POR ALUMNO =====
   Widget _buildStudentReportTab() {
-    final selectedStudent = _selAlumnoReporteId == null 
-        ? null 
-        : _rows.firstWhere(
-            (r) => r.idEstudiante == _selAlumnoReporteId,
-            orElse: () => _RowAlumno(idEstudiante: 0, nombre: 'Error'),
-          );
-
     return Column(
       children: [
         Padding(
@@ -1360,7 +1382,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.person),
             ),
-            // Usa el Roster '_rows' que ya cargamos en la Pestaña 1
             items: _rows.map((_RowAlumno alumno) {
               return DropdownMenuItem<int>(
                 value: alumno.idEstudiante,
@@ -1377,46 +1398,45 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
         Expanded(
           child: _selAlumnoReporteId == null
               ? const Center(child: Text('Selecciona un alumno para ver su reporte'))
-              : _loadingReporteAlumno 
+              : _loadingReporteAlumno
                   ? const Center(child: CircularProgressIndicator())
                   : _historialAlumno.isEmpty
-                      ? const Center(child: Text('Este alumno no tiene asistencias registradas en el rango'))
-                      : Column( // ===== MODIFICADO: Añadida Column =====
+                      ? const Center(
+                          child: Text(
+                              'Este alumno no tiene asistencias registradas en el rango'))
+                      : Column(
                           children: [
-                            // ===== NUEVO: Resumen de estatus =====
                             _buildReporteAlumnoSummary(),
                             const Divider(),
-                            // ===================================
-                            Expanded( // ===== MODIFICADO: ListView en Expanded =====
+                            Expanded(
                               child: ListView.separated(
                                 padding: const EdgeInsets.all(8),
                                 itemCount: _historialAlumno.length,
-                                separatorBuilder: (_,__) => const Divider(height: 1, indent: 16, endIndent: 16),
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1, indent: 16, endIndent: 16),
                                 itemBuilder: (context, index) {
                                   final item = _historialAlumno[index];
-                                  
-                                  // ===== MODIFICADO: Usar estatus para icono y color =====
-                                  final estatus = estatusAsistenciaFromString(item['estatus']?.toString());
-                                  final (icon, color) = _StatusToggle._info[estatus]!; 
-                                  // ===================================================
+
+                                  final estatus =
+                                      estatusAsistenciaFromString(item['estatus']?.toString());
+                                  final (icon, color) = _StatusToggle._info[estatus]!;
 
                                   final fechaStr = _pickStr(item, ['fecha', 'fechaISO', 'dia']);
                                   final fechaFmt = _fmtDate(fechaStr);
                                   final obs = _pickStr(item, ['observaciones', 'obs']);
-                                  
+
                                   return ListTile(
-                                    leading: Icon(icon, color: color), // <-- MODIFICADO
+                                    leading: Icon(icon, color: color),
                                     title: Text(fechaFmt),
                                     subtitle: obs.isNotEmpty ? Text('Obs: $obs') : null,
-                                    // ===== NUEVO: Trailing chip con estatus =====
                                     trailing: Chip(
                                       label: Text(
                                         estatusAsistenciaToString(estatus).toUpperCase(),
-                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                                        style: const TextStyle(
+                                            fontSize: 10, fontWeight: FontWeight.bold),
                                       ),
                                       backgroundColor: color.withOpacity(0.1),
                                     ),
-                                    // =========================================
                                   );
                                 },
                               ),
@@ -1427,9 +1447,9 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       ],
     );
   }
-  
+
   // =================================================================
-  // ===== INICIO: SECCIÓN DE EXPORTACIÓN ============================
+  // ===== EXPORTACIÓN ===============================================
   // =================================================================
 
   String _fmtDate(Object? v) {
@@ -1452,7 +1472,7 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   }
 
   xls.CellValue _cv(dynamic v) {
-    if (v == null) return xls.TextCellValue('');
+    if (v == null) return  xls.TextCellValue('');
     if (v is bool) return xls.BoolCellValue(v);
     if (v is int) return xls.IntCellValue(v);
     if (v is double) return xls.DoubleCellValue(v);
@@ -1528,7 +1548,11 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
   }
 
   pw.Widget _buildSectionHeader(
-      String title, IconData icon, PdfColor color, pw.Font materialFont) {
+    String title,
+    IconData icon,
+    PdfColor color,
+    pw.Font materialFont,
+  ) {
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: color,
@@ -1541,70 +1565,42 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       margin: const pw.EdgeInsets.only(bottom: 4),
       child: pw.Row(
         children: [
-          pw.Icon(pw.IconData(icon.codePoint),
-              font: materialFont, color: PdfColors.white, size: 16),
+          pw.Icon(
+            pw.IconData(icon.codePoint),
+            font: materialFont,
+            color: PdfColors.white,
+            size: 16,
+          ),
           pw.SizedBox(width: 8),
           pw.Text(
             title,
             style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.white,
-                fontSize: 12),
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
     );
   }
 
-  pw.Widget _buildChip(String label, String? value, IconData icon,
-    PdfColor color, pw.Font materialFont) {
-  return pw.Container(
-    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-    decoration: pw.BoxDecoration(
-      color: color,
-      borderRadius: pw.BorderRadius.circular(12),
-    ),
-    child: pw.Row(
-      mainAxisSize: pw.MainAxisSize.min,
-      children: [
-        pw.Icon(
-          pw.IconData(icon.codePoint),
-          font: materialFont,
-          size: 12,
-          color: PdfColors.black,
-        ),
-        pw.SizedBox(width: 6),
-        pw.Text(
-          value == null || value.isEmpty
-              ? label
-              : '$label: ${value.trim()}',
-          style: const pw.TextStyle(
-            fontSize: 10,
-            color: PdfColors.black,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-
   Future<void> _exportHistorialExcel() async {
     final rows = _sesionesHistorial;
     if (rows.isEmpty) throw Exception('No hay datos para exportar');
-    
+
     final nombreSubcat = _selSubcatNombre ?? 'historial';
 
     final book = xls.Excel.createExcel();
     final sheet = book['Historial'];
-    sheet.appendRow([
+    sheet.appendRow( [
       xls.TextCellValue('Fecha'),
       xls.TextCellValue('Hora Inicio'),
       xls.TextCellValue('Hora Fin'),
       xls.TextCellValue('Presentes'),
       xls.TextCellValue('Total'),
     ]);
-    
+
     for (final r in rows) {
       final fecha = _fmtDate(_pickStr(r, ['fecha', 'fechaISO', 'dia']));
       final hi = _pickStr(r, ['hora_inicio', 'horaInicio']);
@@ -1613,7 +1609,11 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       final total = _toIntOrNull(r['total'] ?? r['total_estudiantes'] ?? r['inscritos']);
 
       sheet.appendRow([
-        _cv(fecha), _cv(hi), _cv(hf), _cv(presentes), _cv(total),
+        _cv(fecha),
+        _cv(hi),
+        _cv(hf),
+        _cv(presentes),
+        _cv(total),
       ]);
     }
     final encoded = book.encode()!;
@@ -1622,17 +1622,19 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       bytes,
       defaultFileName: 'asistencia_${nombreSubcat}.xlsx',
       extensions: const ['xlsx'],
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }
 
   Future<Uint8List> _buildHistorialPdfBytes() async {
     final rows = _sesionesHistorial;
     if (rows.isEmpty) throw Exception('No hay datos para exportar');
-    
+
     final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final robotoFont = pw.Font.ttf(robotoData);
-    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialData =
+        await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
     final materialFont = pw.Font.ttf(materialData);
 
     final doc = pw.Document();
@@ -1642,7 +1644,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
     const baseColor = PdfColors.blueGrey800;
     const lightColor = PdfColors.grey100;
 
-    pw.Widget buildCell(String text, {
+    pw.Widget buildCell(
+      String text, {
       pw.Alignment alignment = pw.Alignment.centerLeft,
       bool isHeader = false,
       PdfColor? background,
@@ -1655,7 +1658,10 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
           text,
           style: isHeader
               ? pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10)
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                  fontSize: 10,
+                )
               : const pw.TextStyle(fontSize: 10),
         ),
       );
@@ -1663,36 +1669,41 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
 
     final List<pw.TableRow> tableRows = [];
 
-    tableRows.add(pw.TableRow(
-      decoration: const pw.BoxDecoration(color: baseColor),
-      children: [
-        buildCell('Fecha', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Horario', isHeader: true, alignment: pw.Alignment.center),
-        buildCell('Asistencia', isHeader: true, alignment: pw.Alignment.center),
-      ],
-    ));
+    tableRows.add(
+      pw.TableRow(
+        decoration: const pw.BoxDecoration(color: baseColor),
+        children: [
+          buildCell('Fecha', isHeader: true, alignment: pw.Alignment.center),
+          buildCell('Horario', isHeader: true, alignment: pw.Alignment.center),
+          buildCell('Asistencia', isHeader: true, alignment: pw.Alignment.center),
+        ],
+      ),
+    );
 
     for (int i = 0; i < rows.length; i++) {
       final r = rows[i];
       final background = i % 2 == 0 ? lightColor : null;
-      
+
       final fecha = _fmtDate(_pickStr(r, ['fecha', 'fechaISO', 'dia']));
       final hi = _pickStr(r, ['hora_inicio', 'horaInicio']);
       final hf = _pickStr(r, ['hora_fin', 'horaFin']);
       final horario = (hi.isNotEmpty && hf.isNotEmpty) ? '$hi - $hf' : 'N/A';
-      
+
       final presentes = _toIntOrNull(r['presentes'] ?? r['presentes_count'] ?? r['asistentes']);
       final total = _toIntOrNull(r['total'] ?? r['total_estudiantes'] ?? r['inscritos']);
-      final asistencia = (presentes != null && total != null) ? '$presentes / $total' : 'N/A';
+      final asistencia =
+          (presentes != null && total != null) ? '$presentes / $total' : 'N/A';
 
-      tableRows.add(pw.TableRow(
-        decoration: pw.BoxDecoration(color: background),
-        children: [
-          buildCell(fecha, alignment: pw.Alignment.center),
-          buildCell(horario, alignment: pw.Alignment.center),
-          buildCell(asistencia, alignment: pw.Alignment.center),
-        ],
-      ));
+      tableRows.add(
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: background),
+          children: [
+            buildCell(fecha, alignment: pw.Alignment.center),
+            buildCell(horario, alignment: pw.Alignment.center),
+            buildCell(asistencia, alignment: pw.Alignment.center),
+          ],
+        ),
+      );
     }
 
     doc.addPage(
@@ -1701,36 +1712,49 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
           margin: const pw.EdgeInsets.all(24),
           theme: pw.ThemeData.withFont(base: robotoFont),
         ),
-        header: (context) => pw.Column(children: [
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(titulo.toUpperCase(),
+        header: (context) => pw.Column(
+          children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  titulo.toUpperCase(),
                   style: pw.TextStyle(
-                      color: baseColor,
-                      fontSize: 16,
-                      fontWeight: pw.FontWeight.bold)),
-              pw.Text(nombreSubcat,
-                  style: const pw.TextStyle(
-                      color: PdfColors.grey700, fontSize: 14)),
-            ],
-          ),
-          pw.Divider(color: PdfColors.grey400, height: 8),
-          pw.SizedBox(height: 10),
-        ]),
+                    color: baseColor,
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  nombreSubcat,
+                  style: const pw.TextStyle(color: PdfColors.grey700, fontSize: 14),
+                ),
+              ],
+            ),
+            pw.Divider(color: PdfColors.grey400, height: 8),
+            pw.SizedBox(height: 10),
+          ],
+        ),
         footer: (context) => pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Generado el: ${_fmtDate(DateTime.now())}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
             pw.Text(
-                'Página ${context.pageNumber} de ${context.pagesCount}',
-                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              'Generado el: ${_fmtDate(DateTime.now())}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+            pw.Text(
+              'Página ${context.pageNumber} de ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
           ],
         ),
         build: (context) => [
-          _buildSectionHeader('Sesiones en Rango ($_histDesde al $_histHasta)', 
-              Icons.history, baseColor, materialFont),
+          _buildSectionHeader(
+            'Sesiones en Rango ($_histDesde al $_histHasta)',
+            Icons.history,
+            baseColor,
+            materialFont,
+          ),
           pw.SizedBox(height: 6),
           pw.Table(
             border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
@@ -1746,8 +1770,8 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
             alignment: pw.Alignment.centerRight,
             child: pw.Text(
               'Total de sesiones: ${rows.length}',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)
-            )
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+            ),
           )
         ],
       ),
@@ -1766,10 +1790,6 @@ class _AdminAsistenciasScreenState extends State<AdminAsistenciasScreen> {
       mimeType: 'application/pdf',
     );
   }
-
-  // =================================================================
-  // ===== FIN: SECCIÓN DE EXPORTACIÓN ===============================
-  // =================================================================
 }
 
 // ===== Widgets auxiliares =====
@@ -1777,7 +1797,11 @@ class _TimeField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final VoidCallback onPick;
-  const _TimeField({required this.controller, required this.label, required this.onPick});
+  const _TimeField({
+    required this.controller,
+    required this.label,
+    required this.onPick,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1822,7 +1846,7 @@ class _EmptySubcats extends StatelessWidget {
 class _HistorialSesionTile extends StatelessWidget {
   final Map<String, dynamic> sesion;
   final void Function(Map<String, dynamic>) onAbrir;
-  
+
   const _HistorialSesionTile({required this.sesion, required this.onAbrir});
 
   String _pickStr(Map r, List<String> keys) {
@@ -1841,10 +1865,12 @@ class _HistorialSesionTile extends StatelessWidget {
     final fShort = fecha.isNotEmpty
         ? (fecha.length >= 10 ? fecha.substring(0, 10) : fecha)
         : null;
-    
+
     DateTime? fechaDt;
     if (fShort != null) {
-      try { fechaDt = DateTime.parse(fShort); } catch (_) {}
+      try {
+        fechaDt = DateTime.parse(fShort);
+      } catch (_) {}
     }
 
     final hi = _pickStr(s, ['hora_inicio', 'horaInicio']);
@@ -1853,7 +1879,7 @@ class _HistorialSesionTile extends StatelessWidget {
 
     final presentes = s['presentes'] ?? s['presentes_count'] ?? s['asistentes'];
     final total = s['total'] ?? s['total_estudiantes'] ?? s['inscritos'];
-    
+
     final theme = Theme.of(context);
 
     return Card(
@@ -1875,14 +1901,13 @@ class _HistorialSesionTile extends StatelessWidget {
                   DateFormat('MMM', 'es').format(fechaDt).toUpperCase(),
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary
+                    color: theme.colorScheme.primary,
                   ),
                 ),
                 Text(
                   DateFormat('dd').format(fechaDt),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold
-                  ),
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ] else
                 const Icon(Icons.event_busy),
@@ -1902,22 +1927,21 @@ class _HistorialSesionTile extends StatelessWidget {
   }
 }
 
-// ===== MODIFICADO: Modelo _RowAlumno usa Estatus =====
+// ===== Modelo _RowAlumno usa Estatus =====
 class _RowAlumno {
   final int idEstudiante;
   final String nombre;
-  EstatusAsistencia estatus; // <-- MODIFICADO
+  EstatusAsistencia estatus;
   String observaciones;
   _RowAlumno({
     required this.idEstudiante,
     required this.nombre,
-    this.estatus = EstatusAsistencia.ausente, // <-- MODIFICADO (default ausente)
+    this.estatus = EstatusAsistencia.ausente,
     this.observaciones = '',
   });
 }
-// ===================================================
 
-// ===== NUEVO: Widget selector de estatus =====
+// ===== Selector de estatus =====
 class _StatusToggle extends StatelessWidget {
   final EstatusAsistencia estatus;
   final ValueChanged<EstatusAsistencia> onEstatusChanged;
@@ -1927,7 +1951,6 @@ class _StatusToggle extends StatelessWidget {
     required this.onEstatusChanged,
   });
 
-  // Mapeo de estatus a ícono y color
   static const Map<EstatusAsistencia, (IconData, Color)> _info = {
     EstatusAsistencia.presente: (Icons.check_circle, Colors.green),
     EstatusAsistencia.tarde: (Icons.schedule, Colors.orange),
@@ -1942,7 +1965,6 @@ class _StatusToggle extends StatelessWidget {
       onPressed: (index) {
         onEstatusChanged(EstatusAsistencia.values[index]);
       },
-      // Estilos para que se vea bien
       borderRadius: BorderRadius.circular(8),
       selectedColor: Colors.white,
       fillColor: _info[estatus]!.$2.withOpacity(0.8),
@@ -1951,7 +1973,7 @@ class _StatusToggle extends StatelessWidget {
       selectedBorderColor: _info[estatus]!.$2.withOpacity(0.5),
       constraints: const BoxConstraints(minHeight: 36.0, minWidth: 36.0),
       children: EstatusAsistencia.values.map((e) {
-        final (icon, color) = _info[e]!;
+        final (icon, _) = _info[e]!;
         return Tooltip(
           message: estatusAsistenciaToString(e).toUpperCase(),
           child: Icon(icon, size: 20),
@@ -1960,9 +1982,8 @@ class _StatusToggle extends StatelessWidget {
     );
   }
 }
-// =============================================
 
-// ===== MODIFICADO: _rowsTable usa _StatusToggle =====
+// ===== Tabla de alumnos =====
 Widget _rowsTable({
   required List<_RowAlumno> rows,
   required void Function(int, _RowAlumno) onChanged,
@@ -1978,7 +1999,6 @@ Widget _rowsTable({
         final r = rows[i];
         return ListTile(
           dense: true,
-          // ===== MODIFICADO: de Checkbox a _StatusToggle =====
           leading: _StatusToggle(
             estatus: r.estatus,
             onEstatusChanged: (v) => onChanged(
@@ -1986,12 +2006,11 @@ Widget _rowsTable({
               _RowAlumno(
                 idEstudiante: r.idEstudiante,
                 nombre: r.nombre,
-                estatus: v, // <-- Aquí
+                estatus: v,
                 observaciones: r.observaciones,
               ),
             ),
           ),
-          // ==================================================
           title: Text(r.nombre),
           trailing: SizedBox(
             width: 300,
@@ -2007,7 +2026,7 @@ Widget _rowsTable({
                 _RowAlumno(
                   idEstudiante: r.idEstudiante,
                   nombre: r.nombre,
-                  estatus: r.estatus, // <-- MODIFICADO
+                  estatus: r.estatus,
                   observaciones: v,
                 ),
               ),

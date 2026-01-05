@@ -15,6 +15,7 @@ abstract class RouteNames {
 
   // ===== Admin: hubs raíz
   static const adminRoot = '/admin';
+  static const adminDashboard = '/admin/dashboard';
   static const adminPersonas = '/admin/personas';
   static const adminAcademia = '/admin/academia';
   static const adminFinanzas = '/admin/finanzas';
@@ -52,6 +53,7 @@ abstract class RouteNames {
   // Estudiantes (listado + detalle)
   static const adminEstudiantes = '/admin/estudiantes';
   static const adminEstudianteDetalle = '/admin/estudiantes/detalle';
+  static const adminEstudianteRepresentantes = '/admin/estudiantes/representantes';
 
   // Subcategoría → Estudiantes (detalle de subcat)
   static const adminSubcatEstudiantes = '/admin/subcategorias/estudiantes';
@@ -94,6 +96,7 @@ abstract class RouteNames {
 
     // Admin
     adminRoot,
+    adminDashboard,
     adminPersonas,
     adminAcademia,
     adminFinanzas,
@@ -125,6 +128,7 @@ abstract class RouteNames {
 
     adminEstudiantes,
     adminEstudianteDetalle,
+    adminEstudianteRepresentantes,
     adminSubcatEstudiantes,
 
     // Profesor

@@ -3,6 +3,8 @@ import '../../../../core/state/auth_state.dart';
 import '../../../../core/constants/route_names.dart';
 import '../../../../ui/components/panel_hub_card.dart';
 
+import '../widgets/admin_dashboard_widget.dart';
+
 class PanelScreen extends StatelessWidget {
   const PanelScreen({super.key});
 
@@ -17,11 +19,11 @@ class PanelScreen extends StatelessWidget {
     final showFinanzas = isAdmin;
     final showSistema  = isAdmin;
 
-    // Construimos las tarjetas (solo con rutas que ya existen)
-    final List<Widget> cards = [];
+    // Dashboard (siempre arriba)
+    final List<Widget> items = [const AdminDashboardWidget()];
 
     if (showPersonas) {
-      cards.add(
+      items.add(
         PanelHubCard(
           icon: Icons.groups_2_outlined,
           title: 'Personas',
@@ -48,7 +50,7 @@ class PanelScreen extends StatelessWidget {
     }
 
     // Academia: Categorías, Subcategorías, Estudiantes, Asistencias,
-    cards.add(
+    items.add(
       PanelHubCard(
         icon: Icons.school_outlined,
         title: 'Academia',
@@ -80,7 +82,7 @@ class PanelScreen extends StatelessWidget {
     );
 
     if (showFinanzas) {
-      cards.add(
+      items.add(
         PanelHubCard(
           icon: Icons.payments_outlined,
           title: 'Finanzas',
@@ -97,7 +99,7 @@ class PanelScreen extends StatelessWidget {
     }
 
     if (showSistema) {
-      cards.add(
+      items.add(
         PanelHubCard(
           icon: Icons.data_thresholding_outlined,
           title: 'Reportes',
@@ -114,7 +116,7 @@ class PanelScreen extends StatelessWidget {
     }
 
      if (showSistema) {
-      cards.add(
+      items.add(
         PanelHubCard(
           icon: Icons.settings_suggest_outlined,
           title: 'Sistema',
@@ -137,12 +139,12 @@ class PanelScreen extends StatelessWidget {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: const BoxConstraints(maxWidth: 980),
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-              itemBuilder: (_, i) => cards[i],
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemCount: cards.length,
+              itemBuilder: (_, i) => items[i],
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemCount: items.length,
             ),
           ),
         ),

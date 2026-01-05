@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+// ✅ Cambiado: ahora también importamos platform helpers
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+
+import 'package:app_porto/core/constants/route_names.dart';
 import 'package:app_porto/core/services/session_token_provider.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 // --- Imports Adicionales (traídos desde AdminPagosScreen) ---
 import 'dart:async';
@@ -24,7 +28,6 @@ import 'package:printing/printing.dart';
 
 // Import para cargar fuentes .ttf manualmente
 import 'package:flutter/services.dart' show rootBundle;
-// Import para las fuentes de Google (si usas el paquete)
 // import 'package:pdf_google_fonts/pdf_google_fonts.dart';
 
 // =========================================================
@@ -73,6 +76,40 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   late dynamic _subs;
   bool _canViewPagos = true;
 
+  // ============================
+  // ✅ Tooltips SOLO hover (web/desktop), NO móvil
+  // ============================
+  bool get _isHoverDevice {
+    if (kIsWeb) return true;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.windows:
+      case TargetPlatform.macOS:
+      case TargetPlatform.linux:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Widget _tip(String message, {required Widget child}) {
+    if (!_isHoverDevice) return child; // en móvil NO tooltip
+    final msg = message.trim();
+    if (msg.isEmpty) return child;
+
+    return Tooltip(
+      message: msg,
+      waitDuration: const Duration(milliseconds: 450),
+      showDuration: const Duration(seconds: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      textStyle: const TextStyle(fontSize: 12, color: Colors.white),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: child,
+    );
+  }
+
   String _roleFromJwt(String token) {
     try {
       var t = token.trim();
@@ -96,7 +133,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
       // Soporta: rol: { nombre: "profesor" } o { name: "profesor" }
       if (rol is Map) {
-        final m = Map<String, dynamic>.from(rol as Map);
+        final m = Map<String, dynamic>.from(rol);
         return (m['nombre'] ?? m['name'] ?? '').toString().trim();
       }
 
@@ -132,7 +169,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   bool _loading = true; // Carga inicial de Info
   String? _error;
 
-  // ===== Estado (pagos - NUEVO - traído de AdminPagosScreen) =====
+  // ===== Estado (pagos) =====
   bool _loadingMens = false;
   String? _pagosError;
   List<Map<String, dynamic>> _mensualidades = [];
@@ -147,7 +184,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   bool _soloPendiente = false;
   final Set<int> _openYears = <int>{};
 
-  // ===== Auth gate (NUEVO - traído de AdminPagosScreen) =====
+  // ===== Auth gate =====
   bool _authChecked = false; // ya verifiqué token
   bool _isAuth = false; // hay token válido
   bool get _blocked => !_authChecked || !_isAuth;
@@ -156,7 +193,6 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
   void initState() {
     super.initState();
 
-    // ===== FIX DEFINITIVO =====
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final scope = AppScope.of(context);
 
@@ -168,7 +204,6 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
       _checkAuthAndLoad();
     });
-    // ==========================
 
     _tab.addListener(() {
       setState(() {});
@@ -183,7 +218,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     super.dispose();
   }
 
-  // ===== Lógica de Auth (NUEVO) =====
+  // ===== Lógica de Auth =====
   Future<void> _checkAuthAndLoad() async {
     try {
       final tp = SessionTokenProvider.instance;
@@ -193,7 +228,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
       final hasToken = (t != null && t.isNotEmpty);
 
-      final rol = hasToken ? _roleFromJwt(t!) : '';
+      final rol = hasToken ? _roleFromJwt(t) : '';
 
       // ✅ LISTA BLANCA: solo estos roles ven pagos
       final allowedToViewPagos = <String>{'admin', 'representante'};
@@ -203,8 +238,7 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       setState(() {
         _authChecked = true;
         _isAuth = hasToken;
-        _canViewPagos =
-            canViewPagos; // ❗ ahora por defecto NO ve pagos si rol viene vacío
+        _canViewPagos = canViewPagos;
       });
 
       if (_isAuth) {
@@ -977,7 +1011,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _pagosError = e.toString());
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
       if (mounted) setState(() => _loadingMens = false);
@@ -1447,7 +1482,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       final anio = _pickStr(r, ['anio', 'año', 'anio_pago', 'ano', 'year']);
       final est = _pickStr(r, ['estado', 'status']);
       final monto = _pickStr(r, ['monto', 'valor', 'importe', 'total', 'pago']);
-      final fpago = _fmtDate(_pickStr(r, ['fechaPago', 'fecha_pago', 'pagado_en', 'fecha']));
+      final fpago = _fmtDate(
+          _pickStr(r, ['fechaPago', 'fecha_pago', 'pagado_en', 'fecha']));
       final obs = _pickStr(r, ['observacion', 'observación', 'nota', 'comentario']);
 
       sheet.appendRow([_cv(mes), _cv(anio), _cv(est), _cv(monto), _cv(fpago), _cv(obs)]);
@@ -1458,7 +1494,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       bytes,
       defaultFileName: 'estudiante_${widget.id}_pagos.xlsx',
       extensions: const ['xlsx'],
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
   }
 
@@ -1468,7 +1505,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
 
     final robotoData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     final robotoFont = pw.Font.ttf(robotoData);
-    final materialData = await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
+    final materialData =
+        await rootBundle.load('assets/fonts/MaterialIcons-Regular.ttf');
     final materialFont = pw.Font.ttf(materialData);
 
     final doc = pw.Document();
@@ -1744,99 +1782,115 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
               )
             : null,
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Exportar',
-            onSelected: (v) async {
-              try {
-                switch (v) {
-                  case 'info.pdf':
-                    await _exportInfoPdf();
-                    break;
-                  case 'pagos.xlsx':
-                    await _exportPagosExcel();
-                    break;
-                  case 'pagos.pdf':
-                    await _exportPagosPdf();
-                    break;
-                  case 'preview.info':
-                    final b = await _buildInfoPdfBytes();
-                    await Printing.layoutPdf(onLayout: (_) async => b);
-                    break;
-                  case 'preview.pagos':
-                    final b = await _buildPagosPdfBytes();
-                    await Printing.layoutPdf(onLayout: (_) async => b);
-                    break;
-                }
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Error al exportar: $e'),
-                    backgroundColor: Colors.red,
-                  ),
+          _tip(
+            'Ver representantes del estudiante',
+            child: IconButton(
+              icon: const Icon(Icons.group),
+              onPressed: () {
+                Navigator.of(context).pushNamed(
+                  RouteNames.adminEstudianteRepresentantes,
+                  arguments: {'id': widget.id},
                 );
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'info.pdf',
-                enabled: _info != null,
-                child: const ListTile(
-                  leading: Icon(Icons.picture_as_pdf),
-                  title: Text('Exportar información (PDF)'),
-                ),
-              ),
-              if (_canViewPagos) ...[
-                const PopupMenuDivider(),
-                PopupMenuItem(
-                  value: 'pagos.xlsx',
-                  child: const ListTile(
-                    leading: Icon(Icons.grid_on),
-                    title: Text('Exportar pagos (Excel)'),
-                    subtitle: Text('Usa solo los años abiertos'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'pagos.pdf',
-                  child: const ListTile(
-                    leading: Icon(Icons.picture_as_pdf),
-                    title: Text('Exportar pagos (PDF)'),
-                    subtitle: Text('Usa solo los años abiertos'),
-                  ),
-                ),
-              ],
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'preview.info',
-                child: const ListTile(
-                  leading: Icon(Icons.print),
-                  title: Text('Vista previa Info'),
-                ),
-              ),
-              if (_canViewPagos)
-                PopupMenuItem(
-                  value: 'preview.pagos',
-                  child: const ListTile(
-                    leading: Icon(Icons.print),
-                    title: Text('Vista previa Pagos'),
-                  ),
-                ),
-            ],
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8.0),
-              child: Icon(Icons.download),
+              },
             ),
           ),
-          IconButton(
-            tooltip: 'Refrescar',
-            onPressed: _loading ? null : _loadAll,
-            icon: _loading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
+          _tip(
+            'Exportar / Vista previa',
+            child: PopupMenuButton<String>(
+              onSelected: (v) async {
+                try {
+                  switch (v) {
+                    case 'info.pdf':
+                      await _exportInfoPdf();
+                      break;
+                    case 'pagos.xlsx':
+                      await _exportPagosExcel();
+                      break;
+                    case 'pagos.pdf':
+                      await _exportPagosPdf();
+                      break;
+                    case 'preview.info':
+                      final b = await _buildInfoPdfBytes();
+                      await Printing.layoutPdf(onLayout: (_) async => b);
+                      break;
+                    case 'preview.pagos':
+                      final b = await _buildPagosPdfBytes();
+                      await Printing.layoutPdf(onLayout: (_) async => b);
+                      break;
+                  }
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al exportar: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'info.pdf',
+                  enabled: _info != null,
+                  child: const ListTile(
+                    leading: Icon(Icons.picture_as_pdf),
+                    title: Text('Exportar información (PDF)'),
+                  ),
+                ),
+                if (_canViewPagos) ...[
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'pagos.xlsx',
+                    child: const ListTile(
+                      leading: Icon(Icons.grid_on),
+                      title: Text('Exportar pagos (Excel)'),
+                      subtitle: Text('Usa solo los años abiertos'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'pagos.pdf',
+                    child: const ListTile(
+                      leading: Icon(Icons.picture_as_pdf),
+                      title: Text('Exportar pagos (PDF)'),
+                      subtitle: Text('Usa solo los años abiertos'),
+                    ),
+                  ),
+                ],
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'preview.info',
+                  child: const ListTile(
+                    leading: Icon(Icons.print),
+                    title: Text('Vista previa Info'),
+                  ),
+                ),
+                if (_canViewPagos)
+                  PopupMenuItem(
+                    value: 'preview.pagos',
+                    child: const ListTile(
+                      leading: Icon(Icons.print),
+                      title: Text('Vista previa Pagos'),
+                    ),
+                  ),
+              ],
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(Icons.download),
+              ),
+            ),
+          ),
+          _tip(
+            _loading ? 'Cargando...' : 'Refrescar datos',
+            child: IconButton(
+              onPressed: _loading ? null : _loadAll,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
           ),
         ],
       ),
@@ -1927,7 +1981,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   child: Column(
                     children: [
                       Hero(
@@ -1957,14 +2012,16 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       ),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 2),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Text(
                           'Cédula: ${_fmt(_info?['cedula'] ?? _info?['id_doc'])}',
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12),
                         ),
                       ),
                     ],
@@ -1997,11 +2054,14 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                   const SizedBox(height: 12),
                   _dataRow(
                     'Fecha de Nacimiento',
-                    _fmtDate(_info?['fechaNacimiento'] ?? _info?['fecha_nacimiento']),
+                    _fmtDate(_info?['fechaNacimiento'] ??
+                        _info?['fecha_nacimiento']),
                     Icons.cake_rounded,
                   ),
-                  _dataRow('Teléfono', _fmt(_info?['telefono']), Icons.phone_rounded),
-                  _dataRow('Dirección', _fmt(_info?['direccion']), Icons.location_on_rounded),
+                  _dataRow('Teléfono', _fmt(_info?['telefono']),
+                      Icons.phone_rounded),
+                  _dataRow('Dirección', _fmt(_info?['direccion']),
+                      Icons.location_on_rounded),
                 ],
               ),
             ),
@@ -2033,22 +2093,29 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       if (_matricula != null)
                         SizedBox(
                           height: 32,
-                          child: FilledButton.tonalIcon(
-                            onPressed: _editarInscripcionDialog,
-                            icon: const Icon(Icons.edit, size: 16),
-                            label: const Text('Editar'),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: _tip(
+                            'Editar matrícula/inscripción',
+                            child: FilledButton.tonalIcon(
+                              onPressed: _editarInscripcionDialog,
+                              icon: const Icon(Icons.edit, size: 16),
+                              label: const Text('Editar'),
+                              style: FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 12),
+                              ),
                             ),
                           ),
                         )
                       else
                         SizedBox(
                           height: 32,
-                          child: FilledButton.icon(
-                            onPressed: _crearInscripcionDialog,
-                            icon: const Icon(Icons.add, size: 16),
-                            label: const Text('Crear'),
+                          child: _tip(
+                            'Crear matrícula/inscripción',
+                            child: FilledButton.icon(
+                              onPressed: _crearInscripcionDialog,
+                              icon: const Icon(Icons.add, size: 16),
+                              label: const Text('Crear'),
+                            ),
                           ),
                         ),
                     ],
@@ -2074,9 +2141,14 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                       children: [
                         _infoChip(Icons.category_outlined, 'Categoría',
                             _categoriaLabel(_matricula), Colors.blue),
-                        _infoChip(Icons.repeat, 'Ciclo', _fmt(_matricula?['ciclo']), Colors.purple),
-                        _infoChip(Icons.event_available, 'Fecha',
-                            _fmtDate(_matricula?['fecha'] ?? _matricula?['fecha_matricula']), Colors.orange),
+                        _infoChip(Icons.repeat, 'Ciclo', _fmt(_matricula?['ciclo']),
+                            Colors.purple),
+                        _infoChip(
+                            Icons.event_available,
+                            'Fecha',
+                            _fmtDate(_matricula?['fecha'] ??
+                                _matricula?['fecha_matricula']),
+                            Colors.orange),
                         _statusChip(_matricula?['activo'] == true),
                       ],
                     ),
@@ -2161,25 +2233,28 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                                 ),
                               ),
                               if (idSub != null)
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                  onPressed: () async {
-                                    try {
-                                      await _asig.eliminar(
-                                        idEstudiante: widget.id,
-                                        idSubcategoria: idSub,
-                                      );
-                                      if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Asignación eliminada')),
-                                      );
-                                      await _loadAll();
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Error: $e')),
-                                      );
-                                    }
-                                  },
+                                _tip(
+                                  'Eliminar asignación',
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                    onPressed: () async {
+                                      try {
+                                        await _asig.eliminar(
+                                          idEstudiante: widget.id,
+                                          idSubcategoria: idSub,
+                                        );
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Asignación eliminada')),
+                                        );
+                                        await _loadAll();
+                                      } catch (e) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: $e')),
+                                        );
+                                      }
+                                    },
+                                  ),
                                 ),
                             ],
                           ),
@@ -2213,7 +2288,8 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: TextStyle(fontSize: 10, color: color)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(value,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ],
           ),
         ],
@@ -2292,71 +2368,81 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
       spacing: 12,
       runSpacing: 8,
       children: [
-        SizedBox(
-          width: 180,
-          child: DropdownButtonFormField<String>(
-            value: _estado,
-            decoration: const InputDecoration(
-              labelText: 'Estado',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'Todos', child: Text('Todos')),
-              DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
-              DropdownMenuItem(value: 'pagado', child: Text('Pagado')),
-              DropdownMenuItem(value: 'anulado', child: Text('Anulado')),
-            ],
-            onChanged: (v) async {
-              if (_blocked) {
-                _showLoginSnack();
-                return;
-              }
-              setState(() => _estado = v ?? 'Todos');
-              await _cargarMensualidades();
-            },
-          ),
-        ),
-        SizedBox(
-          width: 140,
-          child: DropdownButtonFormField<int?>(
-            value: _anioFiltro,
-            decoration: const InputDecoration(
-              labelText: 'Año',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('Todos')),
-              ...anios.map((a) => DropdownMenuItem<int?>(value: a, child: Text('$a'))),
-            ],
-            onChanged: (v) async {
-              if (_blocked) {
-                _showLoginSnack();
-                return;
-              }
-              setState(() => _anioFiltro = v);
-              await _cargarMensualidades();
-            },
-          ),
-        ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Solo pendientes'),
-            Switch(
-              value: _soloPendiente,
+        _tip(
+          'Filtrar por estado de mensualidad',
+          child: SizedBox(
+            width: 180,
+            child: DropdownButtonFormField<String>(
+              value: _estado,
+              decoration: const InputDecoration(
+                labelText: 'Estado',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'Todos', child: Text('Todos')),
+                DropdownMenuItem(value: 'pendiente', child: Text('Pendiente')),
+                DropdownMenuItem(value: 'pagado', child: Text('Pagado')),
+                DropdownMenuItem(value: 'anulado', child: Text('Anulado')),
+              ],
               onChanged: (v) async {
                 if (_blocked) {
                   _showLoginSnack();
                   return;
                 }
-                setState(() => _soloPendiente = v);
+                setState(() => _estado = v ?? 'Todos');
                 await _cargarMensualidades();
               },
             ),
-          ],
+          ),
         ),
-        Tooltip(
-          message: 'Limpiar filtros',
+        _tip(
+          'Filtrar por año',
+          child: SizedBox(
+            width: 140,
+            child: DropdownButtonFormField<int?>(
+              value: _anioFiltro,
+              decoration: const InputDecoration(
+                labelText: 'Año',
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('Todos')),
+                ...anios.map((a) =>
+                    DropdownMenuItem<int?>(value: a, child: Text('$a'))),
+              ],
+              onChanged: (v) async {
+                if (_blocked) {
+                  _showLoginSnack();
+                  return;
+                }
+                setState(() => _anioFiltro = v);
+                await _cargarMensualidades();
+              },
+            ),
+          ),
+        ),
+        _tip(
+          'Mostrar solo pendientes (no pagadas)',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Solo pendientes'),
+              Switch(
+                value: _soloPendiente,
+                onChanged: (v) async {
+                  if (_blocked) {
+                    _showLoginSnack();
+                    return;
+                  }
+                  setState(() => _soloPendiente = v);
+                  await _cargarMensualidades();
+                },
+              ),
+            ],
+          ),
+        ),
+        _tip(
+          'Limpiar filtros',
           child: IconButton(
             onPressed: () async {
               if (_blocked) {
@@ -2404,10 +2490,15 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
         spacing: 8,
         runSpacing: 8,
         children: [
-          ElevatedButton.icon(
-            onPressed: _generandoMens ? null : _onTapGenerarHastaDiciembre,
-            icon: const Icon(Icons.calendar_month),
-            label: _generandoMens ? const Text('Generando...') : const Text('Generar hasta diciembre'),
+          _tip(
+            'Genera mensualidades faltantes hasta diciembre',
+            child: ElevatedButton.icon(
+              onPressed: _generandoMens ? null : _onTapGenerarHastaDiciembre,
+              icon: const Icon(Icons.calendar_month),
+              label: _generandoMens
+                  ? const Text('Generando...')
+                  : const Text('Generar hasta diciembre'),
+            ),
           ),
         ],
       ),
@@ -2519,24 +2610,29 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        FilledButton.icon(
-                          onPressed: pendiente > 0 ? () => _registrarPago(m) : null,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Registrar pago'),
+                        _tip(
+                          'Registrar pago para esta mensualidad',
+                          child: FilledButton.icon(
+                            onPressed: pendiente > 0 ? () => _registrarPago(m) : null,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Registrar pago'),
+                          ),
                         ),
                         const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Refrescar',
-                          onPressed: () async {
-                            if (_blocked) {
-                              _showLoginSnack();
-                              return;
-                            }
-                            _resumenCache.remove(m['id']);
-                            _pagosCache.remove(m['id']);
-                            setState(() {});
-                          },
-                          icon: const Icon(Icons.refresh),
+                        _tip(
+                          'Refrescar resumen e historial',
+                          child: IconButton(
+                            onPressed: () async {
+                              if (_blocked) {
+                                _showLoginSnack();
+                                return;
+                              }
+                              _resumenCache.remove(m['id']);
+                              _pagosCache.remove(m['id']);
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.refresh),
+                          ),
                         ),
                       ],
                     ),
@@ -2604,16 +2700,20 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     if (activo)
-                                      IconButton(
-                                        tooltip: 'Editar',
-                                        icon: const Icon(Icons.edit),
-                                        onPressed: () => _editarPago(m, p),
+                                      _tip(
+                                        'Editar pago',
+                                        child: IconButton(
+                                          icon: const Icon(Icons.edit),
+                                          onPressed: () => _editarPago(m, p),
+                                        ),
                                       ),
                                     if (activo)
-                                      IconButton(
-                                        icon: const Icon(Icons.close, color: Colors.red),
-                                        tooltip: 'Anular',
-                                        onPressed: () => _anularPago(p['id'] as int, m['id'] as int),
+                                      _tip(
+                                        'Anular pago',
+                                        child: IconButton(
+                                          icon: const Icon(Icons.close, color: Colors.red),
+                                          onPressed: () => _anularPago(p['id'] as int, m['id'] as int),
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -2657,75 +2757,84 @@ class _EstudianteDetailScreenState extends State<EstudianteDetailScreen>
           runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            SizedBox(
-              width: 260,
-              child: DropdownButtonFormField<int>(
-                value: _catForAssign,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Categoría',
-                  prefixIcon: Icon(Icons.category),
+            _tip(
+              'Selecciona una categoría para cargar sus subcategorías',
+              child: SizedBox(
+                width: 260,
+                child: DropdownButtonFormField<int>(
+                  value: _catForAssign,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoría',
+                    prefixIcon: Icon(Icons.category),
+                  ),
+                  items: _categorias.map((c) {
+                    final id = c['id_categoria'] ?? c['id'];
+                    final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
+                    return DropdownMenuItem<int>(
+                      value: (id is int) ? id : int.tryParse('$id'),
+                      child: Text('$nombre'),
+                    );
+                  }).toList(),
+                  onChanged: (v) {
+                    setState(() {
+                      _catForAssign = v;
+                      _subsDeCat = [];
+                      _subToAssign = null;
+                    });
+                    if (v != null) _loadSubsForCat(v);
+                  },
                 ),
-                items: _categorias.map((c) {
-                  final id = c['id_categoria'] ?? c['id'];
-                  final nombre = c['nombre_categoria'] ?? c['nombre'] ?? '—';
-                  return DropdownMenuItem<int>(
-                    value: (id is int) ? id : int.tryParse('$id'),
-                    child: Text('$nombre'),
-                  );
-                }).toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _catForAssign = v;
-                    _subsDeCat = [];
-                    _subToAssign = null;
-                  });
-                  if (v != null) _loadSubsForCat(v);
-                },
               ),
             ),
-            SizedBox(
-              width: 260,
-              child: DropdownButtonFormField<int>(
-                value: _subToAssign,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Subcategoría',
-                  prefixIcon: Icon(Icons.label),
+            _tip(
+              'Selecciona una subcategoría para asignar al estudiante',
+              child: SizedBox(
+                width: 260,
+                child: DropdownButtonFormField<int>(
+                  value: _subToAssign,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Subcategoría',
+                    prefixIcon: Icon(Icons.label),
+                  ),
+                  items: _subsDeCat.map((s) {
+                    final id = s['id_subcategoria'] ?? s['id'];
+                    final nombre = s['nombre_subcategoria'] ?? s['nombre'] ?? '—';
+                    return DropdownMenuItem<int>(
+                      value: (id is int) ? id : int.tryParse('$id'),
+                      child: Text('$nombre'),
+                    );
+                  }).toList(),
+                  onChanged: (v) => setState(() => _subToAssign = v),
                 ),
-                items: _subsDeCat.map((s) {
-                  final id = s['id_subcategoria'] ?? s['id'];
-                  final nombre = s['nombre_subcategoria'] ?? s['nombre'] ?? '—';
-                  return DropdownMenuItem<int>(
-                    value: (id is int) ? id : int.tryParse('$id'),
-                    child: Text('$nombre'),
-                  );
-                }).toList(),
-                onChanged: (v) => setState(() => _subToAssign = v),
               ),
             ),
-            FilledButton.icon(
-              onPressed: (_subToAssign == null)
-                  ? null
-                  : () async {
-                      try {
-                        await _asig.asignar(
-                          idEstudiante: widget.id,
-                          idSubcategoria: _subToAssign!,
-                        );
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Subcategoría asignada')),
-                        );
-                        await _loadAll();
-                      } catch (e) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(SnackBar(content: Text('Error: $e')));
-                      }
-                    },
-              icon: const Icon(Icons.add),
-              label: const Text('Asignar'),
+            _tip(
+              'Asignar subcategoría seleccionada',
+              child: FilledButton.icon(
+                onPressed: (_subToAssign == null)
+                    ? null
+                    : () async {
+                        try {
+                          await _asig.asignar(
+                            idEstudiante: widget.id,
+                            idSubcategoria: _subToAssign!,
+                          );
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Subcategoría asignada')),
+                          );
+                          await _loadAll();
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text('Error: $e')));
+                        }
+                      },
+                icon: const Icon(Icons.add),
+                label: const Text('Asignar'),
+              ),
             ),
           ],
         ),
@@ -3174,7 +3283,8 @@ class _GenerarMensualidadesDialog extends StatefulWidget {
   });
 
   @override
-  State<_GenerarMensualidadesDialog> createState() => _GenerarMensualidadesDialogState();
+  State<_GenerarMensualidadesDialog> createState() =>
+      _GenerarMensualidadesDialogState();
 }
 
 class _GenerarMensualidadesDialogState extends State<_GenerarMensualidadesDialog> {

@@ -65,7 +65,7 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   void dispose() {
     widget.tab.removeListener(_tabListener);
     _searchCtrl.dispose();
-    _debounce?.cancel(); // Cancelar timer si se cierra
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -80,27 +80,47 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
 
   // ====== Carga de datos ======
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
       final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
+
       final q = _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim();
 
       Map<String, dynamic> resp;
       switch (widget.tab.index) {
         case 0:
           resp = await ApiService.getProfesoresActivosPaged(
-            token, page: _page, pageSize: _pageSize, q: q, sort: _sort, order: _order,
+            token,
+            page: _page,
+            pageSize: _pageSize,
+            q: q,
+            sort: _sort,
+            order: _order,
           );
           break;
         case 1:
           resp = await ApiService.getProfesoresInactivosPaged(
-            token, page: _page, pageSize: _pageSize, q: q, sort: _sort, order: _order,
+            token,
+            page: _page,
+            pageSize: _pageSize,
+            q: q,
+            sort: _sort,
+            order: _order,
           );
           break;
         default:
           resp = await ApiService.getProfesoresTodosPaged(
-            token, page: _page, pageSize: _pageSize, q: q, sort: _sort, order: _order,
+            token,
+            page: _page,
+            pageSize: _pageSize,
+            q: q,
+            sort: _sort,
+            order: _order,
           );
       }
 
@@ -129,43 +149,39 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   }
 
   Future<void> _toggleActivo(Map<String, dynamic> r) async {
-    // 1. Guardar estado anterior por si hay error
     final bool wasActive = r['activo'] == true;
     final int targetIndex = _rows.indexOf(r);
 
-    // 2. ACTUALIZACIÓN OPTIMISTA (Visual inmediata)
+    // Optimista
     setState(() {
-      r['activo'] = !wasActive; // Cambiamos el valor localmente al instante
+      r['activo'] = !wasActive;
     });
 
     try {
       final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
+
       final id = (r['id_profesor'] as num).toInt();
 
-      // 3. Llamada silenciosa a la API
       if (wasActive) {
         await ApiService.deleteProfesor(token: token, idProfesor: id); // Desactivar
       } else {
         await ApiService.activarProfesor(token: token, idProfesor: id); // Activar
       }
-      
-      // Feedback sutil (opcional, a veces no es necesario si es obvio)
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(wasActive ? 'Profesor desactivado' : 'Profesor activado'),
         duration: const Duration(seconds: 1),
         behavior: SnackBarBehavior.floating,
-        width: 200, // Snack pequeño flotante
+        width: 220,
       ));
-
     } catch (e) {
-      // 4. ROLLBACK (Si falla, volvemos al estado anterior)
       if (!mounted) return;
       setState(() {
         if (targetIndex != -1 && targetIndex < _rows.length) {
-           _rows[targetIndex]['activo'] = wasActive;
+          _rows[targetIndex]['activo'] = wasActive;
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -187,13 +203,13 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
   Future<void> _openDetails(Map<String, dynamic> r) async {
     final cs = Theme.of(context).colorScheme;
 
-    String _docFrom(Map<String, dynamic> r) {
+    String docFrom(Map<String, dynamic> r) {
       final v = r['cedula'] ?? r['dni'] ?? r['numero_cedula'] ?? '';
       final s = '$v'.trim();
       return s.isEmpty ? 'Sin identificar' : s;
     }
 
-    final doc = _docFrom(r);
+    final doc = docFrom(r);
     final nombre = (r['nombre_usuario'] ?? r['nombre'] ?? '').toString();
     final correo = (r['correo'] ?? '').toString();
     final tel = (r['telefono'] ?? '').toString();
@@ -207,14 +223,21 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     final header = ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Hero(
-        tag: 'prof_avatar_${r['id_profesor']}', // Tag para animación
+        tag: 'prof_avatar_${r['id_profesor']}',
         child: CircleAvatar(
           radius: 30,
           backgroundColor: avatarColor.withOpacity(0.2),
           backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-          child: avatar.isEmpty 
-            ? Text(initialsText, style: TextStyle(color: avatarColor, fontWeight: FontWeight.bold, fontSize: 20))
-            : null,
+          child: avatar.isEmpty
+              ? Text(
+                  initialsText,
+                  style: TextStyle(
+                    color: avatarColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                )
+              : null,
         ),
       ),
       title: Text(
@@ -252,14 +275,23 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         decoration: BoxDecoration(
           color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: activo ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3))
+          border: Border.all(
+            color: activo ? Colors.green.withOpacity(0.3) : Colors.red.withOpacity(0.3),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.circle, size: 8, color: activo ? Colors.green : Colors.red),
             const SizedBox(width: 6),
-            Text(activo ? "ACTIVO" : "INACTIVO", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: activo ? Colors.green.shade700 : Colors.red.shade700)),
+            Text(
+              activo ? "ACTIVO" : "INACTIVO",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: activo ? Colors.green.shade700 : Colors.red.shade700,
+              ),
+            ),
           ],
         ),
       ),
@@ -271,17 +303,32 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         const SizedBox(height: 8),
         Divider(color: cs.outlineVariant.withOpacity(0.5)),
         const SizedBox(height: 12),
-
-        _kvIcon(context, 'Cédula', doc, Icons.badge_outlined,
-            copyable: doc != 'Sin identificar', copyLabel: 'Cédula'),
+        _kvIcon(
+          context,
+          'Cédula',
+          doc,
+          Icons.badge_outlined,
+          copyable: doc != 'Sin identificar',
+          copyLabel: 'Cédula',
+        ),
         _kvIcon(context, 'Especialidad', esp.isEmpty ? '—' : esp, Icons.school_outlined),
-        _kvIcon(context, 'Teléfono', tel.isEmpty ? '—' : tel, Icons.phone_outlined,
-            copyable: tel.isNotEmpty, copyLabel: 'Teléfono'),
-        _kvIcon(context, 'Dirección', dir.isEmpty ? '—' : dir, Icons.location_on_outlined,
-            copyable: dir.isNotEmpty, copyLabel: 'Dirección'),
-
+        _kvIcon(
+          context,
+          'Teléfono',
+          tel.isEmpty ? '—' : tel,
+          Icons.phone_outlined,
+          copyable: tel.isNotEmpty,
+          copyLabel: 'Teléfono',
+        ),
+        _kvIcon(
+          context,
+          'Dirección',
+          dir.isEmpty ? '—' : dir,
+          Icons.location_on_outlined,
+          copyable: dir.isNotEmpty,
+          copyLabel: 'Dirección',
+        ),
         const SizedBox(height: 12),
-
         if (doc == 'Sin identificar')
           Container(
             padding: const EdgeInsets.all(12),
@@ -294,7 +341,12 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
               children: [
                 Icon(Icons.warning_amber_rounded, color: Colors.orange[800]),
                 const SizedBox(width: 12),
-                Expanded(child: Text('Este profesor no tiene cédula registrada.', style: TextStyle(color: Colors.orange[900]))),
+                Expanded(
+                  child: Text(
+                    'Este profesor no tiene cédula registrada.',
+                    style: TextStyle(color: Colors.orange[900]),
+                  ),
+                ),
               ],
             ),
           ),
@@ -304,13 +356,15 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     final actions = [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
       FilledButton.icon(
-        onPressed: () { Navigator.pop(context); _openEdit(r); },
+        onPressed: () {
+          Navigator.pop(context);
+          _openEdit(r);
+        },
         icon: const Icon(Icons.edit, size: 18),
         label: const Text('Editar'),
       ),
     ];
 
-    // Responsive Dialog
     final width = MediaQuery.of(context).size.width;
     if (width < 640) {
       await showModalBottomSheet<void>(
@@ -324,7 +378,8 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         builder: (_) => SafeArea(
           child: Padding(
             padding: EdgeInsets.only(
-              left: 20, right: 20,
+              left: 20,
+              right: 20,
               bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
             ),
             child: SingleChildScrollView(
@@ -347,7 +402,13 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         builder: (_) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Información del profesor'),
-          content: SizedBox(width: 500, child: Column(mainAxisSize: MainAxisSize.min, children: [header, content])),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [header, content],
+            ),
+          ),
           actions: actions,
         ),
       );
@@ -369,56 +430,59 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                     subtitle: 'Ajusta la búsqueda o crea un nuevo profesor.',
                     primary: ('Refrescar', null),
                   )
-                : RefreshIndicator( // Pull to refresh nativo
+                : RefreshIndicator(
                     onRefresh: _load,
-                    child: _viewMode == _ViewMode.cards
-                        ? _cards(context, _rows)
-                        : _table(context, _rows),
+                    child: _viewMode == _ViewMode.cards ? _cards(context, _rows) : _table(context, _rows),
                   )));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1. Cabecera Moderna Unificada
         _buildModernHeader(context),
-        
-        // 2. Contenido con Loading superpuesto discreto
         Expanded(
           child: Stack(
             children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: coreContent,
-              ),
+              AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: coreContent),
               if (_loading && _rows.isNotEmpty)
                 Positioned(
-                  top: 16, 
-                  left: 0, 
-                  right: 0, 
+                  top: 16,
+                  left: 0,
+                  right: 0,
                   child: Center(
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
                         color: Theme.of(context).colorScheme.inverseSurface,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0,2))]
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 2))],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onInverseSurface)),
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onInverseSurface,
+                            ),
+                          ),
                           const SizedBox(width: 10),
-                          Text('Actualizando...', style: TextStyle(color: Theme.of(context).colorScheme.onInverseSurface, fontSize: 12)),
+                          Text(
+                            'Actualizando...',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onInverseSurface,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  )
+                  ),
                 ),
             ],
           ),
         ),
-
-        // 3. Paginador
         Container(
           decoration: BoxDecoration(
             border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
@@ -429,17 +493,20 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
             page: _page,
             pageSize: _pageSize,
             total: _total,
-            onPage: (p) { setState(() => _page = p); _load(); },
+            onPage: (p) {
+              setState(() => _page = p);
+              _load();
+            },
           ),
         ),
       ],
     );
   }
 
-  // ====== Widget Header Moderno ======
+  // ====== Header Moderno (con LABELS) ======
   Widget _buildModernHeader(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -451,29 +518,45 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         children: [
           Row(
             children: [
-              // Búsqueda tipo Píldora
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
-                  onChanged: _onSearchChanged, // Debounce activado
+                  onChanged: (v) {
+                    setState(() {}); // para refrescar suffixIcon (X) inmediatamente
+                    _onSearchChanged(v);
+                  },
                   decoration: InputDecoration(
-                    hintText: 'Buscar profesor...',
+                    // LABEL aplicado (no solo hint)
+                    labelText: 'Buscar profesor',
+                    hintText: 'Nombre, cédula o correo',
                     hintStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7)),
-                    prefixIcon: Icon(Icons.search, color: cs.primary),
+                    prefixIcon: Icon(Icons.search, color: cs.primary, semanticLabel: 'Buscar'),
                     filled: true,
                     fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide(color: cs.primary.withOpacity(0.5), width: 1)),
-                    suffixIcon: _searchCtrl.text.isNotEmpty 
-                      ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: (){ _searchCtrl.clear(); _onSearchChanged(''); })
-                      : null,
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(color: cs.primary.withOpacity(0.5), width: 1),
+                    ),
+                    suffixIcon: _searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            tooltip: 'Limpiar búsqueda',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () {
+                              setState(() {
+                                _searchCtrl.clear();
+                              });
+                              _onSearchChanged('');
+                            },
+                          )
+                        : null,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              
-              // Toggle View
+
+              // Toggle View (labels por tooltip)
               Container(
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest.withOpacity(0.4),
@@ -482,37 +565,43 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                 child: Row(
                   children: [
                     IconButton(
-                      icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant),
-                      tooltip: 'Tarjetas',
+                      tooltip: 'Vista en tarjetas',
+                      icon: Icon(
+                        Icons.grid_view_rounded,
+                        color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant,
+                        semanticLabel: 'Vista en tarjetas',
+                      ),
                       onPressed: () => setState(() => _viewMode = _ViewMode.cards),
                     ),
                     Container(width: 1, height: 20, color: cs.outlineVariant),
                     IconButton(
-                      icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant),
-                      tooltip: 'Tabla',
+                      tooltip: 'Vista en tabla',
+                      icon: Icon(
+                        Icons.table_rows_rounded,
+                        color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant,
+                        semanticLabel: 'Vista en tabla',
+                      ),
                       onPressed: () => setState(() => _viewMode = _ViewMode.table),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              
-              // Exportar
+
               IconButton(
-                icon: const Icon(Icons.download_rounded),
                 tooltip: 'Exportar CSV',
+                icon: const Icon(Icons.download_rounded, semanticLabel: 'Exportar CSV'),
                 onPressed: _rows.isEmpty ? null : _exportCsv,
               ),
             ],
           ),
-          // Filtro de tamaño de página (opcional, expandible)
           if (_loading) const SizedBox(height: 2) else const SizedBox.shrink(),
         ],
       ),
     );
   }
 
-  // ====== Vista TABLA (Zebra Striped) ======
+  // ====== Vista TABLA ======
   Widget _table(BuildContext context, List<Map<String, dynamic>> rows) {
     final cs = Theme.of(context).colorScheme;
     final textStyle = _dense ? Theme.of(context).textTheme.bodySmall : Theme.of(context).textTheme.bodyMedium;
@@ -522,80 +611,90 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
       return '$v'.trim().isEmpty ? '—' : '$v';
     }
 
-     return Center( 
+    return Center(
       child: SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Card( // Tarjeta contenedora de la tabla
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: cs.outlineVariant.withOpacity(0.4))),
-        clipBehavior: Clip.antiAlias,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
-            headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
-            dataRowMinHeight: _dense ? 36 : 48,
-            dataRowMaxHeight: _dense ? 48 : 60,
-            columnSpacing: 24,
-            horizontalMargin: 20,
-            columns: [
-              DataColumn(label: const Text('Cédula'), onSort: (_,__) => _toggleSort('id_profesor')),
-              DataColumn(label: const Text('Nombre'), onSort: (_,__) => _toggleSort('nombre_usuario')),
-              const DataColumn(label: Text('Teléfono')),
-              DataColumn(label: const Text('Correo'), onSort: (_,__) => _toggleSort('correo')),
-              const DataColumn(label: Text('Estado')),
-              const DataColumn(label: Text('Acciones')),
-            ],
-            // Zebra Striping Logic
-            rows: rows.asMap().entries.map((entry) {
-              final index = entry.key;
-              final r = entry.value;
-              final bool activo = r['activo'] == true;
-              final isEven = index % 2 == 0;
+        padding: const EdgeInsets.all(16),
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: cs.outlineVariant.withOpacity(0.4)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
+              headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
+              dataRowMinHeight: _dense ? 36 : 48,
+              dataRowMaxHeight: _dense ? 48 : 60,
+              columnSpacing: 24,
+              horizontalMargin: 20,
+              columns: [
+                DataColumn(label: const Text('Cédula'), onSort: (_, __) => _toggleSort('id_profesor')),
+                DataColumn(label: const Text('Nombre'), onSort: (_, __) => _toggleSort('nombre_usuario')),
+                const DataColumn(label: Text('Teléfono')),
+                DataColumn(label: const Text('Correo'), onSort: (_, __) => _toggleSort('correo')),
+                const DataColumn(label: Text('Estado')),
+                const DataColumn(label: Text('Acciones')),
+              ],
+              rows: rows.asMap().entries.map((entry) {
+                final index = entry.key;
+                final r = entry.value;
+                final bool activo = r['activo'] == true;
+                final isEven = index % 2 == 0;
 
-              return DataRow(
-                color: MaterialStateProperty.resolveWith<Color?>((states) {
-                  return isEven ? Colors.transparent : cs.surfaceContainerHighest.withOpacity(0.2);
-                }),
-                cells: [
-                  DataCell(Text(doc(r), style: textStyle)),
-                  DataCell(Text((r['nombre_usuario'] ?? r['nombre'] ?? '').toString(), style: textStyle?.copyWith(fontWeight: FontWeight.w500))),
-                  DataCell(Text('${r['telefono'] ?? '—'}', style: textStyle)),
-                  DataCell(Text('${r['correo'] ?? ''}', style: textStyle)),
-                  DataCell(
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
+                return DataRow(
+                  color: MaterialStateProperty.resolveWith<Color?>((states) {
+                    return isEven ? Colors.transparent : cs.surfaceContainerHighest.withOpacity(0.2);
+                  }),
+                  cells: [
+                    DataCell(Text(doc(r), style: textStyle)),
+                    DataCell(Text(
+                      (r['nombre_usuario'] ?? r['nombre'] ?? '').toString(),
+                      style: textStyle?.copyWith(fontWeight: FontWeight.w500),
+                    )),
+                    DataCell(Text('${r['telefono'] ?? '—'}', style: textStyle)),
+                    DataCell(Text('${r['correo'] ?? ''}', style: textStyle)),
+                    DataCell(
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          activo ? 'Activo' : 'Inactivo',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: activo ? Colors.green : Colors.red,
+                          ),
+                        ),
                       ),
-                      child: Text(
-                        activo ? 'Activo' : 'Inactivo',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: activo ? Colors.green : Colors.red),
-                      ),
-                    )
-                  ),
-                  DataCell(_rowActions(r: r, activo: activo, dense: true)),
-                ],
-              );
-            }).toList(),
+                    ),
+                    DataCell(_rowActions(r: r, activo: activo, dense: true)),
+                  ],
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
-    )
     );
   }
-  // ====== Vista TARJETAS (Modern Card) ======
+
+  // ====== Vista TARJETAS ======
   Widget _cards(BuildContext context, List<Map<String, dynamic>> rows) {
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Padding extra abajo para el FAB si lo hubiera
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: rows.length,
       itemBuilder: (_, i) {
         final r = rows[i];
         final activo = r['activo'] == true;
         final nombre = (r['nombre_usuario'] ?? r['nombre'] ?? '').toString();
         final telefono = r['telefono']?.toString() ?? '—';
-        final cedula = r['cedula']?.toString() ?? '—';
+        final cedula = (r['cedula'] ?? r['dni'] ?? r['numero_cedula'] ?? '—').toString();
         final initialsText = _getInitials(nombre);
         final color = _getAvatarColor('$nombre$cedula');
 
@@ -606,14 +705,10 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.4)),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              )
+              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))
             ],
           ),
-          child: Material( // Material para el efecto Ripple
+          child: Material(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
@@ -624,7 +719,6 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar con Hero Animation
                     Hero(
                       tag: 'prof_avatar_${r['id_profesor']}',
                       child: CircleAvatar(
@@ -637,8 +731,6 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    
-                    // Info Central
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,21 +741,27 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                                 child: Text(
                                   nombre.isEmpty ? 'Sin nombre' : nombre,
                                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              // Pill de estado
                               Container(
                                 margin: const EdgeInsets.only(left: 8),
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: activo ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: activo ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3))
+                                  border: Border.all(
+                                    color: activo ? Colors.green.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+                                  ),
                                 ),
                                 child: Text(
-                                  activo ? "ACTIVO" : "INACTIVO", 
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: activo ? Colors.green[700] : Colors.grey[700])
+                                  activo ? "ACTIVO" : "INACTIVO",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: activo ? Colors.green[700] : Colors.grey[700],
+                                  ),
                                 ),
                               )
                             ],
@@ -680,12 +778,11 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
                         ],
                       ),
                     ),
-                    
-                    // Botón menú contextual
                     Padding(
                       padding: const EdgeInsets.only(left: 4),
                       child: IconButton(
-                        icon: Icon(Icons.more_vert, color: Theme.of(context).hintColor),
+                        tooltip: 'Ver detalles',
+                        icon: Icon(Icons.more_vert, color: Theme.of(context).hintColor, semanticLabel: 'Ver detalles'),
                         onPressed: () => _openDetails(r),
                       ),
                     )
@@ -698,14 +795,17 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
       },
     );
   }
-  
+
   Widget _iconText(BuildContext context, IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 14, color: Theme.of(context).hintColor),
         const SizedBox(width: 4),
-        Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor)),
+        Text(
+          text,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+        ),
       ],
     );
   }
@@ -721,8 +821,13 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
 
   Color _getAvatarColor(String seed) {
     final colors = [
-      Colors.blue, Colors.teal, Colors.indigo, Colors.purple, 
-      Colors.deepOrange, Colors.pink, Colors.green
+      Colors.blue,
+      Colors.teal,
+      Colors.indigo,
+      Colors.purple,
+      Colors.deepOrange,
+      Colors.pink,
+      Colors.green
     ];
     return colors[seed.hashCode.abs() % colors.length];
   }
@@ -732,15 +837,18 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
-          tooltip: 'Editar',
+          tooltip: 'Editar profesor',
           iconSize: 20,
-          icon: const Icon(Icons.edit_outlined),
+          icon: const Icon(Icons.edit_outlined, semanticLabel: 'Editar profesor'),
           onPressed: () => _openEdit(r),
         ),
         IconButton(
-          tooltip: activo ? 'Desactivar' : 'Activar',
+          tooltip: activo ? 'Desactivar profesor' : 'Activar profesor',
           iconSize: 20,
-          icon: Icon(activo ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+          icon: Icon(
+            activo ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            semanticLabel: activo ? 'Desactivar profesor' : 'Activar profesor',
+          ),
           color: activo ? Colors.grey : Colors.green,
           onPressed: () => _toggleActivo(r),
         ),
@@ -748,7 +856,14 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
     );
   }
 
-  Widget _kvIcon(BuildContext context, String label, String value, IconData icon, {bool copyable = false, String? copyLabel}) {
+  Widget _kvIcon(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon, {
+    bool copyable = false,
+    String? copyLabel,
+  }) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -774,7 +889,8 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
           ),
           if (copyable)
             IconButton(
-              icon: const Icon(Icons.copy_rounded, size: 18),
+              tooltip: 'Copiar ${copyLabel ?? label}',
+              icon: const Icon(Icons.copy_rounded, size: 18, semanticLabel: 'Copiar'),
               onPressed: () => _copy(context, copyLabel ?? label, value),
             )
         ],
@@ -784,7 +900,12 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
 
   void _copy(BuildContext context, String label, String value) {
     Clipboard.setData(ClipboardData(text: value));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copiado'), behavior: SnackBarBehavior.floating));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copiado'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _exportCsv() {
@@ -813,11 +934,16 @@ class _ProfesoresTabState extends State<ProfesoresTab> {
         title: Text('CSV: $filename'),
         content: SizedBox(width: 600, height: 360, child: SelectableText(data)),
         actions: [
-          TextButton(onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: data));
-            if (mounted) Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado')));
-          }, child: const Text('Copiar')),
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: data));
+              if (mounted) Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copiado')),
+              );
+            },
+            child: const Text('Copiar'),
+          ),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
         ],
       ),
@@ -841,14 +967,16 @@ class _Paginator extends StatelessWidget {
         Text('$from-$to de $total', style: const TextStyle(fontWeight: FontWeight.w500)),
         const Spacer(),
         IconButton.filledTonal(
+          tooltip: 'Página anterior',
           onPressed: page > 1 ? () => onPage(page - 1) : null,
-          icon: const Icon(Icons.chevron_left),
+          icon: const Icon(Icons.chevron_left, semanticLabel: 'Página anterior'),
           visualDensity: VisualDensity.compact,
         ),
         const SizedBox(width: 8),
         IconButton.filledTonal(
+          tooltip: 'Página siguiente',
           onPressed: (to < total) ? () => onPage(page + 1) : null,
-          icon: const Icon(Icons.chevron_right),
+          icon: const Icon(Icons.chevron_right, semanticLabel: 'Página siguiente'),
           visualDensity: VisualDensity.compact,
         ),
       ],
@@ -873,7 +1001,11 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 8),
           Text(subtitle, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).hintColor)),
           const SizedBox(height: 24),
-          FilledButton.icon(onPressed: primary.$2, icon: const Icon(Icons.refresh), label: Text(primary.$1)),
+          FilledButton.icon(
+            onPressed: primary.$2,
+            icon: const Icon(Icons.refresh, semanticLabel: 'Refrescar'),
+            label: Text(primary.$1),
+          ),
         ],
       ),
     );
@@ -915,7 +1047,7 @@ class _LoadingPlaceholder extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: 6,
-      separatorBuilder: (_,__) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, i) => Container(
         height: viewMode == _ViewMode.cards ? 100 : 50,
         decoration: BoxDecoration(
@@ -936,7 +1068,7 @@ class _ProfesorDialog extends StatefulWidget {
 
 class _ProfesorDialogState extends State<_ProfesorDialog> {
   final _formKey = GlobalKey<FormState>();
-  // Controladores para los campos editables
+
   final _espCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
   final _dirCtrl = TextEditingController();
@@ -946,7 +1078,6 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
   @override
   void initState() {
     super.initState();
-    // Inicializar valores existentes
     final d = widget.data;
     _espCtrl.text = d['especialidad'] ?? '';
     _telCtrl.text = d['telefono'] ?? '';
@@ -969,7 +1100,6 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
       final token = await SessionTokenProvider.instance.readToken();
       if (token == null) throw Exception('Sesión expirada');
 
-      // Enviar solo los campos que la API espera para update
       await ApiService.putProfesor(
         token: token,
         idProfesor: (widget.data['id_profesor'] as num).toInt(),
@@ -979,7 +1109,7 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
         activo: _activo,
       );
 
-      if (mounted) Navigator.of(context).pop(true); // Retorna true si guardó
+      if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -990,39 +1120,36 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // Preparar datos de solo lectura
     final nombre = (widget.data['nombre_usuario'] ?? widget.data['nombre'] ?? '').toString();
     final correo = (widget.data['correo'] ?? '').toString();
     final cs = Theme.of(context).colorScheme;
 
     return AlertDialog(
       title: const Text('Editar profesor'),
-      scrollable: true, // Hace que el contenido sea scrolleable si es muy alto
+      scrollable: true,
       content: SizedBox(
-        width: 420, // Un poco más ancho para la dirección
+        width: 420,
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Campo de solo lectura (Nombre y Correo restaurados)
               TextFormField(
                 initialValue: '$nombre\n$correo',
                 enabled: false,
                 maxLines: 2,
                 decoration: InputDecoration(
-                  labelText: 'Usuario (Solo lectura)',
+                  labelText: 'Usuario (Solo lectura)', // label aplicado
                   prefixIcon: Icon(Icons.person_outline, color: cs.onSurfaceVariant),
                   filled: true,
                   fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12)
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                 ),
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13),
               ),
               const SizedBox(height: 16),
 
-              // Campos editables con iconos
               TextFormField(
                 controller: _espCtrl,
                 decoration: const InputDecoration(
@@ -1032,46 +1159,54 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
                 ),
               ),
               const SizedBox(height: 16),
+
               TextFormField(
-  controller: _telCtrl,
-  keyboardType: TextInputType.phone,
-  decoration: const InputDecoration(labelText: 'Teléfono', prefixIcon: Icon(Icons.phone_outlined), border: OutlineInputBorder()),
-  // AGREGAR ESTO:
-  validator: (value) {
-    if (value != null && value.isNotEmpty) {
-      if (value.length < 7) return 'Número muy corto';
-      // Regex simple para permitir solo números, espacios y guiones
-      if (!RegExp(r'^[0-9\-\+\s]+$').hasMatch(value)) return 'Caracteres no válidos';
-    }
-    return null;
-  },
-),
+                controller: _telCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Teléfono',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    if (value.length < 7) return 'Número muy corto';
+                    if (!RegExp(r'^[0-9\-\+\s]+$').hasMatch(value)) return 'Caracteres no válidos';
+                  }
+                  return null;
+                },
+              ),
               const SizedBox(height: 16),
-              // Campo de Dirección RESTAURADO
+
               TextFormField(
-  controller: _dirCtrl,
-  maxLines: 2,
-  decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined), border: OutlineInputBorder()),
-  // AGREGAR ESTO:
-  validator: (value) {
-    if (value == null || value.trim().isEmpty) return 'La dirección es obligatoria';
-    return null;
-  },
-),
+                controller: _dirCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Dirección',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'La dirección es obligatoria';
+                  return null;
+                },
+              ),
               const SizedBox(height: 16),
-              
-              // Switch de Activo estilizado
+
               Container(
                 decoration: BoxDecoration(
                   color: _activo ? cs.primaryContainer.withOpacity(0.2) : cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _activo ? cs.primary.withOpacity(0.3) : cs.outlineVariant)
+                  border: Border.all(color: _activo ? cs.primary.withOpacity(0.3) : cs.outlineVariant),
                 ),
                 child: SwitchListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   value: _activo,
                   onChanged: (v) => setState(() => _activo = v),
-                  title: Text('Usuario Activo', style: TextStyle(fontWeight: FontWeight.w600, color: _activo ? cs.primary : cs.onSurface)),
+                  title: Text(
+                    'Usuario Activo',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: _activo ? cs.primary : cs.onSurface),
+                  ),
                   secondary: Icon(Icons.check_circle_outline, color: _activo ? cs.primary : cs.onSurfaceVariant),
                 ),
               ),
@@ -1086,7 +1221,9 @@ class _ProfesorDialogState extends State<_ProfesorDialog> {
         ),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
-          icon: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+          icon: _saving
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.save, semanticLabel: 'Guardar'),
           label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
         ),
       ],

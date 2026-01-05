@@ -1,6 +1,7 @@
 // ===========================================================
 // lib/features/admin/sections/roles_screen.dart
 // FUSIÓN FINAL A+B (solo 2 vistas) + DIALOGOS PREMIUM
+// + LABELS (accesibilidad) en inputs e iconos
 // ===========================================================
 
 import 'dart:async';
@@ -112,7 +113,6 @@ class _RolesScreenState extends State<RolesScreen> {
       final data = jsonDecode(r.body);
 
       List<Map<String, dynamic>> items = [];
-
       if (data is Map) {
         items = List<Map<String, dynamic>>.from(
           data['items'] ?? data['rows'] ?? data['data'] ?? const [],
@@ -125,7 +125,7 @@ class _RolesScreenState extends State<RolesScreen> {
     } catch (e) {
       setState(() => _errorRoles = e.toString());
     } finally {
-      setState(() => _loadingRoles = false);
+      if (mounted) setState(() => _loadingRoles = false);
     }
   }
 
@@ -135,7 +135,11 @@ class _RolesScreenState extends State<RolesScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), _loadRoles);
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      // refresca el suffixIcon y dispara la carga
+      if (mounted) setState(() {});
+      _loadRoles();
+    });
   }
 
   // ===========================================================
@@ -162,9 +166,14 @@ class _RolesScreenState extends State<RolesScreen> {
 
       _allPerms = List<Map<String, dynamic>>.from(
         list.map((e) => Map<String, dynamic>.from(e)),
-      )..sort((a, b) => a['nombre'].compareTo(b['nombre']));
+      )
+        ..sort((a, b) {
+          final an = (a['nombre'] ?? '').toString();
+          final bn = (b['nombre'] ?? '').toString();
+          return an.compareTo(bn);
+        });
     } finally {
-      setState(() => _loadingPerms = false);
+      if (mounted) setState(() => _loadingPerms = false);
     }
   }
 
@@ -173,19 +182,16 @@ class _RolesScreenState extends State<RolesScreen> {
     if (r.statusCode >= 400) throw 'Error ${r.statusCode}';
 
     final data = jsonDecode(r.body);
-    final list = data is List
-        ? data
-        : (data['items'] ?? data['rows'] ?? data['data'] ?? const []);
-
+    final list = data is List ? data : (data['items'] ?? data['rows'] ?? data['data'] ?? const []);
     return List<Map<String, dynamic>>.from(list.map((e) => Map<String, dynamic>.from(e)));
   }
 
   Future<void> _warmPermSummary(int idRol) async {
     if (_permCountCache.containsKey(idRol)) return;
-
     try {
       final rows = await _getRolePerms(idRol);
       final names = rows.map((m) => (m['nombre'] ?? '').toString()).toList();
+      if (!mounted) return;
       setState(() {
         _permCountCache[idRol] = names.length;
         _permNamesCache[idRol] = names;
@@ -241,6 +247,7 @@ class _RolesScreenState extends State<RolesScreen> {
       );
       if (r.statusCode >= 400) throw r.body;
     } catch (_) {
+      if (!mounted) return;
       setState(() => _roles.insert(index, role));
     }
   }
@@ -256,8 +263,8 @@ class _RolesScreenState extends State<RolesScreen> {
     _filterPerms = '';
 
     if (initial != null) {
-      _formNombreCtl.text = initial['nombre'] ?? '';
-      _formDescCtl.text = initial['descripcion'] ?? '';
+      _formNombreCtl.text = (initial['nombre'] ?? '').toString();
+      _formDescCtl.text = (initial['descripcion'] ?? '').toString();
 
       final idRol = (initial['id'] ?? initial['id_rol']) as int;
       try {
@@ -269,24 +276,29 @@ class _RolesScreenState extends State<RolesScreen> {
       _formDescCtl.clear();
     }
 
-    // --- DIÁLOGO PREMIUM ---
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) {
+      builder: (dialogCtx) {
         final cs = Theme.of(context).colorScheme;
+
         return Dialog(
           insetPadding: const EdgeInsets.all(20),
           backgroundColor: cs.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: StatefulBuilder(
-            builder: (ctx, setModal) {
+            builder: (modalCtx, setModal) {
+              final filteredPerms = _allPerms.where((p) {
+                final name = (p['nombre'] ?? '').toString().toLowerCase();
+                return name.contains(_filterPerms);
+              }).toList();
+
               return SizedBox(
                 width: 500,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ---------------- HEADER LINDO ----------------
+                    // ---------------- HEADER ----------------
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -307,6 +319,7 @@ class _RolesScreenState extends State<RolesScreen> {
                               initial == null ? Icons.add_moderator : Icons.edit,
                               color: Colors.white,
                               size: 26,
+                              semanticLabel: initial == null ? 'Crear rol' : 'Editar rol',
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -316,8 +329,9 @@ class _RolesScreenState extends State<RolesScreen> {
                           ),
                           const Spacer(),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.white),
-                            onPressed: () => Navigator.pop(ctx),
+                            tooltip: 'Cerrar',
+                            icon: const Icon(Icons.close, color: Colors.white, semanticLabel: 'Cerrar'),
+                            onPressed: () => Navigator.pop(modalCtx),
                           ),
                         ],
                       ),
@@ -334,6 +348,7 @@ class _RolesScreenState extends State<RolesScreen> {
                               controller: _formNombreCtl,
                               decoration: InputDecoration(
                                 labelText: 'Nombre del rol',
+                                hintText: 'Ej. Administrador, Profesor, Padre',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
@@ -344,6 +359,7 @@ class _RolesScreenState extends State<RolesScreen> {
                               maxLines: 3,
                               decoration: InputDecoration(
                                 labelText: 'Descripción (opcional)',
+                                hintText: 'Describe el propósito del rol',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                             ),
@@ -357,11 +373,20 @@ class _RolesScreenState extends State<RolesScreen> {
 
                             TextField(
                               decoration: InputDecoration(
-                                prefixIcon: const Icon(Icons.search),
-                                hintText: 'Filtrar permisos...',
+                                // LABEL aplicado
+                                labelText: 'Filtrar permisos',
+                                hintText: 'Escribe para buscar permisos...',
+                                prefixIcon: const Icon(Icons.search, semanticLabel: 'Buscar permisos'),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                suffixIcon: _filterPerms.isNotEmpty
+                                    ? IconButton(
+                                        tooltip: 'Limpiar filtro',
+                                        icon: const Icon(Icons.close, semanticLabel: 'Limpiar filtro'),
+                                        onPressed: () => setModal(() => _filterPerms = ''),
+                                      )
+                                    : null,
                               ),
-                              onChanged: (v) => setModal(() => _filterPerms = v.toLowerCase()),
+                              onChanged: (v) => setModal(() => _filterPerms = v.toLowerCase().trim()),
                             ),
                             const SizedBox(height: 12),
 
@@ -370,18 +395,18 @@ class _RolesScreenState extends State<RolesScreen> {
                                 : Wrap(
                                     spacing: 6,
                                     runSpacing: 6,
-                                    children: _allPerms
-                                        .where((p) => p['nombre'].toLowerCase().contains(_filterPerms))
-                                        .map((p) {
+                                    children: filteredPerms.map((p) {
                                       final id = (p['id'] ?? p['id_permiso']) as int;
                                       final selected = _selectedPerms.contains(id);
+                                      final name = (p['nombre'] ?? '').toString();
 
                                       return FilterChip(
                                         label: Text(
-                                          p['nombre'],
+                                          name,
                                           style: TextStyle(
-                                              color: selected ? cs.onPrimary : null,
-                                              fontWeight: selected ? FontWeight.bold : null),
+                                            color: selected ? cs.onPrimary : null,
+                                            fontWeight: selected ? FontWeight.bold : null,
+                                          ),
                                         ),
                                         selected: selected,
                                         showCheckmark: true,
@@ -429,13 +454,15 @@ class _RolesScreenState extends State<RolesScreen> {
 
                             await _assignPerms(idRol, _selectedPerms);
 
-                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            Navigator.pop(modalCtx);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Rol "$nombre" guardado')),
                             );
 
                             _loadRoles();
                           } catch (e) {
+                            if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Error: $e')),
                             );
@@ -518,7 +545,7 @@ class _RolesScreenState extends State<RolesScreen> {
             color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))
             ],
           ),
@@ -533,7 +560,12 @@ class _RolesScreenState extends State<RolesScreen> {
                     color: Colors.indigo.shade50,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(Icons.security, color: Colors.indigo.shade400, size: 26),
+                  child: Icon(
+                    Icons.security,
+                    color: Colors.indigo.shade400,
+                    size: 26,
+                    semanticLabel: 'Rol',
+                  ),
                 ),
 
                 const SizedBox(width: 18),
@@ -544,33 +576,47 @@ class _RolesScreenState extends State<RolesScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        r['nombre'] ?? '',
+                        (r['nombre'] ?? '').toString(),
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        (r['descripcion'] ?? '—'),
+                        (r['descripcion'] ?? '—').toString(),
                         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(height: 10),
 
                       // BADGE PERMISOS
-                      InkWell(
-                        onTap: () => _openPermsSheet(id, r['nombre'] ?? ''),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.shade50,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: Colors.indigo.shade200),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('${count ?? "..."}', style: TextStyle(color: Colors.indigo.shade700, fontWeight: FontWeight.bold)),
-                              const SizedBox(width: 6),
-                              Icon(Icons.vpn_key_outlined, size: 16, color: Colors.indigo.shade400),
-                            ],
+                      Tooltip(
+                        message: 'Ver permisos del rol',
+                        child: InkWell(
+                          onTap: () => _openPermsSheet(id, (r['nombre'] ?? '').toString()),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.shade50,
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: Colors.indigo.shade200),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${count ?? "..."}',
+                                  style: TextStyle(
+                                    color: Colors.indigo.shade700,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.vpn_key_outlined,
+                                  size: 16,
+                                  color: Colors.indigo.shade400,
+                                  semanticLabel: 'Permisos',
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -581,13 +627,13 @@ class _RolesScreenState extends State<RolesScreen> {
                 Column(
                   children: [
                     IconButton(
-                      tooltip: 'Editar',
-                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Editar rol',
+                      icon: const Icon(Icons.edit_outlined, semanticLabel: 'Editar rol'),
                       onPressed: () => _openForm(initial: r),
                     ),
                     IconButton(
-                      tooltip: 'Eliminar',
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      tooltip: 'Eliminar rol',
+                      icon: const Icon(Icons.delete_outline, color: Colors.red, semanticLabel: 'Eliminar rol'),
                       onPressed: () => _deleteOptimistic(r),
                     ),
                   ],
@@ -634,24 +680,27 @@ class _RolesScreenState extends State<RolesScreen> {
               return DataRow(
                 cells: [
                   DataCell(Text("$id")),
-                  DataCell(Text(r['nombre'] ?? '')),
-                  DataCell(Text(r['descripcion'] ?? '')),
+                  DataCell(Text((r['nombre'] ?? '').toString())),
+                  DataCell(Text((r['descripcion'] ?? '').toString())),
                   DataCell(
-                    InkWell(
-                      onTap: () => _openPermsSheet(id, r['nombre'] ?? ''),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              color: cs.primary.withOpacity(0.1),
+                    Tooltip(
+                      message: 'Ver permisos del rol',
+                      child: InkWell(
+                        onTap: () => _openPermsSheet(id, (r['nombre'] ?? '').toString()),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: cs.primary.withOpacity(0.1),
+                              ),
+                              child: Text('${count ?? "..."}'),
                             ),
-                            child: Text('${count ?? "..."}'),
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.vpn_key_outlined, size: 16),
-                        ],
+                            const SizedBox(width: 6),
+                            const Icon(Icons.vpn_key_outlined, size: 16, semanticLabel: 'Permisos'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -659,11 +708,13 @@ class _RolesScreenState extends State<RolesScreen> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined),
+                          tooltip: 'Editar rol',
+                          icon: const Icon(Icons.edit_outlined, semanticLabel: 'Editar rol'),
                           onPressed: () => _openForm(initial: r),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          tooltip: 'Eliminar rol',
+                          icon: const Icon(Icons.delete_outline, color: Colors.red, semanticLabel: 'Eliminar rol'),
                           onPressed: () => _deleteOptimistic(r),
                         ),
                       ],
@@ -690,27 +741,36 @@ class _RolesScreenState extends State<RolesScreen> {
       decoration: BoxDecoration(
         color: cs.surface,
         border: Border(bottom: BorderSide(color: cs.outlineVariant)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
       child: Row(
         children: [
-          // BUSCADOR
+          // BUSCADOR (con label)
           Expanded(
             child: TextField(
               controller: _searchCtrl,
-              onChanged: _onSearchChanged,
+              onChanged: (v) {
+                setState(() {}); // refresca suffixIcon en vivo
+                _onSearchChanged(v);
+              },
               decoration: InputDecoration(
-                hintText: 'Buscar rol...',
-                prefixIcon: Icon(Icons.search, color: cs.primary),
+                labelText: 'Buscar rol',
+                hintText: 'Nombre o descripción',
+                prefixIcon: Icon(Icons.search, color: cs.primary, semanticLabel: 'Buscar'),
                 filled: true,
                 fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
                 border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.close),
+                        tooltip: 'Limpiar búsqueda',
+                        icon: const Icon(Icons.close, semanticLabel: 'Limpiar búsqueda'),
                         onPressed: () {
-                          _searchCtrl.clear();
+                          setState(() {
+                            _searchCtrl.clear();
+                          });
                           _onSearchChanged('');
                         },
                       )
@@ -721,7 +781,7 @@ class _RolesScreenState extends State<RolesScreen> {
 
           const SizedBox(width: 12),
 
-          // TOGGLE VISTAS
+          // TOGGLE VISTAS (con tooltip)
           Container(
             decoration: BoxDecoration(
               color: cs.surfaceContainerHighest.withOpacity(0.4),
@@ -730,17 +790,22 @@ class _RolesScreenState extends State<RolesScreen> {
             child: Row(
               children: [
                 IconButton(
-                  icon: Icon(Icons.grid_view_rounded,
-                      color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant),
+                  tooltip: 'Vista tarjetas',
+                  icon: Icon(
+                    Icons.grid_view_rounded,
+                    color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant,
+                    semanticLabel: 'Vista tarjetas',
+                  ),
                   onPressed: () => setState(() => _viewMode = _ViewMode.cards),
                 ),
-                Container(
-                    width: 1, height: 20, color: cs.outlineVariant.withOpacity(0.6)),
+                Container(width: 1, height: 20, color: cs.outlineVariant.withOpacity(0.6)),
                 IconButton(
-                  icon: Icon(Icons.table_rows_rounded,
-                      color: _viewMode == _ViewMode.tableClassic
-                          ? cs.primary
-                          : cs.onSurfaceVariant),
+                  tooltip: 'Vista tabla',
+                  icon: Icon(
+                    Icons.table_rows_rounded,
+                    color: _viewMode == _ViewMode.tableClassic ? cs.primary : cs.onSurfaceVariant,
+                    semanticLabel: 'Vista tabla',
+                  ),
                   onPressed: () => setState(() => _viewMode = _ViewMode.tableClassic),
                 ),
               ],
@@ -754,7 +819,7 @@ class _RolesScreenState extends State<RolesScreen> {
             any: const ['roles.create'],
             child: FilledButton.icon(
               onPressed: () => _openForm(),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add, semanticLabel: 'Nuevo rol'),
               label: const Text("Nuevo"),
             ),
           )
@@ -785,6 +850,18 @@ class _RolesScreenState extends State<RolesScreen> {
           subtitle: 'Gestiona y controla el acceso al sistema',
         ),
         _buildHeader(),
+
+        if (_errorRoles != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Text(
+              _errorRoles!,
+              style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+            ),
+          ),
+
         Expanded(child: vista),
       ],
     );
@@ -796,9 +873,7 @@ class _RolesScreenState extends State<RolesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.embedded) {
-      return _content();
-    }
+    if (widget.embedded) return _content();
 
     return AdminShell(
       current: AdminHub.personas,

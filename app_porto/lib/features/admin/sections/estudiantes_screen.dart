@@ -37,9 +37,10 @@ class _ReloadIntent extends Intent {
 enum _ViewMode { table, cards }
 
 class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
-  // Repo
-  late final _repo = AppScope.of(context).estudiantes;
-  late final _catRepo = AppScope.of(context).categorias;
+  // Repos (inicializar en didChangeDependencies)
+  late dynamic _repo;
+  late dynamic _catRepo;
+  bool _reposReady = false;
 
   // Estado base
   bool _loading = false;
@@ -60,7 +61,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
 
   // UI
   _ViewMode _viewMode = _ViewMode.cards;
-  bool _dense = false;
+  bool _dense = false; // reservado
   final _searchFocus = FocusNode();
   Timer? _debounce;
 
@@ -72,6 +73,21 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   @override
   void initState() {
     super.initState();
+    _q.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_reposReady) return;
+
+    final scope = AppScope.of(context);
+    _repo = scope.estudiantes;
+    _catRepo = scope.categorias;
+    _reposReady = true;
+
     _loadCats();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
@@ -108,16 +124,19 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   }
 
   Future<void> _load() async {
+    if (!_reposReady) return;
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
+      final q = _q.text.trim();
       final res = await _repo.paged(
         page: _page,
         pageSize: _pageSize,
-        q: _q.text.trim().isEmpty ? null : _q.text.trim(),
+        q: q.isEmpty ? null : q,
         categoriaId: _catId,
         onlyActive: _onlyActive,
       );
@@ -137,14 +156,19 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   // --- NAVEGACIÓN AL DETALLE (según rol) ---
   void _openDetail(int id) {
     final role = AuthScope.of(context).role;
-    final route =
-        (role == AppRoles.profesor) ? RouteNames.profesorEstudianteDetalle : RouteNames.adminEstudianteDetalle;
+    final route = (role == AppRoles.profesor)
+        ? RouteNames.profesorEstudianteDetalle
+        : RouteNames.adminEstudianteDetalle;
 
-    Navigator.pushNamed(
+    Navigator.pushNamed(context, route, arguments: {'id': id});
+  }
+
+  Future<void> _openNuevo() async {
+    final created = await Navigator.push(
       context,
-      route,
-      arguments: {'id': id},
+      MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()),
     );
+    if (created == true) _load();
   }
 
   // ================= EXPORTACIÓN (CSV + EXCEL + PDF) =================
@@ -157,19 +181,27 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   Future<void> _saveBytes(Uint8List bytes, String name, String mime) async {
     try {
       final loc = await getSaveLocation(suggestedName: name);
-      if (loc != null) {
-        final xf = XFile.fromData(bytes, name: name, mimeType: mime);
-        await xf.saveTo(loc.path);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Guardado en ${loc.path}')),
-          );
-        }
+      if (loc == null) return;
+
+      final xf = XFile.fromData(bytes, name: name, mimeType: mime);
+      await xf.saveTo(loc.path);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Guardado en ${loc.path}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar: $e')),
+          SnackBar(
+            content: Text('Error al guardar: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -177,6 +209,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
 
   Future<void> _exportCsv() async {
     final data = _dataToExport;
+
     final buf = StringBuffer()
       ..writeln(
           'ID,Nombres,Apellidos,Cedula,Telefono,Categoria,Subcategoria,Estado,Creado');
@@ -212,8 +245,16 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
 
   Future<void> _exportExcel() async {
     final data = _dataToExport;
+
     final book = xls.Excel.createExcel();
-    final sheet = book['Estudiantes'];
+    const sheetName = 'Estudiantes';
+
+    final defaultSheet = book.getDefaultSheet();
+    if (defaultSheet != null && defaultSheet != sheetName) {
+      book.rename(defaultSheet, sheetName);
+    }
+
+    final sheet = book[sheetName];
 
     sheet.appendRow([
       xls.TextCellValue('ID'),
@@ -250,37 +291,89 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     final data = _dataToExport;
     final doc = pw.Document();
 
-    final tableData = [
-      ['ID', 'Nombre', 'Cédula', 'Subcategoría', 'Estado'],
-      ...data.map((r) => [
-            '${_idOf(r)}',
-            '${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}',
-            '${r['cedula'] ?? '-'}',
-            '${r['subcategoriaNombre'] ?? '-'}',
-            r['activo'] == true ? 'Activo' : 'Inactivo'
-          ])
-    ];
+    final now = DateTime.now();
+    final fecha =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    final headers = ['ID', 'Nombre', 'Cédula', 'Subcategoría', 'Estado'];
+    final rows = data.map((r) {
+      final fullName = '${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}'.trim();
+      return [
+        '${_idOf(r)}',
+        fullName.isEmpty ? '—' : fullName,
+        '${r['cedula'] ?? '—'}',
+        '${r['subcategoriaNombre'] ?? '—'}',
+        r['activo'] == true ? 'Activo' : 'Inactivo'
+      ];
+    }).toList();
 
     doc.addPage(
       pw.MultiPage(
+        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 28),
         build: (ctx) => [
-          pw.Header(level: 0, child: pw.Text('Reporte de Estudiantes')),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'Reporte de Estudiantes',
+                    style: pw.TextStyle(
+                        fontSize: 18, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Generado: $fecha',
+                    style: const pw.TextStyle(
+                        fontSize: 10, color: PdfColors.grey700),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Registros: ${rows.length}',
+                    style: const pw.TextStyle(
+                        fontSize: 10, color: PdfColors.grey700),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 12),
           pw.Table.fromTextArray(
-            headers: tableData.first,
-            data: tableData.sublist(1),
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-            cellStyle: const pw.TextStyle(fontSize: 10),
+            headers: headers,
+            data: rows,
+            headerStyle:
+                pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+            headerDecoration:
+                const pw.BoxDecoration(color: PdfColors.grey200),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignment: pw.Alignment.centerLeft,
+            cellPadding:
+                const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            border:
+                pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
+            columnWidths: const {
+              0: pw.FixedColumnWidth(36),
+              1: pw.FlexColumnWidth(3),
+              2: pw.FlexColumnWidth(2),
+              3: pw.FlexColumnWidth(3),
+              4: pw.FixedColumnWidth(56),
+            },
           ),
         ],
+        footer: (ctx) => pw.Container(
+          alignment: pw.Alignment.centerRight,
+          margin: const pw.EdgeInsets.only(top: 10),
+          child: pw.Text(
+            'Página ${ctx.pageNumber} / ${ctx.pagesCount}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
+        ),
       ),
     );
 
-    await _saveBytes(
-      await doc.save(),
-      'estudiantes_export.pdf',
-      'application/pdf',
-    );
+    await _saveBytes(await doc.save(), 'estudiantes_export.pdf', 'application/pdf');
   }
 
   Future<void> _showExportMenu() async {
@@ -334,6 +427,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     InputDecoration blueDeco(String label, IconData icon) {
       return InputDecoration(
         labelText: label,
+        hintText: label,
         labelStyle: TextStyle(color: Colors.blue.shade800),
         prefixIcon: Icon(icon, color: Colors.blue.shade700),
         filled: true,
@@ -341,17 +435,21 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
         contentPadding:
             const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Colors.transparent)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Colors.transparent),
+        ),
         focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: Colors.blue.shade800, width: 1.5)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.blue.shade800, width: 1.5),
+        ),
         errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: Colors.red.shade300)),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.red.shade300),
+        ),
       );
     }
 
@@ -405,7 +503,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                   child: Row(
                     children: [
                       Hero(
-                        tag: 'est_avatar_${row['id']}',
+                        tag: 'est_avatar_${_idOf(row)}',
                         child: CircleAvatar(
                           radius: 26,
                           backgroundColor: Colors.white.withOpacity(0.2),
@@ -441,7 +539,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                           controller: nombres,
                           decoration: blueDeco('Nombres', Icons.badge_outlined),
                           textCapitalization: TextCapitalization.words,
-                          validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
+                          validator: (v) =>
+                              (v?.trim().isEmpty ?? true) ? 'Requerido' : null,
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
@@ -449,7 +548,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                           decoration:
                               blueDeco('Apellidos', Icons.person_outline),
                           textCapitalization: TextCapitalization.words,
-                          validator: (v) => (v?.isEmpty ?? true) ? 'Requerido' : null,
+                          validator: (v) =>
+                              (v?.trim().isEmpty ?? true) ? 'Requerido' : null,
                         ),
                         const SizedBox(height: 16),
                         Row(
@@ -467,8 +567,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                                 controller: fecha,
                                 readOnly: true,
                                 onTap: pickDate,
-                                decoration: blueDeco(
-                                    'Nacimiento', Icons.calendar_month_outlined),
+                                decoration: blueDeco('Nacimiento',
+                                    Icons.calendar_month_outlined),
                               ),
                             )
                           ],
@@ -482,10 +582,10 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                         const SizedBox(height: 16),
                         TextFormField(
                           initialValue: idAcademia.toString(),
-                          decoration: blueDeco('ID Academia', Icons.school_outlined),
+                          decoration:
+                              blueDeco('ID Academia', Icons.school_outlined),
                           keyboardType: TextInputType.number,
-                          onChanged: (v) =>
-                              idAcademia = int.tryParse(v) ?? 1,
+                          onChanged: (v) => idAcademia = int.tryParse(v) ?? 1,
                         ),
                         const SizedBox(height: 32),
                         SizedBox(
@@ -516,25 +616,24 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                                       : telefono.text.trim(),
                                   idAcademia: idAcademia,
                                 );
-                                if (mounted) {
-                                  Navigator.pop(ctx, true);
-                                  _load();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Actualizado correctamente'),
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
-                                }
+                                if (!mounted) return;
+                                Navigator.pop(ctx, true);
+                                _load();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Actualizado correctamente'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(e.toString()),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(e.toString()),
+                                    backgroundColor: Colors.red,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
                               }
                             },
                             child: const Text(
@@ -571,13 +670,21 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
         await _repo.deactivate(id);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Estudiante desactivado'), duration: Duration(seconds: 1)),
+          const SnackBar(
+            content: Text('Estudiante desactivado'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       } else {
         await _repo.activate(id);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Estudiante activado'), duration: Duration(seconds: 1)),
+          const SnackBar(
+            content: Text('Estudiante activado'),
+            duration: Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
@@ -586,7 +693,11 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -600,11 +711,13 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       builder: (ctx, c) {
         final isNarrow = c.maxWidth < 820;
 
-        final header =
-            _selected.isNotEmpty ? _buildSelectionBar(context) : _buildModernHeader(context, isNarrow);
+        final header = _selected.isNotEmpty
+            ? _buildSelectionBar(context)
+            : _buildModernHeader(context, isNarrow);
 
         final content = isFirstLoad
-            ? _LoadingPlaceholder(isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
+            ? _LoadingPlaceholder(
+                isNarrow: isNarrow, viewMode: _viewMode, dense: _dense)
             : _error != null
                 ? _ErrorView(error: _error!, onRetry: _load)
                 : (_rows.isEmpty
@@ -613,32 +726,29 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                         subtitle: 'No se encontraron registros.',
                         primary: ('Refrescar', _load),
                         secondary: ('Limpiar filtros', () {
-                          _q.clear();
-                          _catId = null;
-                          _onlyActive = null;
+                          setState(() {
+                            _q.clear();
+                            _catId = null;
+                            _onlyActive = null;
+                            _page = 1;
+                          });
                           _load();
                         }),
                       )
-                    : (_viewMode == _ViewMode.cards ? _buildCards(_rows) : _buildTable(_rows)));
+                    : (_viewMode == _ViewMode.cards
+                        ? _buildCards(_rows)
+                        : _buildTable(_rows)));
 
         final body = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             header,
-            if (_error != null)
-              Container(
-                color: Colors.red.shade50,
-                padding: const EdgeInsets.all(8),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Colors.red.shade900),
-                  textAlign: TextAlign.center,
-                ),
-              ),
             Expanded(
               child: Stack(
                 children: [
-                  AnimatedSwitcher(duration: const Duration(milliseconds: 220), child: content),
+                  AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: content),
                   if (_loading && !isFirstLoad)
                     const Positioned(right: 12, top: 8, child: _LoadingChip()),
                 ],
@@ -649,10 +759,12 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
               totalItems: _total,
               pageSize: _pageSize,
               onPageChange: (p) {
+                if (p < 1) return;
                 setState(() => _page = p);
                 _load();
               },
               onPageSizeChange: (s) {
+                if (s <= 0) return;
                 setState(() {
                   _pageSize = s;
                   _page = 1;
@@ -670,24 +782,23 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Estudiantes', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Estudiantes',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load, tooltip: 'Refrescar')
+          Tooltip(
+            message: 'Refrescar',
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loading ? null : _load,
+            ),
+          ),
         ],
       ),
-      floatingActionButton: _isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                final created = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CrearEstudianteMatriculaScreen()),
-                );
-                if (created == true) _load();
-              },
-              icon: const Icon(Icons.person_add),
-              label: const Text('Nuevo'),
-            )
-          : null,
+
+      // Se movió "Nuevo" al header superior (junto a filtros/Exportar),
+      // por eso ya no hay FloatingActionButton.
+      floatingActionButton: null,
+
       body: Padding(padding: const EdgeInsets.all(12), child: core),
     );
   }
@@ -699,7 +810,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       controller: _q,
       focusNode: _searchFocus,
       decoration: InputDecoration(
-        hintText: 'Buscar estudiante...',
+        labelText: 'Buscar',
+        hintText: 'Nombre, cédula o teléfono...',
         prefixIcon: Icon(Icons.search, color: cs.primary),
         filled: true,
         fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
@@ -708,13 +820,16 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-        suffixIcon: _q.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () {
-                  _q.clear();
-                  _onSearchChanged();
-                },
+        suffixIcon: _q.text.trim().isNotEmpty
+            ? Tooltip(
+                message: 'Limpiar búsqueda',
+                child: IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () {
+                    setState(() => _q.clear());
+                    _onSearchChanged();
+                  },
+                ),
               )
             : null,
       ),
@@ -722,16 +837,16 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     );
 
     final catFilter = SizedBox(
-      width: 180,
+      width: 200,
       child: DropdownButtonFormField<int?>(
         value: _catId,
         decoration: InputDecoration(
+          labelText: 'Categoría',
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
           fillColor: cs.surface,
           prefixIcon: const Icon(Icons.category_outlined, size: 20),
-          hintText: 'Categoría',
         ),
         items: [
           const DropdownMenuItem(value: null, child: Text('Todas')),
@@ -751,10 +866,11 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     );
 
     final statusFilter = SizedBox(
-      width: 160,
+      width: 170,
       child: DropdownButtonFormField<bool?>(
         value: _onlyActive,
         decoration: InputDecoration(
+          labelText: 'Estado',
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
@@ -783,30 +899,57 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: Icon(Icons.grid_view_rounded,
+          Tooltip(
+            message: 'Vista tarjetas',
+            child: IconButton(
+              icon: Icon(
+                Icons.grid_view_rounded,
                 color: _viewMode == _ViewMode.cards
                     ? cs.primary
-                    : cs.onSurfaceVariant),
-            onPressed: () => setState(() => _viewMode = _ViewMode.cards),
+                    : cs.onSurfaceVariant,
+              ),
+              onPressed: () => setState(() => _viewMode = _ViewMode.cards),
+            ),
           ),
           Container(width: 1, height: 20, color: cs.outlineVariant),
-          IconButton(
-            icon: Icon(Icons.table_rows_rounded,
+          Tooltip(
+            message: 'Vista tabla',
+            child: IconButton(
+              icon: Icon(
+                Icons.table_rows_rounded,
                 color: _viewMode == _ViewMode.table
                     ? cs.primary
-                    : cs.onSurfaceVariant),
-            onPressed: () => setState(() => _viewMode = _ViewMode.table),
+                    : cs.onSurfaceVariant,
+              ),
+              onPressed: () => setState(() => _viewMode = _ViewMode.table),
+            ),
           ),
         ],
       ),
     );
 
+    final exportBtn = Tooltip(
+      message: 'Exportar',
+      child: IconButton(
+        icon: const Icon(Icons.download),
+        onPressed: _showExportMenu,
+      ),
+    );
+
+    final newBtn = !_isAdmin
+        ? const SizedBox.shrink()
+        : FilledButton.icon(
+            onPressed: _loading ? null : _openNuevo,
+            icon: const Icon(Icons.person_add),
+            label: const Text('Nuevo'),
+          );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: cs.surface,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
+        border: Border(
+            bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.3))),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -819,21 +962,20 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
           ? Column(
               children: [
                 search,
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Row(children: [
                   Expanded(child: catFilter),
                   const SizedBox(width: 8),
-                  Expanded(child: statusFilter)
+                  Expanded(child: statusFilter),
                 ]),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     viewToggle,
-                    IconButton(
-                      icon: const Icon(Icons.download),
-                      onPressed: _showExportMenu,
-                    )
+                    const Spacer(),
+                    exportBtn,
+                    const SizedBox(width: 8),
+                    if (_isAdmin) newBtn,
                   ],
                 )
               ],
@@ -847,39 +989,60 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                 statusFilter,
                 const SizedBox(width: 12),
                 viewToggle,
+                const SizedBox(width: 8),
+                exportBtn,
                 const SizedBox(width: 12),
-                IconButton(
-                  icon: const Icon(Icons.download),
-                  onPressed: _showExportMenu,
-                  tooltip: 'Exportar',
-                ),
+                if (_isAdmin) newBtn,
               ],
             ),
     );
   }
 
   Widget _buildSelectionBar(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: Theme.of(context).colorScheme.primaryContainer,
+      color: cs.primaryContainer,
       child: Row(
         children: [
-          IconButton(
+          Tooltip(
+            message: 'Cancelar selección',
+            child: IconButton(
               icon: const Icon(Icons.close),
-              onPressed: () => setState(() => _selected.clear())),
+              onPressed: () => setState(() => _selected.clear()),
+            ),
+          ),
           const SizedBox(width: 8),
           Text(
             '${_selected.length} seleccionados',
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              color: cs.onPrimaryContainer,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
           ),
           const Spacer(),
-          IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcel, tooltip: 'Exportar selección a Excel'),
-          IconButton(icon: const Icon(Icons.picture_as_pdf), onPressed: _exportPdf, tooltip: 'Exportar selección a PDF'),
-          IconButton(icon: const Icon(Icons.table_rows), onPressed: _exportCsv, tooltip: 'Exportar selección a CSV'),
+          Tooltip(
+            message: 'Excel (selección)',
+            child: IconButton(
+              icon: const Icon(Icons.grid_on),
+              onPressed: _exportExcel,
+            ),
+          ),
+          Tooltip(
+            message: 'PDF (selección)',
+            child: IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: _exportPdf,
+            ),
+          ),
+          Tooltip(
+            message: 'CSV (selección)',
+            child: IconButton(
+              icon: const Icon(Icons.table_rows),
+              onPressed: _exportCsv,
+            ),
+          ),
         ],
       ),
     );
@@ -887,7 +1050,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
 
   Widget _buildCards(List<Map<String, dynamic>> rows) {
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: rows.length,
       itemBuilder: (_, i) {
         final r = rows[i];
@@ -895,17 +1058,31 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
         final id = _idOf(r);
         final isSelected = _selected.contains(id);
 
+        final nombresStr = (r['nombres'] ?? '').toString();
+        final apellidosStr = (r['apellidos'] ?? '').toString();
+        final fullName = '$nombresStr $apellidosStr'.trim();
+
+        final initial = fullName.trim().isEmpty
+            ? 'E'
+            : fullName.trim().characters.first.toUpperCase();
+
+        final cat = (r['categoriaNombre'] ?? '').toString();
+        final sub = (r['subcategoriaNombre'] ?? '').toString();
+
         return Card(
           elevation: isSelected ? 4 : 0,
           margin: const EdgeInsets.only(bottom: 12),
           color: isSelected
-              ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+              ? Theme.of(context)
+                  .colorScheme
+                  .primaryContainer
+                  .withOpacity(0.3)
               : null,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
               color: isSelected
-                  ? Theme.of(context).primaryColor
+                  ? Theme.of(context).colorScheme.primary
                   : Theme.of(context).dividerColor,
               width: isSelected ? 2 : 1,
             ),
@@ -913,7 +1090,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: () => _openDetail(id),
-            onLongPress: () => setState(() => isSelected ? _selected.remove(id) : _selected.add(id)),
+            onLongPress: () => setState(
+                () => isSelected ? _selected.remove(id) : _selected.add(id)),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -921,17 +1099,18 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                   if (_selected.isNotEmpty) ...[
                     Checkbox(
                       value: isSelected,
-                      onChanged: (v) => setState(() => v! ? _selected.add(id) : _selected.remove(id)),
+                      onChanged: (v) => setState(
+                          () => v == true ? _selected.add(id) : _selected.remove(id)),
                     ),
                     const SizedBox(width: 8),
                   ],
                   Hero(
-                    tag: 'est_avatar_${r['id']}',
+                    tag: 'est_avatar_$id',
                     child: CircleAvatar(
                       radius: 24,
                       backgroundColor: Colors.blue.shade50,
                       child: Text(
-                        '${r['nombres']}'.characters.first.toUpperCase(),
+                        initial,
                         style: TextStyle(
                           color: Colors.blue.shade800,
                           fontWeight: FontWeight.bold,
@@ -945,26 +1124,53 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${r['nombres']} ${r['apellidos']}',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          fullName.isEmpty ? 'Estudiante' : fullName,
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          r['cedula'] ?? 'Sin cédula',
+                          (r['cedula'] ?? 'Sin cédula').toString(),
                           style: TextStyle(color: Theme.of(context).hintColor),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
+                        if (cat.isNotEmpty || sub.isNotEmpty)
+                          Row(
+                            children: [
+                              Icon(Icons.category_outlined,
+                                  size: 14, color: Theme.of(context).hintColor),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  [
+                                    if (cat.isNotEmpty) cat,
+                                    if (sub.isNotEmpty) sub,
+                                  ].join(' • '),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      color: Theme.of(context).hintColor,
+                                      fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
+                                color: activo
+                                    ? Colors.green.withOpacity(0.12)
+                                    : Colors.red.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 activo ? 'Activo' : 'Inactivo',
                                 style: TextStyle(
-                                  color: activo ? Colors.green : Colors.red,
+                                  color: activo
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -978,6 +1184,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                   Column(
                     children: [
                       PopupMenuButton<String>(
+                        tooltip: 'Acciones',
                         icon: const Icon(Icons.more_vert),
                         onSelected: (v) {
                           if (v == 'detail') _openDetail(id);
@@ -986,31 +1193,40 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                         itemBuilder: (ctx) => [
                           const PopupMenuItem(
                             value: 'detail',
-                            child: Row(children: [
-                              Icon(Icons.visibility, size: 18),
-                              SizedBox(width: 8),
-                              Text('Ver perfil')
-                            ]),
+                            child: Row(
+                              children: [
+                                Icon(Icons.visibility, size: 18),
+                                SizedBox(width: 8),
+                                Text('Ver perfil')
+                              ],
+                            ),
                           ),
                           if (_isAdmin)
                             const PopupMenuItem(
                               value: 'edit',
-                              child: Row(children: [
-                                Icon(Icons.edit, size: 18),
-                                SizedBox(width: 8),
-                                Text('Editar')
-                              ]),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit, size: 18),
+                                  SizedBox(width: 8),
+                                  Text('Editar')
+                                ],
+                              ),
                             ),
                         ],
                       ),
                       if (_isAdmin)
-                        IconButton(
-                          icon: Icon(
-                            activo ? Icons.block : Icons.check_circle_outline,
-                            color: activo ? Colors.red.shade300 : Colors.green,
-                            size: 20,
+                        Tooltip(
+                          message: activo ? 'Desactivar' : 'Activar',
+                          child: IconButton(
+                            icon: Icon(
+                              activo ? Icons.block : Icons.check_circle_outline,
+                              color: activo
+                                  ? Colors.red.shade400
+                                  : Colors.green.shade700,
+                              size: 20,
+                            ),
+                            onPressed: () => _toggleEstado(r),
                           ),
-                          onPressed: () => _toggleEstado(r),
                         ),
                     ],
                   ),
@@ -1051,22 +1267,30 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
 
                 return DataRow(
                   selected: isSelected,
-                  onSelectChanged: (v) => setState(() => v! ? _selected.add(id) : _selected.remove(id)),
+                  onSelectChanged: (v) => setState(
+                      () => v == true ? _selected.add(id) : _selected.remove(id)),
                   cells: [
-                    DataCell(Text('${r['nombres']} ${r['apellidos']}', style: const TextStyle(fontWeight: FontWeight.w500))),
-                    DataCell(Text(r['cedula'] ?? '—')),
+                    DataCell(Text(
+                        '${r['nombres'] ?? ''} ${r['apellidos'] ?? ''}'.trim(),
+                        style: const TextStyle(fontWeight: FontWeight.w500))),
+                    DataCell(Text((r['cedula'] ?? '—').toString())),
                     DataCell(Text(r['subcategoriaNombre']?.toString() ?? '—')),
                     DataCell(
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: activo ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
+                          color: activo
+                              ? Colors.green.withOpacity(0.12)
+                              : Colors.red.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           activo ? 'Activo' : 'Inactivo',
                           style: TextStyle(
-                            color: activo ? Colors.green.shade700 : Colors.red.shade700,
+                            color: activo
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1076,25 +1300,35 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                     DataCell(
                       Row(
                         children: [
-                          IconButton(
-                            tooltip: 'Ver detalle',
-                            icon: const Icon(Icons.visibility),
-                            onPressed: () => _openDetail(id),
+                          Tooltip(
+                            message: 'Ver detalle',
+                            child: IconButton(
+                              icon: const Icon(Icons.visibility),
+                              onPressed: () => _openDetail(id),
+                            ),
                           ),
                           if (_isAdmin)
-                            IconButton(
-                              tooltip: 'Editar',
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => _edit(row: r),
+                            Tooltip(
+                              message: 'Editar',
+                              child: IconButton(
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () => _edit(row: r),
+                              ),
                             ),
                           if (_isAdmin)
-                            IconButton(
-                              tooltip: activo ? 'Desactivar' : 'Activar',
-                              icon: Icon(
-                                activo ? Icons.block : Icons.check_circle_outline,
-                                color: activo ? Colors.red.shade400 : Colors.green.shade600,
+                            Tooltip(
+                              message: activo ? 'Desactivar' : 'Activar',
+                              child: IconButton(
+                                icon: Icon(
+                                  activo
+                                      ? Icons.block
+                                      : Icons.check_circle_outline,
+                                  color: activo
+                                      ? Colors.red.shade400
+                                      : Colors.green.shade600,
+                                ),
+                                onPressed: () => _toggleEstado(r),
                               ),
-                              onPressed: () => _toggleEstado(r),
                             ),
                         ],
                       ),
@@ -1112,12 +1346,15 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
   Widget _withShortcuts(Widget child) {
     return Shortcuts(
       shortcuts: {
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF): const _FocusSearchIntent(),
-        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyR): const _ReloadIntent(),
+        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyF):
+            const _FocusSearchIntent(),
+        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyR):
+            const _ReloadIntent(),
       },
       child: Actions(
         actions: {
-          _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(onInvoke: (_) {
+          _FocusSearchIntent:
+              CallbackAction<_FocusSearchIntent>(onInvoke: (_) {
             _searchFocus.requestFocus();
             return null;
           }),
@@ -1153,34 +1390,78 @@ class _PaginationControls extends StatelessWidget {
     if (totalPages < 1) totalPages = 1;
 
     final from = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-    final to = (currentPage * pageSize) > totalItems ? totalItems : (currentPage * pageSize);
+    final to = (currentPage * pageSize) > totalItems
+        ? totalItems
+        : (currentPage * pageSize);
+
+    final canBack = currentPage > 1;
+    final canNext = currentPage < totalPages;
+
+    final cs = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cs.surface,
         border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 8,
+        spacing: 12,
         children: [
-          Text('$from-$to de $totalItems',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.secondary,
-                fontWeight: FontWeight.w500,
-              )),
+          Text(
+            '$from-$to de $totalItems · Página $currentPage / $totalPages',
+            style: TextStyle(
+              color: cs.secondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+              // Selector de tamaño de página
+              SizedBox(
+                width: 170,
+                child: DropdownButtonFormField<int>(
+                  value: pageSize,
+                  decoration: InputDecoration(
+                    labelText: 'Filas por página',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: cs.surfaceContainerHighest.withOpacity(0.35),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 20, child: Text('20')),
+                    DropdownMenuItem(value: 50, child: Text('50')),
+                    DropdownMenuItem(value: 100, child: Text('100')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    onPageSizeChange(v);
+                  },
+                ),
               ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null,
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Anterior',
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: canBack ? () => onPageChange(currentPage - 1) : null,
+                ),
+              ),
+              Tooltip(
+                message: 'Siguiente',
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: canNext ? () => onPageChange(currentPage + 1) : null,
+                ),
               ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -1204,7 +1485,9 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.school_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)),
+            Icon(Icons.school_outlined,
+                size: 80,
+                color: Theme.of(context).disabledColor.withOpacity(0.3)),
             const SizedBox(height: 16),
             Text(title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -1215,7 +1498,8 @@ class _EmptyState extends StatelessWidget {
               children: [
                 FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
                 if (secondary != null)
-                  OutlinedButton(onPressed: secondary!.$2, child: Text(secondary!.$1)),
+                  OutlinedButton(
+                      onPressed: secondary!.$2, child: Text(secondary!.$1)),
               ],
             )
           ],
@@ -1230,20 +1514,25 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 56),
-            const SizedBox(height: 12),
-            const Text('Error', style: TextStyle(fontSize: 18)),
-            Text(error),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            )
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 12),
+              const Text('Error al cargar',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              SelectableText(error, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              )
+            ],
+          ),
         ),
       );
 }
@@ -1252,8 +1541,11 @@ class _LoadingChip extends StatelessWidget {
   const _LoadingChip();
   @override
   Widget build(BuildContext context) => const Chip(
-        avatar: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-        label: Text('Cargando...'),
+        avatar: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2)),
+        label: Text('Cargando…'),
       );
 }
 
@@ -1272,11 +1564,14 @@ class _LoadingPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) => ListView.builder(
         itemCount: 6,
         itemBuilder: (_, __) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
           child: Container(
-            height: 80,
+            height: dense ? 72 : 88,
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceVariant
+                  .withOpacity(0.35),
               borderRadius: BorderRadius.circular(12),
             ),
           ),

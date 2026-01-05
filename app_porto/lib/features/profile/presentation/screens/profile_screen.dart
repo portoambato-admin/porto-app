@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -49,8 +47,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final usuario = await AppScope.of(context).auth.me();
       
-      _nameCtrl.text = usuario.nombre ?? '';
-      _emailCtrl.text = usuario.correo ?? '';
+      _nameCtrl.text = usuario.nombre;
+      _emailCtrl.text = usuario.correo;
       _dniCtrl.text = usuario.cedula ?? '';
       
       if (mounted) {

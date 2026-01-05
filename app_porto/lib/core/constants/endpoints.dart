@@ -15,6 +15,18 @@ abstract class Endpoints {
   static String usuarioId(int id) => '/usuarios/$id';
   static String usuarioActivar(int id) => '/usuarios/$id/activar';
 
+  // ===== Usuarios (búsquedas)
+  static const usuariosBuscarGeneral = '/usuarios/buscar/general';
+
+  // ===== Representantes ↔ Estudiantes (ADMIN)
+  static const representantesEstudiante = '/representantes-estudiante';
+  static const tiposRelacion = '/representantes-estudiante/tipos-relacion';
+  static String representantesDeEstudiante(int idEstudiante) => '/representantes-estudiante/estudiante/$idEstudiante';
+  static String repEstDesactivar(int idUsuario, int idEstudiante) =>
+      '/representantes-estudiante/$idUsuario/$idEstudiante/desactivar';
+  static String repEstActivar(int idUsuario, int idEstudiante) =>
+      '/representantes-estudiante/$idUsuario/$idEstudiante/activar';
+
   // ===== Profesores
   static const profesores = '/profesores';
   static const profesoresActivos = '/profesores/activos';
@@ -71,10 +83,27 @@ abstract class Endpoints {
       '/mensualidades/estudiante/$id';
   static const mensualidadesResumen = '/mensualidades/resumen';
 
+  // ===== Mensualidades (bulk por subcategoría)
+  static const mensualidadesBulk = '/mensualidades/bulk';
+  static const mensualidadesBulkSubcategorias = '/mensualidades/bulk/subcategorias';
+  static String mensualidadesBulkEstudiantesSubcategoria(int idSubcat) =>
+      '/mensualidades/bulk/subcategorias/$idSubcat/estudiantes';
+
   // ===== Pagos
   static const pagos = '/pagos';
   static String pagoId(int id) => '/pagos/$id';
   static String get adminEstadoMensualidad => '/estado-mensualidad';
+
+  // ===== Representante (rol: representante)
+  static const repEstudiantes = '/representante/estudiantes';
+  static String repMensualidadesPorEstudiante(int idEstudiante) =>
+      '/representante/estudiantes/$idEstudiante/mensualidades';
+  static String repMensualidadDetalle(int idMensualidad) =>
+      '/representante/mensualidades/$idMensualidad';
+  static String repPagosPorMensualidad(int idMensualidad) =>
+      '/representante/mensualidades/$idMensualidad/pagos';
+  static String repResumenPorMensualidad(int idMensualidad) =>
+      '/representante/mensualidades/$idMensualidad/resumen';
 
   // ===== ✅ Asistencias (base + sesiones)
   static const asistencias = '/asistencias';
@@ -84,4 +113,28 @@ abstract class Endpoints {
   static String asistenciasSesionMarcar(int idSesion) =>
       '/asistencias/sesiones/$idSesion/marcar';
   static String get asistenciasHistorialEstudiante => '/asistencias/historial-estudiante';
+
+    
+
+// ===== Reportes (ADMIN)
+static const reporteEstadoCobros = '/reportes/estado-cobros';
+static const reporteCuentasPorCobrar = '/reportes/cuentas-por-cobrar';
+static String reporteHistorialPagosCliente(int idEstudiante) => '/reportes/historial-pagos/$idEstudiante';
+static const reporteCobrosPorPeriodo = '/reportes/cobros-por-periodo';
+static const reporteMorosidad = '/reportes/morosidad';
+static const reporteMetodosPago = '/reportes/metodos-pago';
+static const reporteAlertasRecordatorios = '/reportes/alertas-recordatorios';
+static const reporteConsolidadoGerencia = '/reportes/consolidado-gerencia';
+
+// ===== Reportes Academia (ADMIN)
+static const reporteUsuariosResumen = '/reportes/usuarios/resumen';
+static const reporteUsuariosAuditoriaActividad = '/reportes/usuarios/auditoria-actividad';
+static const reporteEstudiantesResumen = '/reportes/academia/estudiantes/resumen';
+static const reporteAsistenciaResumen = '/reportes/academia/asistencia/resumen';
+static const reporteEvaluacionesResumen = '/reportes/academia/evaluaciones/resumen';
+
+// ===== Dashboard (Admin / Profesor / Representante)
+  static const dashboardAdmin = '/dashboard/admin';
+  static const dashboardProfesor = '/dashboard/profesor';
+  static const dashboardRepresentante = '/dashboard/representante';
 }

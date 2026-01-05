@@ -7,11 +7,13 @@ import 'package:app_porto/ui/components/breadcrumbs.dart';
 import 'widgets/admin_section_tabs.dart' show AdminSection;
 
 /// Hubs principales del panel
-enum AdminHub { personas, academia, finanzas, reportes, sistema }
+enum AdminHub { dashboard, personas, academia, finanzas, reportes, sistema }
 
 extension _HubMeta on AdminHub {
   String get label {
     switch (this) {
+      case AdminHub.dashboard:
+        return 'Dashboard';
       case AdminHub.personas:
         return 'Personas';
       case AdminHub.academia:
@@ -27,6 +29,8 @@ extension _HubMeta on AdminHub {
 
   IconData get icon {
     switch (this) {
+      case AdminHub.dashboard:
+        return Icons.dashboard_outlined;
       case AdminHub.personas:
         return Icons.groups_2_outlined;
       case AdminHub.academia:
@@ -42,6 +46,8 @@ extension _HubMeta on AdminHub {
 
   String get route {
     switch (this) {
+      case AdminHub.dashboard:
+        return '/admin/dashboard';
       case AdminHub.personas:
         return '/admin/personas';
       case AdminHub.academia:
@@ -139,6 +145,7 @@ class _AdminShellState extends State<AdminShell> {
 
     // Admin (y otros roles con acceso completo)
     return const [
+      AdminHub.dashboard,
       AdminHub.personas,
       AdminHub.academia,
       AdminHub.finanzas,

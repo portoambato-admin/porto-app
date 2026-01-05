@@ -28,9 +28,11 @@ import '../features/auth/presentation/screens/auth_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../features/auth/presentation/screens/reset_password_screen.dart';
 
-// Perfil / Panel (NO diferido)
+// Perfil (NO diferido)
 import '../features/profile/presentation/screens/profile_screen.dart';
-import '../features/admin/presentation/panel/panel_screen.dart';
+
+// Dashboard admin (NO diferido)
+import '../features/admin/presentation/hubs/dashboard_hub_screen.dart';
 
 // ===== Admin: Hubs =====
 import '../features/admin/presentation/hubs/personas_hub_screen.dart';
@@ -52,6 +54,8 @@ import '../features/admin/sections/estudiantes_screen.dart'
     show AdminEstudiantesScreen;
 import '../features/admin/sections/estudiante_detail_screen.dart'
     show EstudianteDetailScreen;
+import '../features/admin/sections/estudiante_representantes_screen.dart'
+    show AdminEstudianteRepresentantesScreen;
 
 // Subcategorías: listado y detalle
 import '../features/admin/sections/detalle_subcategorias_screen.dart'
@@ -141,12 +145,13 @@ class AppRouter {
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
 
       // ======= ADMIN (solo ADMIN) ============================================
-      case RouteNames.panel:
+      case RouteNames.panel: // compat: alias antiguo
       case RouteNames.adminRoot:
+      case RouteNames.adminDashboard:
         return _guardedRole(
           s,
           allowedRoles: {AppRoles.admin},
-          builder: (_) => const PanelScreen(),
+          builder: (_) => const DashboardHubScreen(),
         );
 
       case RouteNames.adminPersonas:
@@ -280,7 +285,27 @@ class AppRouter {
           },
         );
 
-      // Subcategoría → Estudiantes (ADMIN)
+      
+
+      // Estudiante → Representantes (ADMIN)
+      case RouteNames.adminEstudianteRepresentantes:
+        return _guardedRole(
+          s,
+          allowedRoles: {AppRoles.admin},
+          builder: (_) {
+            final args = s.arguments;
+            int? id;
+            if (args is Map && args['id'] != null) {
+              final v = args['id'];
+              if (v is int) id = v;
+              else if (v is num) id = v.toInt();
+              else if (v is String) id = int.tryParse(v);
+            }
+            if (id == null) return const _ArgsErrorPage('Falta argumento: id (int)');
+            return AcademiaHubScreen(child: AdminEstudianteRepresentantesScreen(idEstudiante: id, nombreEstudiante: '',));
+          },
+        );
+// Subcategoría → Estudiantes (ADMIN)
       case RouteNames.adminSubcatEstudiantes:
         return _guardedRole(
           s,
@@ -456,10 +481,12 @@ class AppRouter {
         );
 
       case RouteNames.representanteMensualidadDetalle:
+        final args = (s.arguments as Map?) ?? const {};
+        final id = (args['idMensualidad'] as num?)?.toInt() ?? 0;
         return _guardedRole(
           s,
           allowedRoles: {AppRoles.representante, AppRoles.admin},
-          builder: (_) => const RepresentanteMensualidadDetalleScreen(),
+          builder: (_) => RepresentanteMensualidadDetalleScreen(idMensualidad: id),
         );
 
       // ======= 404 ===========================================================

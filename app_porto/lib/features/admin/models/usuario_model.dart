@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 enum UserRole {
   admin(1, 'Admin', 'Administrador del sistema'),
   profesor(2, 'Profesor', 'Instructor de la academia'),
-  padre(3, 'Padre', 'Padre/Tutor de estudiante'),
+  padre(3, 'Representante', 'Padre/Tutor de estudiante'),
   usuario(4, 'Usuario', 'Usuario general');
 
   final int id;

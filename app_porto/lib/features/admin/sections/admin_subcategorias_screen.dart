@@ -82,7 +82,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
   String get _subcatStudentsRoute {
     final role = AuthScope.of(context).role;
-    return (role == AppRoles.profesor) ? RouteNames.profesorSubcatEstudiantes : RouteNames.adminSubcatEstudiantes;
+    return (role == AppRoles.profesor)
+        ? RouteNames.profesorSubcatEstudiantes
+        : RouteNames.adminSubcatEstudiantes;
   }
 
   @override
@@ -122,6 +124,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   }
 
   void _onSearchChanged() {
+    // Importante: refresca UI (suffixIcon, etc.) mientras escribe/borra
+    if (mounted) setState(() {});
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 400), () {
       _resetPages();
@@ -361,7 +365,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                         top: 8,
                         right: 8,
                         child: IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white),
+                          tooltip: 'Cerrar',
+                          icon: const Icon(Icons.close, color: Colors.white, semanticLabel: 'Cerrar'),
                           onPressed: () => Navigator.pop(ctx, false),
                         ),
                       ),
@@ -381,7 +386,12 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                             child: CircleAvatar(
                               radius: 38,
                               backgroundColor: Colors.deepPurple.shade50,
-                              child: Icon(Icons.class_rounded, size: 36, color: Colors.deepPurple.shade700),
+                              child: Icon(
+                                Icons.class_rounded,
+                                size: 36,
+                                color: Colors.deepPurple.shade700,
+                                semanticLabel: 'Subcategoría',
+                              ),
                             ),
                           ),
                         ),
@@ -413,7 +423,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                             }).toList(),
                             validator: (v) => v == null ? 'Selecciona una categoría' : null,
                             onChanged: (v) => idCat = v,
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded, semanticLabel: 'Abrir lista'),
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -489,7 +499,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   (List<Map<String, dynamic>> data, String baseName) _currentExportData() {
     final tab = _tab.index;
     final data = tab == 0 ? _actItems : (tab == 1 ? _inaItems : _allItems);
-    final name = tab == 0 ? 'subcategorias_activas' : (tab == 1 ? 'subcategorias_inactivas' : 'subcategorias_todas');
+    final name = tab == 0
+        ? 'subcategorias_activas'
+        : (tab == 1 ? 'subcategorias_inactivas' : 'subcategorias_todas');
     return (data, name);
   }
 
@@ -583,7 +595,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
 
     Future<void> doAssign(BuildContext ctx, StateSetter setLocal) async {
       if (selected.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona al menos un estudiante.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecciona al menos un estudiante.')),
+        );
         return;
       }
       setLocal(() => loading = true);
@@ -609,7 +623,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                 _chipCount(Icons.error_outline, 'Errores', errs, Colors.red),
               ],
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+            ],
           ),
         );
 
@@ -653,8 +669,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                   TextField(
                     controller: qCtrl,
                     decoration: InputDecoration(
+                      labelText: 'Buscar estudiante',
                       hintText: 'Buscar estudiante...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(Icons.search, semanticLabel: 'Buscar'),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
@@ -706,7 +723,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.chevron_left),
+                                tooltip: 'Página anterior',
+                                icon: const Icon(Icons.chevron_left, semanticLabel: 'Página anterior'),
                                 onPressed: canBack
                                     ? () {
                                         page--;
@@ -717,7 +735,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                               ),
                               Text('$showingFrom-$showingTo de $total'),
                               IconButton(
-                                icon: const Icon(Icons.chevron_right),
+                                tooltip: 'Página siguiente',
+                                icon: const Icon(Icons.chevron_right, semanticLabel: 'Página siguiente'),
                                 onPressed: canFwd
                                     ? () {
                                         page++;
@@ -735,9 +754,12 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar'),
+              ),
               FilledButton.icon(
-                icon: const Icon(Icons.group_add),
+                icon: const Icon(Icons.group_add, semanticLabel: 'Asignar'),
                 label: Text('Asignar (${selected.length})'),
                 onPressed: loading || selected.isEmpty ? null : () => doAssign(ctx, setLocal),
               ),
@@ -935,7 +957,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
   // ============================ BUILD ============================
   @override
   Widget build(BuildContext context) {
-    final isFirstLoad = _loading && _actItems.isEmpty && _inaItems.isEmpty && _allItems.isEmpty;
+    final isFirstLoad =
+        _loading && _actItems.isEmpty && _inaItems.isEmpty && _allItems.isEmpty;
 
     final core = LayoutBuilder(
       builder: (ctx, c) {
@@ -976,7 +999,8 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
               child: Stack(
                 children: [
                   AnimatedSwitcher(duration: const Duration(milliseconds: 220), child: content),
-                  if (_loading && !isFirstLoad) const Positioned(right: 12, top: 8, child: _LoadingChip()),
+                  if (_loading && !isFirstLoad)
+                    const Positioned(right: 12, top: 8, child: _LoadingChip()),
                 ],
               ),
             ),
@@ -1004,17 +1028,20 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
       controller: _search,
       focusNode: _searchFocus,
       decoration: InputDecoration(
-        hintText: 'Buscar subcategoría...',
-        prefixIcon: Icon(Icons.search, color: cs.primary),
+        labelText: 'Buscar subcategoría',
+        hintText: 'Buscar por nombre o código…',
+        prefixIcon: Icon(Icons.search, color: cs.primary, semanticLabel: 'Buscar'),
         filled: true,
         fillColor: cs.surfaceContainerHighest.withOpacity(0.4),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
         suffixIcon: _search.text.isNotEmpty
             ? IconButton(
-                icon: const Icon(Icons.close, size: 18),
+                tooltip: 'Limpiar búsqueda',
+                icon: const Icon(Icons.close, size: 18, semanticLabel: 'Limpiar búsqueda'),
                 onPressed: () {
-                  _search.clear();
+                  setState(() => _search.clear());
+                  _resetPages();
                   _loadCurrent();
                 },
               )
@@ -1024,16 +1051,29 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
 
     final viewToggle = Container(
-      decoration: BoxDecoration(color: cs.surfaceContainerHighest.withOpacity(0.4), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Row(
         children: [
           IconButton(
-            icon: Icon(Icons.grid_view_rounded, color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant),
+            tooltip: 'Vista tarjetas',
+            icon: Icon(
+              Icons.grid_view_rounded,
+              semanticLabel: 'Vista tarjetas',
+              color: _viewMode == _ViewMode.cards ? cs.primary : cs.onSurfaceVariant,
+            ),
             onPressed: () => setState(() => _viewMode = _ViewMode.cards),
           ),
           Container(width: 1, height: 20, color: cs.outlineVariant),
           IconButton(
-            icon: Icon(Icons.table_rows_rounded, color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant),
+            tooltip: 'Vista tabla',
+            icon: Icon(
+              Icons.table_rows_rounded,
+              semanticLabel: 'Vista tabla',
+              color: _viewMode == _ViewMode.table ? cs.primary : cs.onSurfaceVariant,
+            ),
             onPressed: () => setState(() => _viewMode = _ViewMode.table),
           ),
         ],
@@ -1041,16 +1081,17 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
     );
 
     final catFilter = SizedBox(
-      width: 200,
+      width: 220,
       child: DropdownButtonFormField<int?>(
         value: _idCategoria,
         decoration: InputDecoration(
+          labelText: 'Filtrar por categoría',
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
           fillColor: cs.surface,
           hintText: 'Categoría',
-          prefixIcon: const Icon(Icons.filter_list),
+          prefixIcon: const Icon(Icons.filter_list, semanticLabel: 'Filtrar'),
         ),
         items: [
           const DropdownMenuItem(value: null, child: Text('Todas')),
@@ -1066,6 +1107,20 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
         },
       ),
     );
+
+    final exportBtn = IconButton(
+      tooltip: 'Exportar Excel',
+      icon: const Icon(Icons.grid_on, semanticLabel: 'Exportar Excel'),
+      onPressed: _exportExcelCurrent,
+    );
+
+    final newBtn = _isAdmin
+        ? FilledButton.icon(
+            onPressed: _onNew,
+            icon: const Icon(Icons.add, semanticLabel: 'Nueva subcategoría'),
+            label: const Text('Nueva'),
+          )
+        : const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1084,10 +1139,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcelCurrent, tooltip: 'Exportar Excel'),
+                    exportBtn,
                     const SizedBox(width: 8),
-                    if (_isAdmin)
-                      FilledButton.icon(onPressed: _onNew, icon: const Icon(Icons.add), label: const Text('Nueva')),
+                    if (_isAdmin) newBtn,
                   ],
                 )
               ],
@@ -1100,10 +1154,9 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                 const SizedBox(width: 12),
                 viewToggle,
                 const SizedBox(width: 12),
-                IconButton(icon: const Icon(Icons.grid_on), onPressed: _exportExcelCurrent, tooltip: 'Exportar Excel'),
+                exportBtn,
                 const SizedBox(width: 8),
-                if (_isAdmin)
-                  FilledButton.icon(onPressed: _onNew, icon: const Icon(Icons.add), label: const Text('Nueva')),
+                if (_isAdmin) newBtn,
               ],
             ),
     );
@@ -1152,14 +1205,17 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
               title: 'Sin subcategorías',
               subtitle: 'Crea tu primera subcategoría o ajusta los filtros.',
               primary: (_isAdmin ? 'Crear nueva' : 'Refrescar', _isAdmin ? _onNew : _loadCurrent),
-              secondary: ('Quitar filtros', () {
-                setState(() {
-                  _idCategoria = null;
-                  _search.clear();
-                });
-                _resetPages();
-                _loadCurrent();
-              }),
+              secondary: (
+                'Quitar filtros',
+                () {
+                  setState(() {
+                    _idCategoria = null;
+                    _search.clear();
+                  });
+                  _resetPages();
+                  _loadCurrent();
+                }
+              ),
             ),
           ),
         ],
@@ -1198,13 +1254,13 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
           child: DataTable(
             headingRowColor: MaterialStateProperty.all(cs.surfaceContainerHighest.withOpacity(0.5)),
             columns: const [
-              DataColumn(label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Subcategoría', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Código', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Categoría', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Creado', style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(label: Text('Acciones', style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Identificador'),
+              DataColumn(label: Text('Subcategoría', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Nombre de la subcategoría'),
+              DataColumn(label: Text('Código', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Código único'),
+              DataColumn(label: Text('Categoría', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Categoría padre'),
+              DataColumn(label: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Activo/Inactivo'),
+              DataColumn(label: Text('Creado', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Fecha de creación'),
+              DataColumn(label: Text('Acciones', style: TextStyle(fontWeight: FontWeight.bold)), tooltip: 'Acciones disponibles'),
             ],
             rows: rows.map((r) {
               final bool activo = r['activo'] == true;
@@ -1224,7 +1280,11 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                       ),
                       child: Text(
                         activo ? 'Activa' : 'Inactiva',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: activo ? Colors.green.shade700 : Colors.grey.shade700),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          color: activo ? Colors.green.shade700 : Colors.grey.shade700,
+                        ),
                       ),
                     ),
                   ),
@@ -1282,7 +1342,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: Colors.deepPurple.shade50, borderRadius: BorderRadius.circular(12)),
-                      child: Icon(Icons.class_rounded, color: Colors.deepPurple.shade400),
+                      child: Icon(Icons.class_rounded, color: Colors.deepPurple.shade400, semanticLabel: 'Subcategoría'),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -1294,11 +1354,11 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Icon(Icons.qr_code, size: 14, color: Theme.of(context).hintColor),
+                            Icon(Icons.qr_code, size: 14, color: Theme.of(context).hintColor, semanticLabel: 'Código'),
                             const SizedBox(width: 4),
                             Text(r['codigo']?.toString() ?? '', style: TextStyle(color: Theme.of(context).hintColor)),
                             const SizedBox(width: 12),
-                            Icon(Icons.category_outlined, size: 14, color: Theme.of(context).hintColor),
+                            Icon(Icons.category_outlined, size: 14, color: Theme.of(context).hintColor, semanticLabel: 'Categoría'),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
@@ -1336,7 +1396,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
           child: IconButton(
             iconSize: iconSize,
             padding: padding,
-            icon: const Icon(Icons.people),
+            icon: const Icon(Icons.people, semanticLabel: 'Estudiantes'),
             onPressed: () {
               if (widget.embedded && widget.onOpenEstudiantes != null) {
                 widget.onOpenEstudiantes!(r);
@@ -1360,7 +1420,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
             child: IconButton(
               iconSize: iconSize,
               padding: padding,
-              icon: const Icon(Icons.group_add),
+              icon: const Icon(Icons.group_add, semanticLabel: 'Asignar estudiantes'),
               onPressed: () => _openBulkPickerDialog(r),
             ),
           ),
@@ -1370,7 +1430,7 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
             child: IconButton(
               iconSize: iconSize,
               padding: padding,
-              icon: const Icon(Icons.edit),
+              icon: const Icon(Icons.edit, semanticLabel: 'Editar'),
               onPressed: () => _onEditDialog(r),
             ),
           ),
@@ -1380,7 +1440,10 @@ class _AdminSubcategoriasScreenState extends State<AdminSubcategoriasScreen>
             child: IconButton(
               iconSize: iconSize,
               padding: padding,
-              icon: Icon(activo ? Icons.visibility_off : Icons.visibility),
+              icon: Icon(
+                activo ? Icons.visibility_off : Icons.visibility,
+                semanticLabel: activo ? 'Desactivar' : 'Activar',
+              ),
               onPressed: () => _onToggle(r),
             ),
           ),
@@ -1450,11 +1513,22 @@ class _PaginationControls extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('$from-$to de $totalItems', style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontWeight: FontWeight.w500)),
+          Text(
+            '$from-$to de $totalItems',
+            style: TextStyle(color: Theme.of(context).colorScheme.secondary, fontWeight: FontWeight.w500),
+          ),
           Row(
             children: [
-              IconButton(icon: const Icon(Icons.chevron_left), onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null),
-              IconButton(icon: const Icon(Icons.chevron_right), onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null),
+              IconButton(
+                tooltip: 'Página anterior',
+                icon: const Icon(Icons.chevron_left, semanticLabel: 'Página anterior'),
+                onPressed: currentPage > 1 ? () => onPageChange(currentPage - 1) : null,
+              ),
+              IconButton(
+                tooltip: 'Página siguiente',
+                icon: const Icon(Icons.chevron_right, semanticLabel: 'Página siguiente'),
+                onPressed: to < totalItems ? () => onPageChange(currentPage + 1) : null,
+              ),
             ],
           )
         ],
@@ -1479,7 +1553,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.class_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3)),
+        Icon(Icons.class_outlined, size: 80, color: Theme.of(context).disabledColor.withOpacity(0.3), semanticLabel: 'Sin subcategorías'),
         const SizedBox(height: 16),
         Text(title, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
@@ -1507,12 +1581,19 @@ class _ErrorView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56),
+        Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error, size: 56, semanticLabel: 'Error'),
         const SizedBox(height: 12),
         Text('Error al cargar', style: Theme.of(context).textTheme.titleLarge),
-        Text(error),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SelectableText(error, textAlign: TextAlign.center),
+        ),
         const SizedBox(height: 12),
-        FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Reintentar')),
+        FilledButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh, semanticLabel: 'Reintentar'),
+          label: const Text('Reintentar'),
+        ),
       ]),
     );
   }

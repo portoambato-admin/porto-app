@@ -56,7 +56,7 @@ class PermissionsStore extends ChangeNotifier {
         ..clear()
         ..addAll(((m['permisos'] as List?) ?? const []).map((e) => e.toString()));
 
-    } on UnauthorizedException catch (e) {
+    } on UnauthorizedException {
       _role = null;
       _perms.clear();
 

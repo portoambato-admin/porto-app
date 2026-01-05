@@ -51,8 +51,8 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
     if (isLogged) {
       if (auth.isAdmin) {
         showDashboard = true;
-        dashboardLabel = 'Panel';
-        dashboardRoute = RouteNames.panel;
+        dashboardLabel = 'Admin';
+        dashboardRoute = RouteNames.adminDashboard;
         dashboardIcon = Icons.dashboard;
       } else if (auth.isTeacher) {
         showDashboard = true;
@@ -93,8 +93,8 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
       if (isLogged) {
         if (isAdminByPerms || canReadAdminStuff) {
           showDashboard = true;
-          dashboardLabel = 'Panel';
-          dashboardRoute = RouteNames.panel;
+          dashboardLabel = 'Dashboard';
+          dashboardRoute = RouteNames.adminDashboard;
           dashboardIcon = Icons.dashboard;
         } else if (isTeacherByPerms) {
           showDashboard = true;
@@ -426,6 +426,7 @@ class _UserMenu extends StatelessWidget {
 }
 
 class _AvatarCircle extends StatelessWidget {
+  // ignore: unused_element_parameter
   const _AvatarCircle({this.url = '', this.radius = 16});
   final String url;
   final double radius;

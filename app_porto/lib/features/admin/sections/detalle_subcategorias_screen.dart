@@ -242,7 +242,6 @@ class _SubcategoriaEstudiantesScreenState extends State<SubcategoriaEstudiantesS
     
     // Tema azul personalizado
     final bluePrimary = Colors.blue.shade800;
-    final blueLight = Colors.blue.shade50;
 
     // Helper decorativo con validación visual
     InputDecoration deco(String l, IconData i, {String? hint}) => InputDecoration(
