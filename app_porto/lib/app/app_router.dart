@@ -31,6 +31,9 @@ import '../features/auth/presentation/screens/reset_password_screen.dart';
 // Perfil (NO diferido)
 import '../features/profile/presentation/screens/profile_screen.dart';
 
+// Notificaciones (in-app)
+import '../features/notificaciones/presentation/notificaciones_screen.dart';
+
 // Dashboard admin (NO diferido)
 import '../features/admin/presentation/hubs/dashboard_hub_screen.dart';
 
@@ -143,6 +146,9 @@ class AppRouter {
       // ======= Protegidas (cualquier logueado) ===============================
       case RouteNames.perfil:
         return _guardedPlain(s, builder: (_) => const ProfileScreen());
+
+      case RouteNames.notificaciones:
+        return _guardedPlain(s, builder: (_) => const NotificacionesScreen());
 
       // ======= ADMIN (solo ADMIN) ============================================
       case RouteNames.panel: // compat: alias antiguo

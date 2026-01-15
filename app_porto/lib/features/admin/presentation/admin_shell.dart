@@ -1,6 +1,8 @@
 // lib/features/admin/presentation/admin_shell.dart
 import 'package:flutter/material.dart';
 import 'package:app_porto/core/state/auth_state.dart';
+import 'package:app_porto/app/app_scope.dart';
+import 'package:app_porto/core/constants/route_names.dart';
 import 'package:app_porto/ui/components/breakpoints.dart';
 import 'package:app_porto/ui/components/breadcrumbs.dart';
 // Compatibilidad con la firma anterior (AdminSection)
@@ -241,6 +243,10 @@ class _AdminShellState extends State<AdminShell> {
     final roleId = auth.roleId; // getter real de tu AuthState
     final hubs = _allowedHubsForRole(roleId);
 
+    final userName = _safeUserField(auth.user, 'nombre', fallback: 'Usuario');
+    final userEmail = _safeUserField(auth.user, 'correo', fallback: '');
+    final avatarUrl = _safeUserField(auth.user, 'avatar_url', fallback: '');
+
     // Si el hub actual no es permitido, cae al primero visible
     final curr = hubs.contains(widget.current) ? widget.current : hubs.first;
     final selectedIndex = hubs.indexOf(curr);
@@ -295,9 +301,23 @@ class _AdminShellState extends State<AdminShell> {
       titleSpacing: 0,
       title: Breadcrumbs(items: widget.crumbs),
       actions: [
-        if (!context.isMobile) const SizedBox(width: 12),
-        _buildSearch(context),
         if (widget.actions != null) ...widget.actions!,
+        _AdminAccountMenu(
+          userName: userName,
+          userEmail: userEmail,
+          avatarUrl: avatarUrl,
+          onSignOut: () async {
+            try {
+              await auth.signOut();
+            } catch (_) {}
+            if (context.mounted) {
+              Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+                RouteNames.root,
+                (r) => false,
+              );
+            }
+          },
+        ),
         const SizedBox(width: 8),
       ],
       bottom: _maybeCenteredBottom(widget.bottomExtra),
@@ -331,6 +351,194 @@ class _AdminShellState extends State<AdminShell> {
       drawer: context.isMobile ? Drawer(child: drawerList) : null,
       body: body,
       floatingActionButton: widget.fab,
+    );
+  }
+}
+
+
+String _safeUserField(Map<String, dynamic>? user, String field, {String fallback = ''}) {
+  if (user == null) return fallback;
+  final v = user[field];
+  final s = v?.toString() ?? '';
+  if (s.trim().isEmpty) return fallback;
+  return s;
+}
+
+class _AdminAccountMenu extends StatelessWidget {
+  const _AdminAccountMenu({
+    required this.userName,
+    required this.userEmail,
+    required this.avatarUrl,
+    required this.onSignOut,
+  });
+
+  final String userName;
+  final String userEmail;
+  final String avatarUrl;
+  final Future<void> Function() onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
+    return PopupMenuButton<int>(
+      tooltip: 'Cuenta',
+      position: PopupMenuPosition.under,
+      onSelected: (v) async {
+        switch (v) {
+          case 1:
+            Navigator.of(context).pushNamed(RouteNames.perfil);
+            break;
+          case 2:
+            Navigator.of(context).pushNamed(RouteNames.notificaciones);
+            break;
+          case 3:
+            Navigator.of(context).pushNamed(RouteNames.adminDashboard);
+            break;
+          case 99:
+            await onSignOut();
+            break;
+        }
+      },
+      itemBuilder: (ctx) => [
+        PopupMenuItem(
+          value: 0,
+          enabled: false,
+          child: Row(
+            children: [
+              _AvatarCircle(url: avatarUrl, radius: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      userName,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (userEmail.trim().isNotEmpty)
+                      Text(
+                        userEmail,
+                        style: const TextStyle(fontSize: 12, color: Colors.black54),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 1,
+          child: ListTile(
+            leading: Icon(Icons.person_outline),
+            title: Text('Perfil'),
+          ),
+        ),
+        PopupMenuItem(
+          value: 2,
+          child: _NotificacionesMenuEntry(),
+        ),
+        const PopupMenuItem(
+          value: 3,
+          child: ListTile(
+            leading: Icon(Icons.dashboard_outlined),
+            title: Text('Dashboard'),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 99,
+          child: ListTile(
+            leading: Icon(Icons.logout),
+            title: Text('Cerrar sesión'),
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _AvatarCircle(url: avatarUrl, radius: 16),
+            if (!isMobile) ...[
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+            const SizedBox(width: 6),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificacionesMenuEntry extends StatelessWidget {
+  const _NotificacionesMenuEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.of(context);
+    final cs = Theme.of(context).colorScheme;
+
+    return FutureBuilder<int>(
+      future: scope.notificaciones.unreadCount(),
+      builder: (context, snap) {
+        final unread = (snap.data ?? 0);
+
+        return ListTile(
+          leading: const Icon(Icons.notifications_outlined),
+          title: const Text('Notificaciones'),
+          trailing: unread > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.primary,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: cs.surface, width: 1),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  child: Text(
+                    unread > 99 ? '99+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: cs.onPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                )
+              : null,
+        );
+      },
+    );
+  }
+}
+
+class _AvatarCircle extends StatelessWidget {
+  const _AvatarCircle({this.url = '', this.radius = 16});
+  final String url;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = url.trim().isNotEmpty;
+    return CircleAvatar(
+      radius: radius,
+      backgroundImage: hasUrl ? NetworkImage(url) : null,
+      child: !hasUrl ? const Icon(Icons.person, size: 16) : null,
     );
   }
 }

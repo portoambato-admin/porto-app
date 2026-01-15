@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/route_names.dart';
 import '../../../app/app_scope.dart';
+import '../../notificaciones/presentation/widgets/notificaciones_bell.dart';
 
 class RepresentanteShellScreen extends StatefulWidget {
   const RepresentanteShellScreen({super.key});
@@ -88,6 +89,7 @@ class _RepresentanteShellScreenState extends State<RepresentanteShellScreen> {
       appBar: AppBar(
         title: const Text('Panel de Representante'),
         actions: [
+          const NotificacionesBell(),
           IconButton(
             tooltip: 'Actualizar',
             onPressed: _loading ? null : _cargarDashboard,

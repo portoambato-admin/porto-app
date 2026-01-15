@@ -7,6 +7,9 @@ abstract class RouteNames {
   static const forgotPassword = "/forgot-password";
   static const resetPassword = "/reset-password";
 
+  // Sistema
+  static const notificaciones = '/notificaciones';
+
   static const tienda = '/tienda';
   static const eventos = '/eventos';
   static const categorias = '/categorias';
@@ -156,5 +159,8 @@ abstract class RouteNames {
     representanteRoot,
     representanteMensualidades,
     representanteMensualidadDetalle,
+
+    // Notificaciones
+    notificaciones,
   };
 }

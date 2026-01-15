@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/state/auth_state.dart';
 import '../../core/rbac/permission_gate.dart' show Permissions;
 import '../../core/constants/route_names.dart';
+import '../../app/app_scope.dart';
 
 class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
   const TopNavBar({super.key});
@@ -254,6 +255,12 @@ class TopNavBar extends StatelessWidget implements PreferredSizeWidget {
                                 onTap: () => _navAndClose(sheetCtx, RouteNames.perfil),
                               ),
 
+                              ListTile(
+                                leading: const Icon(Icons.notifications_outlined),
+                                title: const Text('Notificaciones'),
+                                onTap: () => _navAndClose(sheetCtx, RouteNames.notificaciones),
+                              ),
+
                               if (showDashboard)
                                 ListTile(
                                   leading: Icon(dashboardIcon),
@@ -359,6 +366,9 @@ class _UserMenu extends StatelessWidget {
           case 2:
             if (showDashboard) Navigator.pushNamed(context, dashboardRoute);
             break;
+          case 3:
+            Navigator.pushNamed(context, RouteNames.notificaciones);
+            break;
           case 99:
             await onSignOut();
             break;
@@ -395,6 +405,10 @@ class _UserMenu extends StatelessWidget {
             title: Text('Perfil'),
           ),
         ),
+        PopupMenuItem(
+          value: 3,
+          child: _NotificacionesMenuItem(),
+        ),
         if (showDashboard)
           PopupMenuItem(
             value: 2,
@@ -421,6 +435,49 @@ class _UserMenu extends StatelessWidget {
           const Icon(Icons.arrow_drop_down),
         ],
       ),
+    );
+  }
+}
+
+
+class _NotificacionesMenuItem extends StatelessWidget {
+  const _NotificacionesMenuItem();
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.of(context);
+    final cs = Theme.of(context).colorScheme;
+
+    return FutureBuilder<int>(
+      future: scope.notificaciones.unreadCount(),
+      builder: (context, snap) {
+        final unread = (snap.data ?? 0);
+
+        return ListTile(
+          leading: const Icon(Icons.notifications_outlined),
+          title: const Text('Notificaciones'),
+          trailing: unread > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.primary,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: cs.surface, width: 1),
+                  ),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  child: Text(
+                    unread > 99 ? '99+' : '$unread',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: cs.onPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                )
+              : null,
+        );
+      },
     );
   }
 }

@@ -123,7 +123,7 @@ class PanelScreen extends StatelessWidget {
           options: [
             HubOption(
               icon: Icons.settings_outlined,
-              label: 'Config',
+              label: 'Configuración',
               onTap: () => Navigator.pushNamed(context, RouteNames.adminConfig),
             ),
             // Auditoría/Multimedia cuando exista ruta real

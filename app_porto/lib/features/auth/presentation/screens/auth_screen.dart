@@ -1,18 +1,79 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
 import '../../../../app/app_scope.dart';
 import '../../../../core/constants/route_names.dart';
 import '../../../../core/state/auth_state.dart';
 import '../../../../core/rbac/permission_gate.dart' show Permissions;
+
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 
 enum _AuthMode { login, register }
+
+// ✅ IMPORTANTE: Alinea con tu backend (POLICY_VERSION en .env)
+const String kPolicyVersion = '2026-01-05';
+
+// =======================
+// TEXTOS (PLANTILLA)
+// =======================
+const String kPoliticasUsoText = '''
+POLÍTICAS DE USO (RESUMEN)
+
+1) Cuenta y acceso
+- La cuenta es personal e intransferible.
+- El usuario debe mantener la confidencialidad de sus credenciales y notificar accesos no autorizados.
+
+2) Uso permitido
+- El sistema debe usarse únicamente para fines relacionados con la gestión y operación de la academia.
+- Se prohíbe el uso para actividades ilícitas o no autorizadas.
+
+3) Conductas prohibidas
+- Intentar vulnerar la seguridad, manipular datos, extraer información sin autorización o interferir con el servicio.
+- Suplantación de identidad o uso indebido de cuentas.
+
+4) Disponibilidad y cambios
+- El servicio puede tener mantenimientos programados.
+- La academia puede actualizar funciones y estas políticas; los cambios se informarán por los medios disponibles.
+
+5) Medidas por incumplimiento
+- La academia podrá suspender o restringir cuentas ante uso indebido o incumplimiento de estas políticas.
+''';
+
+const String kPrivacidadText = '''
+POLÍTICA DE PRIVACIDAD Y TRATAMIENTO DE DATOS PERSONALES (RESUMEN)
+
+1) Responsable
+- La Academia (o el responsable designado) actúa como responsable del tratamiento de datos.
+
+2) Datos tratados
+- Identificación y contacto: nombre, correo, teléfono (si aplica).
+- Datos operativos: actividad dentro de la plataforma, registros relacionados a pagos/inscripciones (según el rol).
+
+3) Finalidades
+- Autenticación y administración de cuentas.
+- Prestación del servicio (gestión académica/financiera).
+- Soporte, seguridad, prevención de fraude y auditoría.
+- Cumplimiento de obligaciones legales.
+
+4) Base de legitimación
+- Consentimiento del titular y/o ejecución de la relación de servicio, según corresponda.
+
+5) Conservación
+- Los datos se conservan mientras exista la relación y el tiempo necesario para obligaciones legales o auditoría.
+
+6) Compartición
+- Podrán compartirse con proveedores tecnológicos (hosting, correo, etc.) estrictamente para operar el servicio, bajo medidas de seguridad.
+
+7) Derechos
+- El titular puede solicitar acceso, rectificación/actualización, eliminación, oposición y demás derechos reconocidos por la normativa aplicable.
+
+8) Menores de edad
+- Si el titular es menor, el registro y tratamiento debe contar con la autorización del representante, conforme al procedimiento de la academia.
+''';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -62,7 +123,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     final cs = Theme.of(context).colorScheme;
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // UX: Cierra teclado al tocar fuera
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         extendBodyBehindAppBar: true,
         appBar: AppBar(
@@ -88,10 +149,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         ),
         body: Stack(
           children: [
-            // Optimización: Fondo extraído para evitar repintado innecesario
             const _BackgroundDecoration(),
-            
-            // Contenido Principal
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
@@ -115,7 +173,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           borderRadius: BorderRadius.circular(28),
                           child: Stack(
                             children: [
-                              // Decoración sutil interna de la tarjeta
                               Positioned(
                                 top: -100,
                                 right: -100,
@@ -157,7 +214,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 }
 
-/// Widget optimizado para el fondo que no cambia con el teclado
 class _BackgroundDecoration extends StatelessWidget {
   const _BackgroundDecoration();
 
@@ -205,14 +261,12 @@ class _AuthCard extends StatefulWidget {
 
 class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixin {
   final _form = GlobalKey<FormState>();
-  
-  // Controllers
+
   final _nombreCtrl = TextEditingController();
   final _correoCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
 
-  // FocusNodes para navegación de teclado
   final _nombreFocus = FocusNode();
   final _correoFocus = FocusNode();
   final _passFocus = FocusNode();
@@ -223,7 +277,13 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
   bool _loading = false;
   String? _error;
 
+  // ✅ Checkbox único que representa aceptación de políticas + privacidad
+  bool _aceptaPoliticas = false;
+
   late AnimationController _shakeController;
+
+  late final TapGestureRecognizer _tapPoliticas;
+  late final TapGestureRecognizer _tapPrivacidad;
 
   @override
   void initState() {
@@ -232,10 +292,16 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
+
+    _tapPoliticas = TapGestureRecognizer()..onTap = _showPoliticasDialog;
+    _tapPrivacidad = TapGestureRecognizer()..onTap = _showPrivacidadDialog;
   }
 
   @override
   void dispose() {
+    _tapPoliticas.dispose();
+    _tapPrivacidad.dispose();
+
     _nombreCtrl.dispose();
     _correoCtrl.dispose();
     _passCtrl.dispose();
@@ -248,7 +314,38 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
     super.dispose();
   }
 
-  // --- Validadores ---
+  void _showPoliticasDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Políticas de uso'),
+        content: const SingleChildScrollView(child: Text(kPoliticasUsoText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrivacidadDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Privacidad y tratamiento de datos'),
+        content: const SingleChildScrollView(child: Text(kPrivacidadText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String? _validateEmail(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Ingresa tu correo';
@@ -266,7 +363,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
 
   String? _validatePassword(String? v) {
     if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
-    if (widget.mode == _AuthMode.login) return null; 
+    if (widget.mode == _AuthMode.login) return null;
     if (v.length < 6) return 'Mínimo 6 caracteres';
     return null;
   }
@@ -276,9 +373,36 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
     return null;
   }
 
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('failed host lookup') ||
+        s.contains('connection refused') ||
+        s.contains('network') ||
+        s.contains('timeout') ||
+        s.contains('timed out') ||
+        s.contains('socketexception');
+  }
+
+  void _setError(String message) {
+    setState(() => _error = message);
+    _shakeController.forward(from: 0);
+  }
+
+  void _requireAcceptanceAndSwitchToRegister(String message) {
+    if (widget.mode != _AuthMode.register) {
+      widget.onModeChange(_AuthMode.register);
+    }
+    _setError(message);
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    
+
+    if (widget.mode == _AuthMode.register && !_aceptaPoliticas) {
+      _setError('Debes aceptar las políticas y el tratamiento de datos para registrarte.');
+      return;
+    }
+
     if (!_form.currentState!.validate()) {
       _shakeController.forward(from: 0);
       return;
@@ -291,14 +415,19 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
 
     try {
       final scope = AppScope.of(context);
-      
+
       if (widget.mode == _AuthMode.register) {
         await scope.http.post(
-          '/auth/register', 
+          '/auth/register',
           body: {
             'nombre': _nombreCtrl.text.trim(),
             'correo': _correoCtrl.text.trim(),
             'contrasena': _passCtrl.text.trim(),
+
+            // ✅ PRODUCCIÓN: aceptación + versión
+            'acepta_politicas': _aceptaPoliticas,
+            'acepta_privacidad': _aceptaPoliticas,
+            'version_politicas': kPolicyVersion,
           },
         );
       }
@@ -311,15 +440,13 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
       if (!mounted) return;
       await AuthScope.of(context).signIn(
         token: loginRes.token,
-        userJson: jsonEncode(loginRes.usuario.toJson()), 
+        userJson: jsonEncode(loginRes.usuario.toJson()),
       );
 
       if (!mounted) return;
       try {
         await Permissions.of(context).refresh();
-      } catch (e) {
-        
-      }
+      } catch (_) {}
 
       if (!mounted) return;
       Navigator.pushNamedAndRemoveUntil(
@@ -327,13 +454,12 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
         widget.redirectTo.isEmpty ? RouteNames.panel : widget.redirectTo,
         (_) => false,
       );
-
-    } on SocketException catch (_) {
-      setState(() => _error = 'Sin conexión a internet.');
-      _shakeController.forward(from: 0);
     } catch (e) {
-      setState(() => _error = e.toString().replaceAll("Exception: ", ""));
-      _shakeController.forward(from: 0);
+      if (_isNetworkError(e)) {
+        _setError('Sin conexión a internet.');
+      } else {
+        _setError(e.toString().replaceAll('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -344,7 +470,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
 
-    return AutofillGroup( // UX: Permite autocompletado nativo
+    return AutofillGroup(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -356,7 +482,10 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [cs.primary.withOpacity(0.1), cs.primaryContainer.withOpacity(0.1)],
+                    colors: [
+                      cs.primary.withOpacity(0.1),
+                      cs.primaryContainer.withOpacity(0.1),
+                    ],
                   ),
                   shape: BoxShape.circle,
                 ),
@@ -420,7 +549,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
           ),
           const SizedBox(height: 20),
 
-          // Campos del Formulario
+          // Formulario
           Form(
             key: _form,
             child: Column(
@@ -439,7 +568,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                   ),
                   const SizedBox(height: 12),
                 ],
-                
+
                 _AnimatedTextField(
                   controller: _correoCtrl,
                   focusNode: _correoFocus,
@@ -452,19 +581,18 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                   onSubmitted: (_) => FocusScope.of(context).requestFocus(_passFocus),
                 ),
                 const SizedBox(height: 12),
-                
+
                 _AnimatedTextField(
                   controller: _passCtrl,
                   focusNode: _passFocus,
                   label: 'Contraseña',
                   icon: Icons.lock_outline_rounded,
                   obscureText: _obscure,
-                  autofillHints: widget.mode == _AuthMode.login 
-                      ? const [AutofillHints.password] 
+                  autofillHints: widget.mode == _AuthMode.login
+                      ? const [AutofillHints.password]
                       : const [AutofillHints.newPassword],
-                  textInputAction: widget.mode == _AuthMode.login 
-                      ? TextInputAction.done 
-                      : TextInputAction.next,
+                  textInputAction:
+                      widget.mode == _AuthMode.login ? TextInputAction.done : TextInputAction.next,
                   validator: _validatePassword,
                   onSubmitted: (_) {
                     if (widget.mode == _AuthMode.login) {
@@ -481,7 +609,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                 ),
-                
+
                 if (widget.mode == _AuthMode.register) ...[
                   const SizedBox(height: 12),
                   _AnimatedTextField(
@@ -501,9 +629,71 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                       onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
+
+                  const SizedBox(height: 12),
+                  FormField<bool>(
+                    initialValue: _aceptaPoliticas,
+                    validator: (_) {
+                      if (!_aceptaPoliticas) {
+                        return 'Debes aceptar las políticas y el tratamiento de datos para registrarte.';
+                      }
+                      return null;
+                    },
+                    builder: (state) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CheckboxListTile(
+                            value: _aceptaPoliticas,
+                            onChanged: (val) {
+                              setState(() => _aceptaPoliticas = val ?? false);
+                              state.didChange(_aceptaPoliticas);
+                            },
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            dense: true,
+                            title: RichText(
+                              text: TextSpan(
+                                style: t.bodySmall?.copyWith(color: cs.onSurface),
+                                children: [
+                                  const TextSpan(text: 'Declaro que he leído y acepto las '),
+                                  TextSpan(
+                                    text: 'Políticas de uso',
+                                    style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700),
+                                    recognizer: _tapPoliticas,
+                                  ),
+                                  const TextSpan(text: ' y la '),
+                                  TextSpan(
+                                    text: 'Política de Privacidad y Tratamiento de Datos Personales',
+                                    style: TextStyle(color: cs.primary, fontWeight: FontWeight.w700),
+                                    recognizer: _tapPrivacidad,
+                                  ),
+                                  const TextSpan(
+                                    text:
+                                        '. Autorizo el tratamiento de mis datos para la prestación del servicio, soporte, seguridad y cumplimiento legal.',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (state.hasError)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 12, top: 4),
+                              child: Text(
+                                state.errorText!,
+                                style: t.bodySmall?.copyWith(
+                                  color: cs.error,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
-                
-                // Mensaje de Error Animado (Shake)
+
+                // Error animado
                 AnimatedSize(
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeInOut,
@@ -513,7 +703,7 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                           child: AnimatedBuilder(
                             animation: _shakeController,
                             builder: (context, child) {
-                              final offset = sin(_shakeController.value * pi * 2) * 5; // Un poco más fuerte
+                              final offset = sin(_shakeController.value * pi * 2) * 5;
                               return Transform.translate(
                                 offset: Offset(offset, 0),
                                 child: child,
@@ -548,13 +738,17 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                 ),
 
                 const SizedBox(height: 20),
-                
-                // Botón Principal
+
+                // Botón principal
                 SizedBox(
                   width: double.infinity,
                   height: 48,
                   child: FilledButton(
-                    onPressed: _loading ? null : _submit,
+                    onPressed: _loading
+                        ? null
+                        : (widget.mode == _AuthMode.register && !_aceptaPoliticas)
+                            ? null
+                            : _submit,
                     style: FilledButton.styleFrom(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       elevation: 2,
@@ -583,9 +777,9 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                           ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Separador
                 Row(
                   children: [
@@ -604,8 +798,16 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
                   ],
                 ),
                 const SizedBox(height: 16),
-                
-                _GoogleLoginButton(redirectTo: widget.redirectTo),
+
+                // ✅ Google (con control de aceptación en modo registro)
+                _GoogleLoginButton(
+                  redirectTo: widget.redirectTo,
+                  mode: widget.mode,
+                  accepted: _aceptaPoliticas,
+                  policyVersion: kPolicyVersion,
+                  onNeedAcceptance: (msg) => _requireAcceptanceAndSwitchToRegister(msg),
+                  onError: (msg) => _setError(msg),
+                ),
 
                 if (widget.mode == _AuthMode.login)
                   Padding(
@@ -629,7 +831,20 @@ class _AuthCardState extends State<_AuthCard> with SingleTickerProviderStateMixi
 
 class _GoogleLoginButton extends StatefulWidget {
   final String redirectTo;
-  const _GoogleLoginButton({required this.redirectTo});
+  final _AuthMode mode;
+  final bool accepted;
+  final String policyVersion;
+  final void Function(String message) onNeedAcceptance;
+  final void Function(String message) onError;
+
+  const _GoogleLoginButton({
+    required this.redirectTo,
+    required this.mode,
+    required this.accepted,
+    required this.policyVersion,
+    required this.onNeedAcceptance,
+    required this.onError,
+  });
 
   @override
   State<_GoogleLoginButton> createState() => _GoogleLoginButtonState();
@@ -639,6 +854,11 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
   bool _loading = false;
   bool _hover = false;
 
+  bool _isAcceptanceRequiredError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('debes aceptar') || s.contains('políticas') || s.contains('privacidad');
+  }
+
   Future<void> _loginGoogle() async {
     if (_loading) return;
     setState(() => _loading = true);
@@ -647,13 +867,16 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
       final scope = AppScope.of(context);
       String? idToken;
 
+      // ✅ Si el usuario está en Registro, exigimos aceptación antes de Google
+      if (widget.mode == _AuthMode.register && !widget.accepted) {
+        widget.onError('Debes aceptar las políticas y el tratamiento de datos para registrarte.');
+        return;
+      }
+
       if (!kIsWeb) {
         final googleSignIn = GoogleSignIn(scopes: ['email']);
         final googleUser = await googleSignIn.signIn();
-        if (googleUser == null) {
-          setState(() => _loading = false);
-          return; // Usuario canceló
-        }
+        if (googleUser == null) return; // canceló
         final auth = await googleUser.authentication;
         idToken = auth.idToken;
       } else {
@@ -669,12 +892,18 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
 
       if (idToken == null) throw Exception("Error al obtener credenciales de Google.");
 
-      final loginRes = await scope.auth.loginGoogle(idToken);
+      final loginRes = await scope.auth.loginGoogle(
+        idToken,
+        // ✅ Solo enviamos aceptación si el checkbox está marcado
+        aceptaPoliticas: widget.accepted ? true : null,
+        aceptaPrivacidad: widget.accepted ? true : null,
+        versionPoliticas: widget.accepted ? widget.policyVersion : null,
+      );
 
       if (!mounted) return;
       await AuthScope.of(context).signIn(
         token: loginRes.token,
-        userJson: jsonEncode(loginRes.usuario.toJson()), 
+        userJson: jsonEncode(loginRes.usuario.toJson()),
       );
 
       if (!mounted) return;
@@ -683,13 +912,19 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
       } catch (_) {}
 
       if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        widget.redirectTo,
-        (_) => false,
-      );
+      final target = widget.redirectTo.isEmpty ? RouteNames.panel : widget.redirectTo;
+      Navigator.pushNamedAndRemoveUntil(context, target, (_) => false);
     } catch (e) {
       if (!mounted) return;
+
+      // ✅ Caso importante: usuario nuevo con Google pero no aceptó.
+      if (_isAcceptanceRequiredError(e)) {
+        widget.onNeedAcceptance(
+          'Para crear tu cuenta con Google debes aceptar las Políticas de uso y la Política de Privacidad/Tratamiento de datos.',
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(e.toString().replaceAll("Exception: ", "")),
@@ -705,7 +940,7 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -738,7 +973,8 @@ class _GoogleLoginButtonState extends State<_GoogleLoginButton> {
                       Image.asset(
                         "assets/img/google.png",
                         height: 22,
-                        errorBuilder: (_, __, ___) => Icon(Icons.g_mobiledata, size: 28, color: cs.primary),
+                        errorBuilder: (_, __, ___) =>
+                            Icon(Icons.g_mobiledata, size: 28, color: cs.primary),
                       ),
                       const SizedBox(width: 12),
                       Text(
@@ -797,7 +1033,6 @@ class _AnimatedTextFieldState extends State<_AnimatedTextField> {
   @override
   void initState() {
     super.initState();
-    // Escuchar el foco externo si se provee un FocusNode
     widget.focusNode?.addListener(_onFocusChange);
   }
 
@@ -816,8 +1051,7 @@ class _AnimatedTextFieldState extends State<_AnimatedTextField> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
-    // Si no se pasa un FocusNode externo, usamos el widget Focus para detectar estado local
+
     final child = AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
@@ -893,7 +1127,7 @@ class _ModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(

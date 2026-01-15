@@ -12,6 +12,7 @@ import 'app/app_scope.dart';
 import 'app/app_router.dart';
 
 import 'core/state/auth_state.dart';
+import 'core/state/app_settings_state.dart';
 import 'core/rbac/permissions_store.dart';
 import 'core/rbac/permission_gate.dart';
 import 'core/rbac/permissions_warmup.dart';
@@ -52,14 +53,29 @@ Future<void> main() async {
   runApp(const PortoAmbatoApp());
 }
 
-class PortoAmbatoApp extends StatelessWidget {
+class PortoAmbatoApp extends StatefulWidget {
   const PortoAmbatoApp({super.key});
   static const primary = Color(0xFF0D47A1);
   static const secondary = Color(0xFFFFC107);
 
   @override
+  State<PortoAmbatoApp> createState() => _PortoAmbatoAppState();
+}
+
+class _PortoAmbatoAppState extends State<PortoAmbatoApp> {
+  final AppSettingsState _settings = AppSettingsState();
+
+  @override
+  void initState() {
+    super.initState();
+    // Carga asíncrona (no bloquea el arranque). Al completar, notifica y
+    // el MaterialApp se reconstruye con la configuración real.
+    _settings.load();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Montamos los providers de app, auth y permisos
+    // Montamos los providers de app, auth, permisos y settings.
     return AppScope(
       child: Builder(
         builder: (ctx) {
@@ -67,12 +83,15 @@ class PortoAmbatoApp extends StatelessWidget {
           final http = AppScope.of(ctx).http; // creado con SessionTokenProvider.instance
           final auth = AuthState(http);
 
-          return AuthScope(
-            controller: auth,
-            child: PermissionsHost(
-              store: PermissionsStore(http),
-              child: const PermissionsWarmup(
-                child: _AppRoot(), // <- aquí vive el MaterialApp real
+          return AppSettingsScope(
+            controller: _settings,
+            child: AuthScope(
+              controller: auth,
+              child: PermissionsHost(
+                store: PermissionsStore(http),
+                child: const PermissionsWarmup(
+                  child: _AppRoot(), // <- aquí vive el MaterialApp real
+                ),
               ),
             ),
           );
@@ -87,20 +106,59 @@ class _AppRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(
+    final settings = AppSettingsScope.of(context);
+
+    final lightScheme = ColorScheme.fromSeed(
       seedColor: PortoAmbatoApp.primary,
       primary: PortoAmbatoApp.primary,
       secondary: PortoAmbatoApp.secondary,
+      brightness: Brightness.light,
+    );
+
+    final darkScheme = ColorScheme.fromSeed(
+      seedColor: PortoAmbatoApp.primary,
+      primary: PortoAmbatoApp.primary,
+      secondary: PortoAmbatoApp.secondary,
+      brightness: Brightness.dark,
+    );
+
+    final baseText = GoogleFonts.poppinsTextTheme();
+    final darkBaseText = GoogleFonts.poppinsTextTheme(
+      ThemeData(brightness: Brightness.dark).textTheme,
+    );
+
+    final baseTheme = ThemeData(
+      colorScheme: lightScheme,
+      textTheme: baseText,
+      useMaterial3: true,
+      visualDensity: settings.compactDensity
+          ? VisualDensity.compact
+          : VisualDensity.standard,
+    );
+
+    final darkTheme = ThemeData(
+      colorScheme: darkScheme,
+      textTheme: darkBaseText,
+      useMaterial3: true,
+      visualDensity: settings.compactDensity
+          ? VisualDensity.compact
+          : VisualDensity.standard,
     );
 
     return MaterialApp(
       title: 'PortoAmbato | Academia Oficial de Fútbol',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        textTheme: GoogleFonts.poppinsTextTheme(),
-        useMaterial3: true,
-      ),
+      theme: baseTheme,
+      darkTheme: darkTheme,
+      themeMode: settings.themeMode,
+      builder: (context, child) {
+        // Config global: escalado de texto (accesibilidad)
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(textScaleFactor: settings.textScale),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

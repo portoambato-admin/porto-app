@@ -9,12 +9,14 @@ import 'package:intl/intl.dart';
 
 import 'package:app_porto/app/app_scope.dart';
 
-import 'package:excel/excel.dart' as xls;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:cross_file/cross_file.dart';
+
+// NUEVO (vista previa PDF)
+import 'package:printing/printing.dart';
 
 class ReportesPagosScreen extends StatefulWidget {
   const ReportesPagosScreen({super.key});
@@ -268,7 +270,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                     child: Semantics(
                       label: 'Lista de reportes disponibles',
                       hint:
-                          'Explora por categoría. Toca un reporte para seleccionar el formato de descarga.',
+                          'Explora por categoría. Toca un reporte para seleccionar el formato.',
                       child: CustomScrollView(
                         controller: _scrollController,
                         slivers: [
@@ -308,9 +310,8 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
-                                        child:
-                                            Divider(color: Colors.grey[300]),
-                                      ),
+                                          child: Divider(
+                                              color: Colors.grey[300])),
                                     ],
                                   ),
                                 ),
@@ -350,12 +351,10 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.folder_off_outlined,
-              size: 80,
-              color: Colors.grey[300],
-              semanticLabel: 'Sin resultados',
-            ),
+            Icon(Icons.folder_off_outlined,
+                size: 80,
+                color: Colors.grey[300],
+                semanticLabel: 'Sin resultados'),
             const SizedBox(height: 16),
             Text(
               'No se encontraron reportes',
@@ -376,7 +375,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
       header: true,
       label: 'Centro de Reportes',
       hint:
-          'Busca reportes por nombre, descripción o categoría. Luego selecciona un reporte para descargarlo.',
+          'Busca reportes por nombre, descripción o categoría. Luego selecciona un reporte para previsualizar y descargar.',
       child: Container(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
         decoration: BoxDecoration(
@@ -423,7 +422,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Genera, visualiza y exporta métricas clave del sistema.',
+                        'Genera, previsualiza y exporta métricas clave del sistema.',
                         style: Theme.of(context)
                             .textTheme
                             .bodyMedium
@@ -444,10 +443,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                   labelText: 'Buscar reporte',
                   helperText: 'Filtra por nombre, descripción o categoría',
                   hintText: 'Ej. "Cobros", "Asistencia"...',
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    semanticLabel: 'Buscar',
-                  ),
+                  prefixIcon: const Icon(Icons.search, semanticLabel: 'Buscar'),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -469,14 +465,14 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   Widget _buildReporteCard(ReporteConfig config) {
     final semanticsLabel = 'Reporte: ${config.nombre}. ${config.descripcion}.';
     final semanticsHint =
-        'Toca para seleccionar el formato (CSV, Excel o PDF) y descargar.';
+        'Toca para seleccionar el formato (CSV o PDF), previsualizar y descargar.';
 
     return Semantics(
       button: true,
       label: semanticsLabel,
       hint: semanticsHint,
       child: Tooltip(
-        message: 'Descargar reporte: ${config.nombre}',
+        message: 'Exportar: ${config.nombre}',
         child: Card(
           elevation: 0,
           color: Colors.white,
@@ -548,10 +544,10 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                   const SizedBox(height: 8),
                   if (config.filtros.isNotEmpty)
                     Tooltip(
-                      message: 'Este reporte tiene ${config.filtros.length} filtros',
+                      message:
+                          'Este reporte tiene ${config.filtros.length} filtros',
                       child: Semantics(
-                        label:
-                            'Cantidad de filtros: ${config.filtros.length}',
+                        label: 'Cantidad de filtros: ${config.filtros.length}',
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
@@ -562,12 +558,10 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.tune,
-                                size: 12,
-                                color: Colors.grey[600],
-                                semanticLabel: 'Filtros',
-                              ),
+                              Icon(Icons.tune,
+                                  size: 12,
+                                  color: Colors.grey[600],
+                                  semanticLabel: 'Filtros'),
                               const SizedBox(width: 4),
                               Text(
                                 '${config.filtros.length} filtros',
@@ -603,9 +597,8 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
       ),
       builder: (context) => SafeArea(
         child: Semantics(
-          label: 'Seleccionar formato de descarga',
-          hint:
-              'Elige CSV, Excel o PDF para descargar el reporte seleccionado.',
+          label: 'Seleccionar formato',
+          hint: 'Elige CSV o PDF para previsualizar antes de descargar.',
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -633,11 +626,9 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                           color: config.color.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(
-                          config.icono,
-                          color: config.color,
-                          semanticLabel: 'Reporte ${config.nombre}',
-                        ),
+                        child: Icon(config.icono,
+                            color: config.color,
+                            semanticLabel: 'Reporte ${config.nombre}'),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -645,13 +636,11 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            config.nombre,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
+                          Text(config.nombre,
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
                           const Text(
-                            'Selecciona el formato de descarga',
+                            'Selecciona el formato (con vista previa)',
                             style: TextStyle(color: Colors.grey, fontSize: 13),
                           ),
                         ],
@@ -661,7 +650,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                       message: 'Cerrar',
                       child: Semantics(
                         button: true,
-                        label: 'Cerrar selector de formato',
+                        label: 'Cerrar',
                         child: IconButton(
                           onPressed: () => Navigator.pop(context),
                           icon: const Icon(Icons.close, semanticLabel: 'Cerrar'),
@@ -681,8 +670,6 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
                         () => _startExport(config, FormatoDescarga.csv),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildFormatOption(
@@ -714,8 +701,8 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     Color color,
     VoidCallback onTap,
   ) {
-    final semLabel = 'Descargar en $label';
-    final semHint = 'Genera el reporte en formato $label';
+    final semLabel = 'Exportar en $label';
+    final semHint = 'Genera el reporte, muestra vista previa y permite descargar';
 
     return Semantics(
       button: true,
@@ -755,8 +742,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
         builder: (context) => _DialogoParametros(
           config: config,
           formato: formato,
-          onGenerar: (parametros) =>
-              _generarReporte(config, formato, parametros),
+          onGenerar: (parametros) => _generarReporte(config, formato, parametros),
           fetchEstudiantes: _fetchEstudiantes,
         ),
       );
@@ -764,7 +750,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   }
 
   // ==============================
-  // GENERAR REPORTE (FETCH BACK)
+  // GENERAR REPORTE (FETCH BACK) + VISTA PREVIA
   // ==============================
   Future<void> _generarReporte(
     ReporteConfig config,
@@ -774,7 +760,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) =>  Center(
+      builder: (context) => Center(
         child: Semantics(
           label: 'Cargando reporte',
           child: CircularProgressIndicator(),
@@ -875,29 +861,51 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
           throw Exception('Reporte no implementado');
       }
 
-      final cleanData = _sanitizeReporteData(data);
+      // ENRIQUECE (solo donde aplica) para mejorar lógica/UX (Saldo/Período/Creado en)
+      final enriched = _enrichReporteData(config.id, data);
 
+      final cleanData = _sanitizeReporteData(enriched);
+
+      // Genera bytes (una sola vez) para usar en vista previa + descarga.
+      final generatedAt = DateTime.now();
+      final export = await _buildExportBytes(
+        config: config,
+        formato: formato,
+        data: cleanData,
+        generatedAt: generatedAt,
+      );
+
+      if (!mounted) return;
       Navigator.pop(context); // cerrar loading
 
-      switch (formato) {
-        case FormatoDescarga.csv:
-          await _descargarCSV(config, cleanData);
-          break;
-        case FormatoDescarga.pdf:
-          await _descargarPDF(config, cleanData);
-          break;
-      }
+      final ok = await _mostrarVistaPrevia(
+        config: config,
+        formato: formato,
+        data: cleanData,
+        bytes: export.bytes,
+        generatedAt: generatedAt,
+      );
+
+      if (ok != true) return;
+
+      await _saveBytes(
+        bytes: export.bytes,
+        fileName: export.fileName,
+        mimeType: export.mimeType,
+      );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Reporte descargado exitosamente'),
+          content: const Text('Descarga completada'),
           backgroundColor: Colors.green[700],
           behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context); // cerrar loading si estaba abierto
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -907,6 +915,430 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
         ),
       );
     }
+  }
+
+  // ==============================
+  // VISTA PREVIA (ANTES DE DESCARGAR)
+  // ==============================
+  Future<bool?> _mostrarVistaPrevia({
+    required ReporteConfig config,
+    required FormatoDescarga formato,
+    required Map<String, dynamic> data,
+    required Uint8List bytes,
+    required DateTime generatedAt,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final w = MediaQuery.of(ctx).size.width;
+        final h = MediaQuery.of(ctx).size.height;
+
+        final dialogWidth = w >= 1100 ? 980.0 : (w >= 800 ? 760.0 : w * 0.95);
+        final dialogHeight = h >= 850 ? 720.0 : (h >= 650 ? 600.0 : h * 0.88);
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 18, 12, 0),
+          contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          title: Row(
+            children: [
+              Icon(Icons.visibility,
+                  color: config.color, semanticLabel: 'Vista previa'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Vista previa • ${config.nombre}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Tooltip(
+                message: 'Cerrar',
+                child: IconButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  icon: const Icon(Icons.close, semanticLabel: 'Cerrar'),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: dialogWidth,
+            height: dialogHeight,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Chip(
+                      label: Text(formato == FormatoDescarga.pdf ? 'PDF' : 'CSV'),
+                      avatar: Icon(
+                        formato == FormatoDescarga.pdf
+                            ? Icons.picture_as_pdf
+                            : Icons.table_chart,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Generado: ${DateFormat('dd/MM/yyyy HH:mm').format(generatedAt)}',
+                      style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: formato == FormatoDescarga.pdf
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            color: Colors.grey[100],
+                            child: PdfPreview(
+                              build: (_) async => bytes,
+                              canChangePageFormat: false,
+                              canChangeOrientation: false,
+                              allowPrinting: false,
+                              allowSharing: false,
+                              useActions: false,
+                              pdfFileName:
+                                  '${config.id}_${generatedAt.millisecondsSinceEpoch}.pdf',
+                            ),
+                          ),
+                        )
+                      : _buildPreviewCSVStructured(data),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: config.color),
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.download, semanticLabel: 'Descargar'),
+              label: const Text('Descargar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPreviewCSVStructured(Map<String, dynamic> data) {
+    final kpis = <MapEntry<String, String>>[];
+    final tables = <_PreviewTable>[];
+
+    data.forEach((key, value) {
+      if (value is List || value is Map) return;
+      kpis.add(MapEntry(_humanizeKey(key), _formatValue(key, value)));
+    });
+
+    data.forEach((key, value) {
+      if (value is List && value.isNotEmpty && value.first is Map) {
+        final rows = value
+            .whereType<Map>()
+            .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
+            .toList();
+        if (rows.isEmpty) return;
+
+        final headers = _orderHeaders(rows.first.keys.toList());
+        final previewRows = rows.take(40).map((r) {
+          return headers.map((h) => _formatValue(h, r[h])).toList();
+        }).toList();
+
+        tables.add(_PreviewTable(
+          title: _humanizeKey(key),
+          headers: headers.map(_humanizeKey).toList(),
+          rows: previewRows,
+          totalRows: rows.length,
+        ));
+      }
+    });
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        color: Colors.grey[100],
+        child: ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            if (kpis.isNotEmpty) ...[
+              Text('Resumen',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800, color: Colors.grey[800])),
+              const SizedBox(height: 8),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 10,
+                    children: kpis.take(12).map((e) {
+                      return SizedBox(
+                        width: 240,
+                        child: _KpiTile(label: e.key, value: e.value),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+            if (tables.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No hay tablas para mostrar en la vista previa.',
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                ),
+              )
+            else
+              ...tables.map((t) => _PreviewTableCard(table: t)).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==============================
+  // ENRIQUECER DATA (UX/LÓGICA)
+  // ==============================
+  Map<String, dynamic> _enrichReporteData(String reportId, Map<String, dynamic> data) {
+    switch (reportId) {
+      case 'historial_cliente':
+        return _enrichHistorialClienteData(data);
+      default:
+        return data;
+    }
+  }
+
+  Map<String, dynamic> _enrichHistorialClienteData(Map<String, dynamic> data) {
+    // Copia superficial del root
+    final out = <String, dynamic>{...data};
+
+    // intenta ubicar listas "pagos" y "mensualidades" incluso si vienen con otro casing
+    final pagosKey = _findListKey(out, ['pagos']);
+    final mensualidadesKey = _findListKey(out, ['mensualidades', 'mensualidad']);
+
+    final pagosRaw = pagosKey == null ? null : out[pagosKey];
+    final mensRaw = mensualidadesKey == null ? null : out[mensualidadesKey];
+
+    final pagos = _listOfMap(pagosRaw);
+    final mensualidades = _listOfMap(mensRaw);
+
+    // 1) Mensualidades: agrega PERÍODO y normaliza "creado_en" si existe
+    if (mensualidades.isNotEmpty) {
+      final updated = mensualidades.map((row) {
+        final r = <String, dynamic>{...row};
+
+        final anio = _toIntAny(_pickCI(r, ['anio', 'año', 'year']));
+        final mes = _toIntAny(_pickCI(r, ['mes', 'month']));
+        final periodo = _periodoFrom(anio, mes);
+        if (periodo != null) r['periodo'] = periodo;
+
+        // mueve "valor" -> "valor_mensualidad" para que sea más claro
+        final valor = _pickCI(r, ['valor']);
+        if (valor != null) {
+          r['valor_mensualidad'] = valor;
+          _removeCI(r, ['valor']);
+        }
+
+        // si el backend manda creado_en / created_at / fecha_creacion, lo normalizamos a "creado_en"
+        final creado = _pickCI(r, [
+          'creado_en',
+          'created_at',
+          'fecha_creacion',
+          'fecha_creación',
+          'creadoen',
+          'createdat',
+        ]);
+        if (creado != null) {
+          r['creado_en'] = creado;
+        }
+
+        // ocultamos año/mes sueltos (ya queda por período)
+        _removeCI(r, ['anio', 'año', 'year', 'mes', 'month']);
+
+        return r;
+      }).toList();
+
+      out[mensualidadesKey ?? 'mensualidades'] = updated;
+    }
+
+    // 2) Pagos: reemplaza VALOR -> SALDO (acumulado) y agrega PERÍODO
+    if (pagos.isNotEmpty) {
+      // agrupar por mensualidad usando el mejor identificador disponible
+      final groups = <String, List<Map<String, dynamic>>>{};
+
+      for (final row in pagos) {
+        final r = <String, dynamic>{...row};
+
+        final idMens = _pickCI(r, ['id_mensualidad', 'idmensualidad', 'mensualidad_id', 'idMensualidad']);
+        final anio = _toIntAny(_pickCI(r, ['anio', 'año', 'year']));
+        final mes = _toIntAny(_pickCI(r, ['mes', 'month']));
+        final valor = _toDoubleAny(_pickCI(r, ['valor', 'valor_mensualidad', 'monto', 'total'])) ?? 0.0;
+
+        final key = idMens != null
+            ? 'id:$idMens'
+            : 'ym:${anio ?? '-'}-${mes ?? '-'}-v:${valor.toStringAsFixed(2)}';
+
+        (groups[key] ??= []).add(r);
+      }
+
+      // calcular saldo acumulado por grupo (ordenado por fecha)
+      final updatedAll = <Map<String, dynamic>>[];
+
+      for (final entry in groups.entries) {
+        final rows = entry.value;
+
+        rows.sort((a, b) {
+          final da = _parseDate(_pickCI(a, ['fecha_pago', 'fecha', 'fechaPago'])) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final db = _parseDate(_pickCI(b, ['fecha_pago', 'fecha', 'fechaPago'])) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          return da.compareTo(db);
+        });
+
+        double acumulado = 0.0;
+        for (final r in rows) {
+          final valor = _toDoubleAny(_pickCI(r, ['valor', 'valor_mensualidad', 'monto', 'total'])) ?? 0.0;
+          final pagado = _toDoubleAny(_pickCI(r, ['monto_pagado', 'montoPagado', 'pagado', 'abono'])) ?? 0.0;
+
+          acumulado += pagado;
+          final saldo = (valor - acumulado);
+          r['saldo'] = saldo < 0 ? 0.0 : saldo;
+
+          // agrega período y oculta año/mes
+          final anio = _toIntAny(_pickCI(r, ['anio', 'año', 'year']));
+          final mes = _toIntAny(_pickCI(r, ['mes', 'month']));
+          final periodo = _periodoFrom(anio, mes);
+          if (periodo != null) r['periodo'] = periodo;
+
+          _removeCI(r, ['anio', 'año', 'year', 'mes', 'month']);
+
+          // elimina "valor" para que no se vea (el usuario quiere Saldo)
+          _removeCI(r, ['valor', 'valor_mensualidad']);
+
+          updatedAll.add(r);
+        }
+      }
+
+      out[pagosKey ?? 'pagos'] = updatedAll;
+    }
+
+    return out;
+  }
+
+  String? _findListKey(Map<String, dynamic> root, List<String> candidates) {
+    // exact
+    for (final c in candidates) {
+      if (root.containsKey(c) && root[c] is List) return c;
+    }
+    // case-insensitive
+    final lowerToReal = <String, String>{};
+    for (final k in root.keys) {
+      lowerToReal[k.toLowerCase()] = k;
+    }
+    for (final c in candidates) {
+      final real = lowerToReal[c.toLowerCase()];
+      if (real != null && root[real] is List) return real;
+    }
+    // fallback: busca lista que contenga maps y coincida por nombre parcial
+    for (final k in root.keys) {
+      final lk = k.toLowerCase();
+      if (root[k] is List && candidates.any((c) => lk.contains(c.toLowerCase()))) {
+        return k;
+      }
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _listOfMap(dynamic v) {
+    if (v is List) {
+      return v
+          .whereType<Map>()
+          .map((m) => m.map((k, v) => MapEntry(k.toString(), v)))
+          .toList();
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  dynamic _pickCI(Map<String, dynamic> m, List<String> keys) {
+    for (final k in keys) {
+      if (m.containsKey(k)) return m[k];
+    }
+    final lowerToReal = <String, String>{};
+    for (final k in m.keys) {
+      lowerToReal[k.toString().toLowerCase()] = k.toString();
+    }
+    for (final k in keys) {
+      final real = lowerToReal[k.toLowerCase()];
+      if (real != null && m.containsKey(real)) return m[real];
+    }
+    return null;
+  }
+
+  void _removeCI(Map<String, dynamic> m, List<String> keys) {
+    final target = keys.map((e) => e.toLowerCase()).toSet();
+    final toRemove = <String>[];
+    for (final k in m.keys) {
+      if (target.contains(k.toString().toLowerCase())) {
+        toRemove.add(k.toString());
+      }
+    }
+    for (final k in toRemove) {
+      m.remove(k);
+    }
+  }
+
+  int? _toIntAny(dynamic v) {
+    final d = _toDoubleAny(v);
+    if (d == null) return null;
+    return d.round();
+  }
+
+  DateTime? _parseDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    final s = v.toString().trim();
+    if (s.isEmpty) return null;
+    return DateTime.tryParse(s);
+  }
+
+  String? _periodoFrom(int? anio, int? mes) {
+    if (anio == null || mes == null) return null;
+    if (mes < 1 || mes > 12) return '$anio';
+    return '${_mesNombre(mes)} $anio';
+  }
+
+  String _mesNombre(int m) {
+    const meses = [
+      '',
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
+    ];
+    if (m < 1 || m > 12) return m.toString();
+    return meses[m];
   }
 
   // ==============================
@@ -925,7 +1357,6 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
           low == 'filters';
     }
 
-    // NUEVO: Detectar si es un campo ID
     bool _isIdField(String k) {
       final low = k.trim().toLowerCase();
       return low == 'id' ||
@@ -945,7 +1376,6 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
 
       if (v is List) {
         if (v.isNotEmpty && v.first is Map) {
-          // Filtrar IDs de cada mapa en la lista
           final cleaned = v.whereType<Map>().map((m) {
             final cleanMap = <String, dynamic>{};
             m.forEach((k, vv) {
@@ -957,7 +1387,6 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
             return cleanMap;
           }).toList();
 
-          // Solo agregar si hay datos después de limpiar
           if (cleaned.isNotEmpty && cleaned.first.isNotEmpty) {
             out[prefix] = cleaned;
           }
@@ -977,7 +1406,6 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
         return;
       }
 
-      // No incluir campos ID en valores escalares
       if (!_isIdField(prefix)) {
         out[prefix] = v;
       }
@@ -1013,22 +1441,41 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   }
 
   // ==============================
+  // BUILD EXPORT BYTES
+  // ==============================
+  Future<_ExportBytes> _buildExportBytes({
+    required ReporteConfig config,
+    required FormatoDescarga formato,
+    required Map<String, dynamic> data,
+    required DateTime generatedAt,
+  }) async {
+    switch (formato) {
+      case FormatoDescarga.csv:
+        final csv = StringBuffer();
+        csv.writeln('"${_csvEscape(config.nombre)}"');
+        csv.writeln();
+        _procesarDatosParaCSV(data, csv);
+        final bytes = Uint8List.fromList(utf8.encode(csv.toString()));
+        return _ExportBytes(
+          bytes: bytes,
+          fileName: '${config.id}_${generatedAt.millisecondsSinceEpoch}.csv',
+          mimeType: 'text/csv',
+        );
+
+      case FormatoDescarga.pdf:
+        final bytes = await _buildPdfBytes(config, data, generatedAt);
+        return _ExportBytes(
+          bytes: bytes,
+          fileName: '${config.id}_${generatedAt.millisecondsSinceEpoch}.pdf',
+          mimeType: 'application/pdf',
+        );
+    }
+  }
+
+  // ==============================
   // EXPORT: CSV
   // ==============================
   String _csvEscape(String v) => v.replaceAll('"', '""');
-
-  Future<void> _descargarCSV(
-      ReporteConfig config, Map<String, dynamic> data) async {
-    final csv = StringBuffer();
-    csv.writeln('"${_csvEscape(config.nombre)}"');
-    csv.writeln();
-    _procesarDatosParaCSV(data, csv);
-
-    final bytes = Uint8List.fromList(utf8.encode(csv.toString()));
-    final fileName =
-        '${config.id}_${DateTime.now().millisecondsSinceEpoch}.csv';
-    await _saveBytes(bytes: bytes, fileName: fileName, mimeType: 'text/csv');
-  }
 
   void _procesarDatosParaCSV(Map<String, dynamic> data, StringBuffer csv) {
     data.forEach((key, value) {
@@ -1063,90 +1510,24 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   }
 
   // ==============================
-  // EXPORT: EXCEL
-  // ==============================
-  Future<void> _descargarExcel(
-      ReporteConfig config, Map<String, dynamic> data) async {
-    final excel = xls.Excel.createExcel();
-    final sheet = excel['Reporte'];
-
-    // Título del reporte
-    sheet.appendRow(<xls.CellValue>[xls.TextCellValue(config.nombre)]);
-    sheet.appendRow(<xls.CellValue>[]);
-
-    // KPIs (valores escalares)
-    data.forEach((key, value) {
-      if (value is List) return;
-      if (value is Map) return;
-      sheet.appendRow(<xls.CellValue>[
-        xls.TextCellValue(_humanizeKey(key)),
-        xls.TextCellValue(_formatValue(key, value)),
-      ]);
-    });
-
-    sheet.appendRow(<xls.CellValue>[]);
-
-    // Tablas
-    data.forEach((key, value) {
-      if (value is List && value.isNotEmpty && value.first is Map) {
-        sheet.appendRow(<xls.CellValue>[xls.TextCellValue(_humanizeKey(key))]);
-        final first = value.first as Map;
-        final headers =
-            _orderHeaders(first.keys.map((k) => k.toString()).toList());
-        sheet.appendRow(
-            headers.map((h) => xls.TextCellValue(_humanizeKey(h))).toList());
-
-        for (final item in value) {
-          final m = item as Map;
-          sheet.appendRow(
-            headers
-                .map((h) => xls.TextCellValue(_formatValue(h, m[h])))
-                .toList(),
-          );
-        }
-        sheet.appendRow(<xls.CellValue>[]);
-      }
-    });
-
-    final raw = excel.encode();
-    if (raw == null) return;
-
-    final fileName =
-        '${config.id}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
-    await _saveBytes(
-      bytes: Uint8List.fromList(raw),
-      fileName: fileName,
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-  }
-
-  // ==============================
   // EXPORT: PDF (PRODUCCIÓN)
   // ==============================
-  final _fmtMoney = NumberFormat.currency(locale: 'es_EC', symbol: r'$');
+  final _fmtMoney = NumberFormat.currency(
+    locale: 'es_EC',
+    symbol: r'$',
+    decimalDigits: 2,
+  );
+  final _fmtInt = NumberFormat('#,##0', 'es_EC');
+  final _fmtNum2 = NumberFormat('#,##0.00', 'es_EC');
   final _fmtNum = NumberFormat('#,##0.##', 'es_EC');
   final _fmtDate = DateFormat('yyyy-MM-dd');
 
-  // DICCIONARIO COMPLETO DE ETIQUETAS PROFESIONALES
   static const Map<String, String> _labels = {
-    // IDs - filtrados pero por si acaso
-    'id': 'Código',
-    'id_estudiante': 'ID',
-    'id_subcategoria': 'ID Sub',
-    'id_categoria': 'ID Cat',
-    'id_usuario': 'ID Usuario',
-    'id_evaluacion': 'ID Eval',
-    'id_pago': 'ID Pago',
-    'id_mensualidad': 'ID Mens',
-
-    // Identificación personal
     'cedula': 'Cédula',
     'dni': 'Cédula',
     'documento': 'Documento',
     'identificacion': 'Identificación',
 
-    // Nombres
     'nombre': 'Nombre',
     'nombres': 'Nombres',
     'apellidos': 'Apellidos',
@@ -1156,141 +1537,137 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     'usuario': 'Usuario',
     'nombre_usuario': 'Usuario',
 
-    // Categorización
     'subcategoria': 'Subcategoría',
     'subcategorianombre': 'Subcategoría',
     'nombre_subcategoria': 'Subcategoría',
     'subcategoria_nombre': 'Subcategoría',
+
     'categoria': 'Categoría',
     'nombre_categoria': 'Categoría',
+
     'tipo': 'Tipo',
     'nivel': 'Nivel',
     'grado': 'Grado',
     'curso': 'Curso',
 
-    // Estados
     'estado': 'Estado',
     'estado_pago': 'Estado de Pago',
     'estado_estudiante': 'Estado',
-    'activo': 'Activo',
-    'inactivo': 'Inactivo',
+    'estado_mensualidad': 'Estado Mensualidad',
 
-    // Fechas
+    'activo': 'Activo',
+
     'fecha': 'Fecha',
     'fecha_pago': 'Fecha de Pago',
     'fecha_registro': 'Fecha de Registro',
+    'fecha_venc': 'Fecha de Vencimiento',
     'fecha_vencimiento': 'Fecha de Vencimiento',
+    'fecha_ultimo_pago': 'Fecha Último Pago',
     'fecha_corte': 'Fecha de Corte',
     'fecha_inicio': 'Fecha de Inicio',
     'fecha_fin': 'Fecha de Fin',
     'desde': 'Desde',
     'hasta': 'Hasta',
+
     'periodo': 'Período',
     'mes': 'Mes',
     'anio': 'Año',
     'año': 'Año',
 
-    // Mora y vencimientos
     'dias_mora': 'Días de Mora',
     'dias_vencido': 'Días Vencido',
+    'dias_retraso': 'Días Retraso',
     'mora': 'Mora',
     'vencido': 'Vencido',
     'dia_vencimiento': 'Día de Vencimiento',
 
-    // Montos y valores
     'monto': 'Monto',
     'monto_pagado': 'Monto Pagado',
     'monto_pendiente': 'Monto Pendiente',
     'valor': 'Valor',
+    'valor_mensualidad': 'Valor Mensualidad',
     'total': 'Total',
     'subtotal': 'Subtotal',
     'total_recaudado': 'Total Recaudado',
     'total_facturado': 'Total Facturado',
     'total_pendiente': 'Total Pendiente',
     'total_vencido': 'Total Vencido',
+
     'saldo': 'Saldo',
     'saldo_pendiente': 'Saldo Pendiente',
     'deuda': 'Deuda',
-    'debe': 'Debe',
-    'haber': 'Haber',
 
-    // Pagos
     'metodo_pago': 'Método de Pago',
     'metodo': 'Método',
     'forma_pago': 'Forma de Pago',
     'tipo_pago': 'Tipo de Pago',
-    'efectivo': 'Efectivo',
-    'transferencia': 'Transferencia',
-    'tarjeta': 'Tarjeta',
-    'cheque': 'Cheque',
 
-    // Conteos y cantidades
     'cantidad': 'Cantidad',
     'cantidad_estudiantes': 'Cantidad de Estudiantes',
     'cantidad_pagos': 'Cantidad de Pagos',
     'total_estudiantes': 'Total Estudiantes',
     'total_pagos': 'Total de Pagos',
+
     'numero': 'Número',
-    'numero_pagos': 'Número de Pagos',
     'count': 'Cantidad',
     'conteo': 'Conteo',
+    'usuarios': 'Usuarios',
 
-    // Porcentajes y ratios
     'porcentaje': 'Porcentaje',
     'porcentaje_mora': 'Porcentaje de Mora',
     'porcentaje_cobro': 'Porcentaje de Cobro',
-    'tasa': 'Tasa',
-    'ratio': 'Ratio',
-
-    // Académico
     'promedio': 'Promedio',
+
     'nota': 'Nota',
     'calificacion': 'Calificación',
-    'evaluacion': 'Evaluación',
     'ranking': 'Ranking',
     'posicion': 'Posición',
-    'puesto': 'Puesto',
 
-    // Asistencia
     'asistencias': 'Asistencias',
     'ausencias': 'Ausencias',
     'tardanzas': 'Tardanzas',
     'justificaciones': 'Justificaciones',
-    'presente': 'Presente',
-    'ausente': 'Ausente',
-    'tardanza': 'Tardanza',
 
-    // Contacto
     'telefono': 'Teléfono',
     'celular': 'Celular',
     'email': 'Email',
     'correo': 'Correo Electrónico',
     'direccion': 'Dirección',
 
-    // Sistema
     'rol': 'Rol',
     'permisos': 'Permisos',
     'acciones': 'Acciones',
     'actividad': 'Actividad',
     'ultimo_acceso': 'Último Acceso',
+
+    'creado_en': 'Creado en',
+    'created_at': 'Creado en',
     'fecha_creacion': 'Fecha de Creación',
 
-    // Descripciones
     'descripcion': 'Descripción',
     'observaciones': 'Observaciones',
     'comentario': 'Comentario',
     'notas': 'Notas',
     'detalle': 'Detalle',
+
+    // tiempo/duración
+    'tiempo': 'Tiempo',
+    'duracion': 'Duración',
+    'duración': 'Duración',
+    'minutos': 'Minutos',
+    'horas': 'Horas',
+    'segundos': 'Segundos',
   };
 
-  Future<void> _descargarPDF(
+  Future<Uint8List> _buildPdfBytes(
     ReporteConfig config,
     Map<String, dynamic> data,
+    DateTime generatedAt,
   ) async {
-    final cleanData = _sanitizeReporteData(data);
+    // data ya viene sanitizado/enriquecido desde _buildExportBytes
+    final cleanData = data;
 
     final pdf = pw.Document();
-    final generatedAt = DateTime.now();
 
     final primary = PdfColor.fromInt(0xFF0D47A1);
     final text = PdfColor.fromInt(0xFF1F2937);
@@ -1341,13 +1718,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
       ),
     );
 
-    final bytes = await pdf.save();
-    final fileName = '${config.id}_${generatedAt.millisecondsSinceEpoch}.pdf';
-    await _saveBytes(
-      bytes: bytes,
-      fileName: fileName,
-      mimeType: 'application/pdf',
-    );
+    return pdf.save();
   }
 
   pw.Widget _pdfHeader(
@@ -1492,6 +1863,9 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     );
   }
 
+  // ==============================
+  // KPIs / TABLAS PDF
+  // ==============================
   int _kpiRank(String key) {
     final k = key.toLowerCase();
 
@@ -1505,21 +1879,10 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     if (k.contains('total_vencido') ||
         (k.contains('vencido') && k.contains('total'))) return 3;
 
-    if (k.contains('monto') ||
-        k.contains('valor') ||
-        k.contains('saldo') ||
-        k.contains('deuda') ||
-        k.contains('total')) return 10;
-
-    if (k.contains('cantidad') ||
-        k.contains('conteo') ||
-        k.contains('count') ||
-        k.contains('numero') ||
-        k.contains('número')) return 20;
-
-    if (k.contains('porcentaje') || k.contains('%') || k.contains('ratio')) {
-      return 30;
-    }
+    if (_isMoneyKey(k)) return 10;
+    if (_isCountKey(k)) return 20;
+    if (_isPercentKey(k)) return 30;
+    if (_isDurationKey(k)) return 35;
 
     if (k.contains('fecha') ||
         k.contains('desde') ||
@@ -1557,6 +1920,9 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   int _colRank(String header) {
     final h = header.toLowerCase();
 
+    if (h.contains('periodo')) return 12;
+    if (h.contains('creado')) return 18;
+
     if (h.contains('nombre') &&
         !h.contains('subcategoria') &&
         !h.contains('categoria')) return 0;
@@ -1569,53 +1935,24 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
 
     if (h.contains('categoria') && !h.contains('sub')) return 10;
     if (h.contains('subcategoria') || h.contains('subcategoría')) return 11;
-    if (h.contains('curso') || h.contains('nivel') || h.contains('grado')) {
-      return 12;
-    }
 
     if (h.contains('fecha') && !h.contains('venc')) return 20;
     if (h.contains('venc') || h.contains('vencimiento')) return 21;
-    if (h.contains('periodo') || h.contains('mes') || h.contains('año')) {
-      return 22;
-    }
 
     if (h.contains('estado')) return 30;
+    if (h.contains('dias') || h.contains('días') || h.contains('mora')) return 40;
 
-    if (h.contains('dias') || h.contains('días') || h.contains('mora')) {
-      return 40;
-    }
+    if (h.contains('monto_pagado') || h.contains('montopagado')) return 48;
+    if (h.contains('saldo')) return 49;
 
-    if (h.contains('monto') || h.contains('valor') || h.contains('saldo')) {
-      return 50;
-    }
-    if (h.contains('total') || h.contains('deuda')) return 51;
-    if (h.contains('pagado') || h.contains('recaudado')) return 52;
-    if (h.contains('pendiente') || h.contains('debe')) return 53;
-
-    if (h.contains('metodo') || h.contains('método') || h.contains('forma')) {
-      return 60;
-    }
-
-    if (h.contains('cantidad') || h.contains('count') || h.contains('numero')) {
-      return 70;
-    }
-
-    if (h.contains('nota') ||
-        h.contains('calificacion') ||
-        h.contains('promedio')) return 80;
-    if (h.contains('ranking') || h.contains('posicion')) return 81;
-
-    if (h.contains('asistencia') ||
-        h.contains('ausencia') ||
-        h.contains('tardanza')) return 85;
-
-    if (h.contains('porcentaje') || h.contains('%') || h.contains('ratio')) {
-      return 90;
-    }
+    if (_isMoneyKey(h)) return 50;
+    if (_isCountKey(h)) return 70;
+    if (_isDurationKey(h)) return 75;
+    if (_isPercentKey(h)) return 90;
 
     if (h.startsWith('id_') || h == 'id') return 999;
 
-    return 50;
+    return 80;
   }
 
   List<String> _orderHeaders(List<String> headers) {
@@ -1640,8 +1977,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
             .toList();
         if (rows.isEmpty) return;
 
-        final originalHeaders = rows.first.keys.toList();
-        final headers = _orderHeaders(originalHeaders);
+        final headers = _orderHeaders(rows.first.keys.toList());
 
         final tableRows = rows.map((r) {
           return headers.map((h) => _formatValue(h, r[h])).toList();
@@ -1678,7 +2014,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                _humanizeKey(e.key).toUpperCase(),
+                _humanizeKey(e.key),
                 style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
               ),
               pw.SizedBox(height: 4),
@@ -1744,19 +2080,13 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
 
   bool _looksNumericColumn(String header, List<List<String>> rows, int idx) {
     final h = header.toLowerCase();
-    final hint = h.contains('monto') ||
-        h.contains('total') ||
-        h.contains('saldo') ||
-        h.contains('deuda') ||
-        h.contains('valor') ||
-        h.contains('pagado') ||
-        h.contains('recaudado') ||
-        h.contains('facturado') ||
+    final hint = _isMoneyKey(h) ||
+        _isCountKey(h) ||
+        _isPercentKey(h) ||
+        _isDurationKey(h) ||
         h.contains('dias') ||
         h.contains('días') ||
-        h.contains('mora') ||
-        h.contains('porcentaje') ||
-        h.contains('%');
+        h.contains('mora');
 
     var numericCount = 0;
     var sample = 0;
@@ -1766,6 +2096,7 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
           .replaceAll('.', '')
           .replaceAll(',', '')
           .replaceAll(r'$', '')
+          .replaceAll('%', '')
           .trim();
       if (v.isEmpty) continue;
       sample++;
@@ -1775,34 +2106,269 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
     return hint || looks;
   }
 
+  // ==============================
+  // FORMATEO ROBUSTO (DINERO / ENTERO / % / TIEMPO)
+  // ==============================
+  double? _toDoubleAny(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+
+    if (v is String) {
+      var s = v.trim();
+      if (s.isEmpty) return null;
+
+      // Normaliza: quita $, %, etc.
+      s = s.replaceAll(r'$', '').replaceAll('%', '').trim();
+
+      final hasComma = s.contains(',');
+      final hasDot = s.contains('.');
+
+      if (hasComma && hasDot) {
+        // "1,234.56" => "1234.56"
+        s = s.replaceAll(',', '');
+      } else if (hasComma && !hasDot) {
+        // "1234,56" => "1234.56"
+        s = s.replaceAll(',', '.');
+      }
+
+      return double.tryParse(s);
+    }
+
+    return null;
+  }
+
+  bool _isPercentKey(String key) {
+    final k = key.toLowerCase();
+    return k.contains('porcentaje') ||
+        k.contains('%') ||
+        k.contains('ratio') ||
+        k.contains('tasa');
+  }
+
+  bool _isCountKey(String key) {
+  final k = key.toLowerCase();
+
+  // ✅ Cualquier métrica que sea "clientes" normalmente es CONTEO (no dinero),
+  // salvo que explícitamente diga monto/valor/saldo/deuda.
+  final hasClientes = k.contains('cliente') || k.contains('clientes');
+  final hasMoneyHints = k.contains('monto') ||
+      k.contains('valor') ||
+      k.contains('saldo') ||
+      k.contains('deuda') ||
+      k.contains('recaudado') ||
+      k.contains('facturado') ||
+      k.contains('pagado') ||
+      k.contains('subtotal');
+
+  if (hasClientes && !hasMoneyHints && !_isPercentKey(k) && !_isDurationKey(k)) {
+    return true; // ejemplo: total_clientes_activos, clientes_morosos
+  }
+  // ✅ Eventos / auditoría: siempre es CONTEO (no dinero)
+  final hasEventos = k.contains('evento') || k.contains('eventos');
+  final hasAcciones = k.contains('accion') || k.contains('acciones');
+
+  if ((hasEventos || hasAcciones) &&
+      !hasMoneyHints &&
+      !_isPercentKey(k) &&
+      !_isDurationKey(k)) {
+    return true; // ejemplo: total_eventos, total_acciones, eventos_totales
+  }
+
+  // caso especial: "total_mensualidades" NO es dinero
+  if (k.contains('mensualidad') &&
+      !(k.contains('monto') ||
+          k.contains('valor') ||
+          k.contains('saldo') ||
+          k.contains('deuda')) &&
+      (k.contains('total') ||
+          k.contains('cantidad') ||
+          k.contains('conteo') ||
+          k.contains('count'))) {
+    return true;
+  }
+
+  // usuarios
+  if (k == 'usuarios' || k.contains('usuario') || k.contains('usuarios')) {
+    // total_usuarios, usuarios_activos, etc.
+    if (!hasMoneyHints && !_isPercentKey(k) && !_isDurationKey(k)) return true;
+  }
+
+  return k.contains('cantidad') ||
+      k.contains('conteo') ||
+      k.contains('count') ||
+      k.contains('numero') ||
+      k.contains('número') ||
+      k.contains('total_estudiantes') ||
+      k.contains('total_pagos') ||
+      k.contains('cantidad_estudiantes') ||
+      k.contains('cantidad_pagos');
+}
+
+
+  bool _isMoneyKey(String key) {
+    final k = key.toLowerCase();
+
+    // evita chocar con conteos/porcentajes/tiempos
+    if (_isCountKey(k) || _isPercentKey(k) || _isDurationKey(k)) return false;
+
+    return k.contains('monto') ||
+        k.contains('valor') ||
+        k.contains('saldo') ||
+        k.contains('deuda') ||
+        k.contains('recaudado') ||
+        k.contains('facturado') ||
+        k.contains('pagado') ||
+        // totales financieros típicos:
+        (k.contains('total') &&
+            !k.contains('total_estudiantes') &&
+            !k.contains('total_pagos')) ||
+        k.contains('subtotal');
+  }
+
+  bool _isDurationKey(String key) {
+    final k = key.toLowerCase().trim();
+    if (k.contains('min') || k.contains('minuto')) return true;
+    if (k.contains('hora') || k.contains('hr') || k.contains('hrs')) return true;
+    if (k.contains('seg') || k.contains('segundo')) return true;
+
+    if (k.contains('duracion') || k.contains('duración')) return true;
+    if (k.contains('tiempo')) return true;
+
+    return false;
+  }
+
+  bool _isYearKey(String key) {
+    final k = key.toLowerCase().trim();
+    return k == 'anio' ||
+        k == 'año' ||
+        k.endsWith('_anio') ||
+        k.endsWith('_año') ||
+        k.contains('anio') ||
+        k.contains('año') ||
+        k.contains('year');
+  }
+
+  bool _isMonthKey(String key) {
+    final k = key.toLowerCase().trim();
+    return k == 'mes' ||
+        k.endsWith('_mes') ||
+        k.contains('mes') ||
+        k.contains('month');
+  }
+
+  String _formatDuration(String key, double value) {
+    final k = key.toLowerCase().trim();
+
+    // unidad por nombre del campo
+    String unit;
+    if (k.contains('hora') || k.contains('hr') || k.contains('hrs')) {
+      unit = 'h';
+    } else if (k.contains('seg') || k.contains('segundo')) {
+      unit = 's';
+    } else {
+      unit = 'min';
+    }
+
+    int asInt = value.round();
+
+    if (unit == 's') {
+      if (asInt >= 3600) {
+        final h = asInt ~/ 3600;
+        final rem = asInt % 3600;
+        final m = rem ~/ 60;
+        return m > 0 ? '$h h $m min' : '$h h';
+      }
+      if (asInt >= 60) {
+        final m = asInt ~/ 60;
+        final s = asInt % 60;
+        return s > 0 ? '$m min $s s' : '$m min';
+      }
+      return '$asInt s';
+    }
+
+    if (unit == 'min') {
+      if (asInt >= 60) {
+        final h = asInt ~/ 60;
+        final m = asInt % 60;
+        return m > 0 ? '$h h $m min' : '$h h';
+      }
+      return '$asInt min';
+    }
+
+    // unit == 'h'
+    if ((value - value.round()).abs() < 0.0001) {
+      return '${value.round()} h';
+    }
+    // horas decimales
+    return '${_fmtNum2.format(value)} h';
+  }
+
+  String _formatPercent(String key, double value) {
+    // Si viene como fracción (0.31) => 31.00%
+    final v = (value >= 0 && value <= 1) ? value * 100 : value;
+    return '${_fmtNum2.format(v)}%';
+  }
+
+  String _formatMonth(dynamic v) {
+    final n = _toIntAny(v);
+    if (n == null) return v?.toString() ?? '-';
+    if (n >= 1 && n <= 12) return _mesNombre(n);
+    return n.toString();
+  }
+
+  String _formatYear(dynamic v) {
+    final n = _toIntAny(v);
+    if (n == null) return v?.toString() ?? '-';
+    return n.toString(); // sin separador de miles
+  }
+
   String _formatValue(String key, dynamic value) {
     if (value == null) return '-';
 
     if (value is DateTime) return _fmtDate.format(value);
 
+    final k = key.toLowerCase();
+
+    // Si viene como String, intentamos parsear para formateo correcto (dinero/%/tiempo/entero)
     if (value is String) {
       final s = value.trim();
       if (s.isEmpty) return '-';
+
+      // fechas ISO
       final dt = DateTime.tryParse(s);
       if (dt != null) return _fmtDate.format(dt);
-      return s;
+
+      // año/mes aunque vengan como string
+      final num = _toDoubleAny(s);
+      if (num != null) {
+        if (_isYearKey(k)) return _formatYear(num);
+        if (_isMonthKey(k)) return _formatMonth(num);
+
+        if (_isPercentKey(k)) return _formatPercent(k, num);
+        if (_isDurationKey(k)) return _formatDuration(k, num);
+        if (_isCountKey(k)) return _fmtInt.format(num.round());
+        if (_isMoneyKey(k)) return _fmtMoney.format(num);
+
+        if ((num - num.round()).abs() < 0.0001) return _fmtInt.format(num.round());
+        return _fmtNum.format(num);
+      }
+
+      // si ya viene como "20$" y NO se pudo parsear arriba (raro), lo limpiamos
+      return s.replaceAll(r'$', '').trim();
     }
 
     if (value is num) {
-      final k = key.toLowerCase();
-      final isMoney = k.contains('monto') ||
-          k.contains('total') ||
-          k.contains('saldo') ||
-          k.contains('deuda') ||
-          k.contains('valor') ||
-          k.contains('recaudado') ||
-          k.contains('facturado') ||
-          k.contains('pagado');
+      if (_isYearKey(k)) return _formatYear(value);
+      if (_isMonthKey(k)) return _formatMonth(value);
 
-      final isPercent = k.contains('porcentaje') || k.contains('%');
+      if (_isPercentKey(k)) return _formatPercent(k, value.toDouble());
+      if (_isDurationKey(k)) return _formatDuration(k, value.toDouble());
+      if (_isCountKey(k)) return _fmtInt.format(value.round());
+      if (_isMoneyKey(k)) return _fmtMoney.format(value);
 
-      if (isMoney) return _fmtMoney.format(value);
-      if (isPercent) return '${_fmtNum.format(value)}%';
+      if ((value.toDouble() - value.roundToDouble()).abs() < 0.0001) {
+        return _fmtInt.format(value.round());
+      }
       return _fmtNum.format(value);
     }
 
@@ -1813,13 +2379,18 @@ class _ReportesPagosScreenState extends State<ReportesPagosScreen> {
   }
 
   String _humanizeKey(String key) {
-    final raw = key.trim();
+    var raw = key.trim();
     if (raw.isEmpty) return raw;
+
+    // si viene como "resumen.total_mensualidades" => toma el último segmento
+    if (raw.contains('.')) {
+      raw = raw.split('.').last.trim();
+    }
 
     final low = raw.toLowerCase();
     if (_labels.containsKey(low)) return _labels[low]!;
 
-    var s = raw.replaceAll('_', ' ');
+    var s = raw.replaceAll('_', ' ').replaceAll('.', ' ');
     s = s.replaceAllMapped(
       RegExp(r'([a-z])([A-Z])'),
       (m) => '${m[1]} ${m[2]}',
@@ -1891,8 +2462,7 @@ class EstudianteOption {
         ? null
         : subcategoria!.trim();
 
-    final ced =
-        (cedula == null || cedula!.trim().isEmpty) ? null : cedula!.trim();
+    final ced = (cedula == null || cedula!.trim().isEmpty) ? null : cedula!.trim();
 
     if (sub != null) parts.add(sub);
     if (ced != null) parts.add('Cédula: $ced');
@@ -1902,8 +2472,7 @@ class EstudianteOption {
 
   static EstudianteOption fromMap(Map<String, dynamic> m) {
     final id = int.tryParse(
-          '${m['id_estudiante'] ?? m['id'] ?? m['idEstudiante'] ?? ''}',
-        ) ??
+            '${m['id_estudiante'] ?? m['id'] ?? m['idEstudiante'] ?? ''}') ??
         0;
 
     final nombres = (m['nombres'] ?? m['nombre'] ?? '').toString().trim();
@@ -1918,9 +2487,7 @@ class EstudianteOption {
         ?.toString()
         .trim();
 
-    final ced = (m['cedula'] ?? m['dni'] ?? m['documento'])
-        ?.toString()
-        .trim();
+    final ced = (m['cedula'] ?? m['dni'] ?? m['documento'])?.toString().trim();
 
     return EstudianteOption(
       id: id,
@@ -1941,6 +2508,123 @@ class _PdfTableData {
     required this.headers,
     required this.rows,
   });
+}
+
+class _ExportBytes {
+  final Uint8List bytes;
+  final String fileName;
+  final String mimeType;
+
+  const _ExportBytes({
+    required this.bytes,
+    required this.fileName,
+    required this.mimeType,
+  });
+}
+
+// ======================================================================
+// VISTA PREVIA CSV (UI)
+// ======================================================================
+class _KpiTile extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _KpiTile({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w600,
+              )),
+          const SizedBox(height: 6),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey[900])),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewTable {
+  final String title;
+  final List<String> headers;
+  final List<List<String>> rows;
+  final int totalRows;
+
+  const _PreviewTable({
+    required this.title,
+    required this.headers,
+    required this.rows,
+    required this.totalRows,
+  });
+}
+
+class _PreviewTableCard extends StatelessWidget {
+  final _PreviewTable table;
+
+  const _PreviewTableCard({required this.table});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(
+                child: Text(
+                  table.title,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(
+                '${table.rows.length} / ${table.totalRows}',
+                style: TextStyle(color: Colors.grey[700], fontSize: 12),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: table.headers
+                    .map((h) => DataColumn(label: Text(h)))
+                    .toList(),
+                rows: table.rows.map((r) {
+                  return DataRow(
+                    cells: r.map((c) => DataCell(Text(c))).toList(),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ======================================================================
@@ -1984,25 +2668,20 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
     return Semantics(
       label: 'Parámetros del reporte',
       hint:
-          'Completa los filtros requeridos y toca Descargar para generar el archivo.',
+          'Completa los filtros requeridos y toca Previsualizar para generar la vista previa.',
       child: AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Tooltip(
               message: 'Filtros del reporte',
-              child: Icon(
-                Icons.tune,
-                color: widget.config.color,
-                semanticLabel: 'Filtros',
-              ),
+              child: Icon(Icons.tune,
+                  color: widget.config.color, semanticLabel: 'Filtros'),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                widget.config.nombre,
-                style: const TextStyle(fontSize: 18),
-              ),
+              child: Text(widget.config.nombre,
+                  style: const TextStyle(fontSize: 18)),
             ),
           ],
         ),
@@ -2029,7 +2708,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             child: Semantics(
               button: true,
               label: 'Cancelar',
-              hint: 'Cierra el diálogo sin descargar',
+              hint: 'Cierra el diálogo sin generar',
               child: TextButton(
                 onPressed: () => Navigator.pop(context),
                 child:
@@ -2038,17 +2717,18 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             ),
           ),
           Tooltip(
-            message: 'Descargar',
+            message: 'Previsualizar',
             child: Semantics(
               button: true,
-              label: 'Descargar reporte',
-              hint: 'Valida los filtros y genera el archivo',
+              label: 'Previsualizar reporte',
+              hint: 'Valida los filtros y genera la vista previa',
               child: FilledButton.icon(
                 onPressed: _validarYGenerar,
                 style:
                     FilledButton.styleFrom(backgroundColor: widget.config.color),
-                icon: const Icon(Icons.download, semanticLabel: 'Descargar'),
-                label: const Text('Descargar'),
+                icon: const Icon(Icons.visibility,
+                    semanticLabel: 'Vista previa'),
+                label: const Text('Previsualizar'),
               ),
             ),
           ),
@@ -2086,26 +2766,22 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
         : '${_fmtDate.format(_rango!.start)} → ${_fmtDate.format(_rango!.end)}';
 
     final label = 'Rango de fechas${requerido ? " requerido" : " opcional"}';
-    final hint = 'Toca para seleccionar un rango de fechas';
 
     return Tooltip(
       message: label,
       child: Semantics(
         button: true,
         label: label,
-        hint: hint,
+        hint: 'Toca para seleccionar un rango de fechas',
         child: InkWell(
           onTap: _pickRango,
           child: InputDecorator(
             decoration: InputDecoration(
               labelText: 'Rango de fechas${requerido ? " *" : " (opcional)"}',
               border: const OutlineInputBorder(),
-              prefixIcon: const Icon(
-                Icons.calendar_month,
-                semanticLabel: 'Calendario',
-              ),
-              helperText:
-                  requerido ? 'Obligatorio para generar este reporte' : null,
+              prefixIcon:
+                  const Icon(Icons.calendar_month, semanticLabel: 'Calendario'),
+              helperText: requerido ? 'Obligatorio para este reporte' : null,
             ),
             child: Text(
               rangoTxt,
@@ -2131,7 +2807,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
               labelText: 'Fecha de corte *',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.event, semanticLabel: 'Fecha'),
-              helperText: 'Se usa como referencia para cálculos del reporte',
+              helperText: 'Referencia para cálculos del reporte',
             ),
             child: Text(_fmtDate.format(_corte)),
           ),
@@ -2155,7 +2831,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             border: OutlineInputBorder(),
             prefixIcon:
                 Icon(Icons.event_available, semanticLabel: 'Vencimiento'),
-            helperText: 'Se usa para definir cuándo vence una mensualidad',
+            helperText: 'Define cuándo vence una mensualidad',
           ),
           keyboardType: TextInputType.number,
           validator: (v) {
@@ -2184,7 +2860,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             labelText: 'Granularidad *',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.view_week, semanticLabel: 'Agrupar'),
-            helperText: 'Define cómo se agrupan los datos en el tiempo',
+            helperText: 'Define agrupación temporal',
           ),
           items: const [
             DropdownMenuItem(value: 'dia', child: Text('Diario')),
@@ -2235,8 +2911,8 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
                 decoration: InputDecoration(
                   labelText: 'Estudiante *',
                   border: const OutlineInputBorder(),
-                  prefixIcon:
-                      const Icon(Icons.person_search, semanticLabel: 'Estudiante'),
+                  prefixIcon: const Icon(Icons.person_search,
+                      semanticLabel: 'Estudiante'),
                   errorText: state.errorText,
                   helperText: 'Toca para buscar y seleccionar',
                 ),
@@ -2268,7 +2944,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             hintText: '1-365',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.timelapse, semanticLabel: 'Días'),
-            helperText: 'Rango de días para análisis de alertas/recordatorios',
+            helperText: 'Rango para análisis de alertas/recordatorios',
           ),
           keyboardType: TextInputType.number,
           validator: (v) {
@@ -2298,9 +2974,9 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             labelText: 'Top registros *',
             hintText: '1-100',
             border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.format_list_numbered,
-                semanticLabel: 'Top'),
-            helperText: 'Cantidad máxima de registros a incluir en el reporte',
+            prefixIcon:
+                Icon(Icons.format_list_numbered, semanticLabel: 'Top'),
+            helperText: 'Máximo de registros a incluir',
           ),
           keyboardType: TextInputType.number,
           validator: (v) {
@@ -2331,7 +3007,7 @@ class _DialogoParametrosState extends State<_DialogoParametros> {
             hintText: 'Todas si está vacío',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.category, semanticLabel: 'Subcategoría'),
-            helperText: 'Filtra por una subcategoría específica si lo necesitas',
+            helperText: 'Filtra por una subcategoría específica',
           ),
           keyboardType: TextInputType.number,
           onChanged: (v) => _idSubcategoria = int.tryParse(v),
@@ -2538,7 +3214,7 @@ class _EstudiantePickerDialogState extends State<_EstudiantePickerDialog> {
               SizedBox(
                 height: 360,
                 child: _loading
-                    ?  Center(
+                    ? Center(
                         child: Semantics(
                           label: 'Cargando estudiantes',
                           child: CircularProgressIndicator(),

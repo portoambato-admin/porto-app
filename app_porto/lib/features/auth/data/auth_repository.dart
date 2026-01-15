@@ -12,11 +12,10 @@ class AuthRepository {
   final HttpClient _http;
   const AuthRepository(this._http);
 
-  // ✅ Helper para desenvolver { usuario: {...} } de forma consistente
+  // Helper para desenvolver { usuario: {...} } de forma consistente
   Map<String, dynamic> _unwrapUser(dynamic payload) {
-    if (payload is Usuario) {
-      return payload.toJson(); // Si ya es un Usuario, convertir a JSON
-    }
+    if (payload is Usuario) return payload.toJson();
+
     if (payload is Map && payload['usuario'] is Map) {
       return Map<String, dynamic>.from(payload['usuario'] as Map);
     }
@@ -43,10 +42,25 @@ class AuthRepository {
   }
 
   // LOGIN CON GOOGLE
-  Future<AuthResponse> loginGoogle(String idToken) async {
+  // ✅ En producción: permite enviar aceptación si el usuario es nuevo
+  Future<AuthResponse> loginGoogle(
+    String idToken, {
+    bool? aceptaPoliticas,
+    bool? aceptaPrivacidad,
+    String? versionPoliticas,
+  }) async {
+    final body = <String, dynamic>{'id_token': idToken};
+
+    // Solo enviamos estos campos si nos los pasan desde UI
+    if (aceptaPoliticas != null) body['acepta_politicas'] = aceptaPoliticas;
+    if (aceptaPrivacidad != null) body['acepta_privacidad'] = aceptaPrivacidad;
+    if (versionPoliticas != null && versionPoliticas.trim().isNotEmpty) {
+      body['version_politicas'] = versionPoliticas.trim();
+    }
+
     final res = await _http.post(
       Endpoints.authLoginGoogle,
-      body: {'id_token': idToken},
+      body: body,
     );
 
     return _extractAuth(res);
@@ -54,7 +68,9 @@ class AuthRepository {
 
   // Helper para procesar la respuesta del backend
   AuthResponse _extractAuth(dynamic res) {
-    if (res is Map && (res['error'] != null || (res['message'] != null && res['token'] == null))) {
+    if (res is Map &&
+        (res['error'] != null ||
+            (res['message'] != null && res['token'] == null))) {
       throw Exception(res['error'] ?? res['message']);
     }
 
@@ -65,7 +81,6 @@ class AuthRepository {
       throw Exception("Respuesta inválida del servidor.");
     }
 
-    // ✅ Asegurar que userData sea un Map antes de crear el Usuario
     final userMap = _unwrapUser(userData);
 
     return AuthResponse(
@@ -79,17 +94,14 @@ class AuthRepository {
     try {
       await _http.post(Endpoints.authLogout, body: {});
     } catch (_) {
-      // Ignoramos error en logout, lo prioritario es limpiar la sesión local
+      // Ignorar error en logout: lo prioritario es limpiar la sesión local
     }
   }
 
   // PERFIL (ME)
   Future<Usuario> me() async {
     final res = await _http.get(Endpoints.me);
-    
-    // ✅ Desenvolver correctamente
     final userMap = _unwrapUser(res);
-    
     return Usuario.fromJson(userMap);
   }
 }

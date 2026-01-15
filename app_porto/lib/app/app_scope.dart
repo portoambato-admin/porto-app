@@ -26,6 +26,8 @@ import '../features/admin/data/asistencias_repository.dart';
 
 import '../features/admin/data/dashboard_repository.dart';
 
+import '../features/notificaciones/data/notificaciones_repository.dart';
+
 class AppScope extends InheritedWidget {
   final HttpClient http;
   final AuthRepository auth;
@@ -50,6 +52,8 @@ class AppScope extends InheritedWidget {
 
   final DashboardRepository dashboard;
 
+  final NotificacionesRepository notificaciones;
+
   AppScope._({
     required this.http,
     required this.auth,
@@ -67,6 +71,7 @@ class AppScope extends InheritedWidget {
     required this.representante,
     required this.asistencias, // ✅
     required this.dashboard,
+    required this.notificaciones,
     required super.child,
   });
 
@@ -93,6 +98,8 @@ class AppScope extends InheritedWidget {
 
     final dashboard         = DashboardRepository(http);    
 
+    final notificaciones    = NotificacionesRepository(http);
+
     // Representante
     final representante     = RepresentanteRepository(http);
 
@@ -116,6 +123,7 @@ class AppScope extends InheritedWidget {
       dashboard: dashboard,
       representante: representante,
       asistencias: asistencias,
+      notificaciones: notificaciones,
       
       child: child,
     );

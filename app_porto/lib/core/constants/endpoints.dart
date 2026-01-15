@@ -137,4 +137,11 @@ static const reporteEvaluacionesResumen = '/reportes/academia/evaluaciones/resum
   static const dashboardAdmin = '/dashboard/admin';
   static const dashboardProfesor = '/dashboard/profesor';
   static const dashboardRepresentante = '/dashboard/representante';
+
+  // ===== Notificaciones (in-app)
+  static const notificaciones = '/notificaciones';
+  static const notificacionesUnreadCount = '/notificaciones/unread-count';
+  static const notificacionesMarcarTodas = '/notificaciones/marcar-todas';
+  static String notificacionMarcarLeida(int id) => '/notificaciones/$id/leer';
+  static String notificacionEliminar(int id) => '/notificaciones/$id';
 }
