@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "71788233162",
+    "project_id": "autenticacion-porto",
+    "storage_bucket": "autenticacion-porto.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:71788233162:android:23925a567f505d1a06cf33",
+        "android_client_info": {
+          "package_name": "com.example.app_porto"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "71788233162-pbib4s7qfq02i18is62vil2pqif2j64v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.app_porto",
+            "certificate_hash": "46ad78f1583bce1e53b0884a9f4b17a56460efca"
+          }
+        },
+        {
+          "client_id": "71788233162-somi97ccq6u4dg1jdpjr732d9tr9d0r7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1_tCBZnNhd9L1eQZ_fUXvkbPjNuGf4-8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "71788233162-somi97ccq6u4dg1jdpjr732d9tr9d0r7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

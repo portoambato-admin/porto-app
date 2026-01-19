@@ -10,34 +10,55 @@ class NextMatchSection extends StatefulWidget {
   State<NextMatchSection> createState() => _NextMatchSectionState();
 }
 
-class _NextMatchSectionState extends State<NextMatchSection> {
-  // ========== CONFIGURA AQUÍ ==========
-  // Día de la semana (usa constantes de DateTime): 
-  // DateTime.monday ... DateTime.sunday
-  static const int kWeekday = DateTime.thursday; // Ej: sábado
-  static const int kHour = 19;    // 0-23
-  static const int kMinute = 0; // 0-59
+class _Fixture {
+  final String categoria; // Sub 10, Sub 12...
+  final String home;
+  final String away;
+  final int hour;
+  final int minute;
 
-  // Datos del partido
-  final Map<String, dynamic> _match = {
-    'opponent': 'Indumentaria',
-    'category': 'Foto Oficial',
-    'tournament': 'Vamos Porto',
-    'homeAway': 'Todas las Categorías', // 'Visitante'
-    'location': 'Roka Plaza, Ambato',
-    'puntoEncuentro': 'Ingreso puerta principal',
-    'presentarseAntesMin': 20,
-  };
-  // ====================================
+  const _Fixture({
+    required this.categoria,
+    required this.home,
+    required this.away,
+    required this.hour,
+    required this.minute,
+  });
+}
+
+class _ScheduledFixture {
+  final _Fixture fixture;
+  final DateTime dt;
+  const _ScheduledFixture(this.fixture, this.dt);
+}
+
+class _NextMatchSectionState extends State<NextMatchSection> {
+  // ===== CONFIG =====
+  static const int kWeekday = DateTime.monday; // cambia al día real
+  static final DateTime? kFixedDate = null;      // Ej: DateTime(2026, 1, 22);
+
+  static const String kTournament = 'Torneo FFF';
+  static const String kLocation = 'Cámara de Comercio, Ambato';
+  static const String kPuntoEncuentro = 'Ingreso puerta principal';
+  static const int kPresentarseAntesMin = 20;
+
+  static const List<_Fixture> kFixtures = [
+    _Fixture(categoria: 'Sub 10', home: 'PORTO', away: 'MACARA', hour: 14, minute: 50),
+    _Fixture(categoria: 'Sub 12', home: 'PORTO', away: 'KVE',    hour: 18, minute: 50),
+  ];
+  // ================
 
   late Timer _timer;
-  late DateTime _matchDateTime;
+  late DateTime _eventDate;
+  late List<_ScheduledFixture> _schedule;
+  late _ScheduledFixture _next;
+
   Duration _remain = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _matchDateTime = _computeNextDateTime(kWeekday, kHour, kMinute);
+    _recomputeSchedule();
     _calcRemain();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
@@ -48,30 +69,58 @@ class _NextMatchSectionState extends State<NextMatchSection> {
     super.dispose();
   }
 
-  // Calcula la próxima fecha que coincide con (weekday, hour, minute)
-  DateTime _computeNextDateTime(int weekday, int hour, int minute) {
-    final now = DateTime.now();
-    // Punto base: hoy a la hora indicada
-    DateTime candidate = DateTime(now.year, now.month, now.day, hour, minute);
-    // Ajuste al weekday deseado
-    final int delta = (weekday - candidate.weekday) % 7; // 0..6
-    candidate = candidate.add(Duration(days: delta));
-    // Si ya pasó hoy esa hora, saltar a la próxima semana
-    if (!candidate.isAfter(now)) {
-      candidate = candidate.add(const Duration(days: 7));
-    }
-    return candidate;
-  }
-
   void _tick() {
     if (!mounted) return;
     _calcRemain();
   }
 
+  DateTime _nextWeekdayDate(int weekday) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final delta = (weekday - now.weekday) % 7; // 0..6
+    return today.add(Duration(days: delta));
+  }
+
+  void _recomputeSchedule() {
+    final now = DateTime.now();
+
+    DateTime baseDate;
+    if (kFixedDate != null) {
+      baseDate = DateTime(kFixedDate!.year, kFixedDate!.month, kFixedDate!.day);
+    } else {
+      baseDate = _nextWeekdayDate(kWeekday);
+    }
+
+    List<_ScheduledFixture> buildFor(DateTime d) {
+      final list = kFixtures
+          .map((f) => _ScheduledFixture(f, DateTime(d.year, d.month, d.day, f.hour, f.minute)))
+          .toList();
+      list.sort((a, b) => a.dt.compareTo(b.dt));
+      return list;
+    }
+
+    var schedule = buildFor(baseDate);
+
+    // Si es semanal y ya pasó todo, mover a la próxima semana
+    if (kFixedDate == null && schedule.every((s) => !s.dt.isAfter(now))) {
+      baseDate = baseDate.add(const Duration(days: 7));
+      schedule = buildFor(baseDate);
+    }
+
+    final upcoming = schedule.where((s) => s.dt.isAfter(now)).toList()
+      ..sort((a, b) => a.dt.compareTo(b.dt));
+    final next = upcoming.isNotEmpty ? upcoming.first : schedule.first;
+
+    _eventDate = baseDate;
+    _schedule = schedule;
+    _next = next;
+  }
+
   void _calcRemain() {
     final now = DateTime.now();
+    _recomputeSchedule();
     setState(() {
-      _remain = _matchDateTime.isAfter(now) ? _matchDateTime.difference(now) : Duration.zero;
+      _remain = _next.dt.isAfter(now) ? _next.dt.difference(now) : Duration.zero;
     });
   }
 
@@ -84,13 +133,7 @@ class _NextMatchSectionState extends State<NextMatchSection> {
     return '${hours}h ${mins}m ${secs}s';
   }
 
-  // --- UI helpers ---
   void _mostrarDetallesPartido() {
-    final rival = _match['opponent'] as String;
-    final sede = _match['location'] as String;
-    final puntoEncuentro = (_match['puntoEncuentro'] as String?) ?? 'Cancha principal';
-    final presentarMin = (_match['presentarseAntesMin'] as int?) ?? 20;
-
     final dateFmt = DateFormat('EEEE d \'de\' MMMM yyyy', 'es');
     final timeFmt = DateFormat('HH:mm', 'es');
 
@@ -103,56 +146,45 @@ class _NextMatchSectionState extends State<NextMatchSection> {
       ),
       builder: (ctx) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Detalle del partido', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Icon(Icons.sports_soccer),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Lanzamiento $rival')),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Icon(Icons.event),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Fecha: ${dateFmt.format(_matchDateTime)}')),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Icon(Icons.schedule),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Hora de inicio: ${timeFmt.format(_matchDateTime)}')),
-              ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                const Icon(Icons.place),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Sede: $sede')),
-              ]),
+              Text('Detalle del evento',
+                  style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+              _DetailRow(icon: Icons.emoji_events_outlined, text: kTournament),
+              _DetailRow(icon: Icons.event, text: 'Fecha: ${dateFmt.format(_eventDate)}'),
+              _DetailRow(icon: Icons.place, text: 'Lugar: $kLocation'),
+
+              const SizedBox(height: 14),
+              Text('Partidos',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 10),
+
+              ..._schedule.map((s) {
+                final isNext = s.dt == _next.dt && _remain > Duration.zero;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _ScheduleRowCompact(
+                    categoria: s.fixture.categoria,
+                    versus: '${s.fixture.home} vs ${s.fixture.away}',
+                    hora: timeFmt.format(s.dt),
+                    highlight: isNext,
+                  ),
+                );
+              }),
+
               const Divider(height: 24),
-              Text('Recomendaciones', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              Text('Recomendaciones',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               const _Bullet('Presentarse con uniforme completo y bien hidratado.'),
-              _Bullet('Llegar $presentarMin minutos antes al $puntoEncuentro.'),
-              const _Bullet('Evitar comidas pesadas 2 horas antes del encuentro.'),
+              _Bullet('Llegar $kPresentarseAntesMin minutos antes al $kPuntoEncuentro.'),
+              const _Bullet('Evitar comidas pesadas 2 horas antes.'),
+
               const SizedBox(height: 12),
-              Text('Documentos/objetos a llevar', style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: const [
-                  _TagChip('Cédula de identidad'),
-                  _TagChip('Botella de agua'),
-                  _TagChip('Canilleras'),
-                  _TagChip('Toalla pequeña'),
-                ],
-              ),
-              const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -179,7 +211,6 @@ class _NextMatchSectionState extends State<NextMatchSection> {
       ),
     );
   }
-  // --- fin helpers ---
 
   @override
   Widget build(BuildContext context) {
@@ -189,116 +220,209 @@ class _NextMatchSectionState extends State<NextMatchSection> {
     final dateFmt = DateFormat('EEEE d \'de\' MMMM', 'es');
     final timeFmt = DateFormat('HH:mm', 'es');
 
-    final chips = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _Chip(text: _match['category']),
-        if ((_match['tournament'] as String).isNotEmpty) _Chip(text: _match['tournament']),
-        _Chip(text: _match['homeAway']),
-      ],
-    );
+    final start = _schedule.first.dt;
+    final end = _schedule.last.dt;
+    final timeRange = '${timeFmt.format(start)} – ${timeFmt.format(end)}';
 
-    final info = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Próximo Evento', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
-        const SizedBox(height: 8),
-        Text('Porto Ambato Lanzamiento ${_match['opponent']}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        chips,
-        const SizedBox(height: 16),
-        Row(
+    final info = LayoutBuilder(
+      builder: (context, constraints) {
+        // Limitar el ancho del bloque izquierdo para evitar “vacíos” enormes
+        final maxW = constraints.maxWidth;
+        final leftW = isWide ? (maxW * 0.48).clamp(420.0, 560.0) : maxW;
+
+        final header = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.event, size: 20),
-            const SizedBox(width: 8),
-            Text('${dateFmt.format(_matchDateTime)} · ${timeFmt.format(_matchDateTime)}'),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Icon(Icons.place, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text('${_match['location']}')),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_remain > Duration.zero)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+            Text('Próximo Evento',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            Text(kTournament,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                const Icon(Icons.timer),
-                const SizedBox(width: 8),
-                Text('Comienza en ${_fmtDuration(_remain)}'),
+                _ChipCompact(text: '${_schedule.length} partidos'),
+                const _ChipCompact(text: 'Todas las categorías'),
               ],
             ),
-          )
-        else
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.sports_soccer),
-              SizedBox(width: 8),
-              Text('¡En juego o finalizado!'),
+          ],
+        );
+
+        final meta = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 10),
+            _MetaLine(icon: Icons.event, text: '${dateFmt.format(_eventDate)} · $timeRange'),
+            const SizedBox(height: 6),
+            const _MetaLine(icon: Icons.place, text: kLocation),
+          ],
+        );
+
+        final scheduleBlock = Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.55)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.sports_soccer, size: 18),
+                  const SizedBox(width: 8),
+                  Text('Partidos',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(_schedule.length, (i) {
+                final s = _schedule[i];
+                final isNext = s.dt == _next.dt && _remain > Duration.zero;
+
+                return Column(
+                  children: [
+                    _ScheduleRowCompact(
+                      categoria: s.fixture.categoria,
+                      versus: '${s.fixture.home} vs ${s.fixture.away}',
+                      hora: timeFmt.format(s.dt),
+                      highlight: isNext,
+                    ),
+                    if (i != _schedule.length - 1)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 40, top: 6, bottom: 6),
+                        child: Divider(height: 1, color: Theme.of(context).dividerColor.withOpacity(0.55)),
+                      ),
+                  ],
+                );
+              }),
             ],
           ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            FilledButton.icon(
-              onPressed: _mostrarDetallesPartido,
-              icon: const Icon(Icons.info),
-              label: const Text('Detalles'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _mostrarProximamente, // por ahora
-              icon: const Icon(Icons.map),
-              label: const Text('Cómo llegar'),
-            ),
-          ],
-        ),
-      ],
-    );
+        );
 
-    final illustration = AspectRatio(
-      aspectRatio: 16 / 9,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset(
-              'assets/img/webp/partido.webp',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: Colors.black12,
-                alignment: Alignment.center,
-                child: const Icon(Icons.image, size: 64, color: Colors.black45),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.20), Colors.transparent],
+        final countdown = Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: _remain > Duration.zero
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.28),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.55)),
                   ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.timer, size: 18),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Próximo partido en ${_fmtDuration(_remain)}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        );
+
+        final actions = Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: _mostrarDetallesPartido,
+                icon: const Icon(Icons.info, size: 18),
+                label: const Text('Detalles'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
+              OutlinedButton.icon(
+                onPressed: _mostrarProximamente,
+                icon: const Icon(Icons.map, size: 18),
+                label: const Text('Cómo llegar'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        );
+
+        final left = SizedBox(
+          width: leftW,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              meta,
+              scheduleBlock,
+              countdown,
+              actions,
+            ],
+          ),
+        );
+
+        final illustration = AspectRatio(
+          aspectRatio: 16 / 9,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/img/webp/partido.webp',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.black12,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.image, size: 56, color: Colors.black45),
+                  ),
+                ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black.withOpacity(0.20), Colors.transparent],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+
+        return isWide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  left,
+                  const SizedBox(width: 22),
+                  Expanded(child: illustration),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  left,
+                  const SizedBox(height: 14),
+                  illustration,
+                ],
+              );
+      },
     );
 
     return Center(
@@ -308,23 +432,8 @@ class _NextMatchSectionState extends State<NextMatchSection> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: HomeScreen.maxContentWidth),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
-              child: isWide
-                  ? Row(
-                      children: [
-                        Expanded(flex: 5, child: info),
-                        const SizedBox(width: 24),
-                        Expanded(flex: 5, child: illustration),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        info,
-                        const SizedBox(height: 16),
-                        illustration,
-                      ],
-                    ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20), // menos alto
+              child: info,
             ),
           ),
         ),
@@ -333,34 +442,158 @@ class _NextMatchSectionState extends State<NextMatchSection> {
   }
 }
 
-// Chip visual para las etiquetas superiores (categoría, torneo, local/visitante)
-class _Chip extends StatelessWidget {
+// ===================== UI =====================
+
+class _MetaLine extends StatelessWidget {
+  final IconData icon;
   final String text;
-  const _Chip({required this.text});
+  const _MetaLine({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      label: Text(text),
-      backgroundColor: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.6),
+    return Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 }
 
-// Chip para la hoja de detalles (qué llevar)
-class _TagChip extends StatelessWidget {
-  final String label;
-  const _TagChip(this.label);
+// Fila compacta: menos alto, menos padding, y sin “vacíos” exagerados
+class _ScheduleRowCompact extends StatelessWidget {
+  final String categoria;
+  final String versus;
+  final String hora;
+  final bool highlight;
+
+  const _ScheduleRowCompact({
+    required this.categoria,
+    required this.versus,
+    required this.hora,
+    required this.highlight,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Chip(label: Text(label));
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: highlight ? cs.primaryContainer.withOpacity(0.22) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _Badge(text: categoria),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              versus,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.55)),
+              color: highlight ? cs.primary.withOpacity(0.08) : cs.surface,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.schedule, size: 16, color: highlight ? cs.primary : null),
+                const SizedBox(width: 6),
+                Text(
+                  hora,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: highlight ? cs.primary : null,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String text;
+  const _Badge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.secondaryContainer.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+class _ChipCompact extends StatelessWidget {
+  final String text;
+  const _ChipCompact({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text(text, style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+      padding: EdgeInsets.zero,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 10),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      backgroundColor: Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.55),
+      side: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.45)),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _DetailRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
   }
 }
 
 class _Bullet extends StatelessWidget {
   final String text;
   const _Bullet(this.text);
+
   @override
   Widget build(BuildContext context) {
     return Padding(

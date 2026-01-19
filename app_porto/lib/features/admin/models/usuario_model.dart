@@ -1,4 +1,3 @@
-// lib/features/admin/models/usuario_model.dart
 import 'package:flutter/foundation.dart';
 
 // =========================================================
@@ -13,7 +12,7 @@ enum UserRole {
   final int id;
   final String label;
   final String description;
-  
+
   const UserRole(this.id, this.label, this.description);
 
   /// Factory seguro: si el ID no coincide, devuelve 'usuario' por defecto
@@ -34,23 +33,21 @@ enum UserRole {
     );
   }
 
-  /// Verificar si tiene permisos de administrador
   bool get isAdmin => this == UserRole.admin;
 
-  /// Verificar si puede gestionar estudiantes
   bool get canManageStudents => this == UserRole.admin || this == UserRole.profesor;
 
   /// Color asociado (para badges)
   String get colorHex {
     switch (this) {
       case UserRole.admin:
-        return '#9C27B0'; // Purple
+        return '#9C27B0';
       case UserRole.profesor:
-        return '#FF9800'; // Orange
+        return '#FF9800';
       case UserRole.padre:
-        return '#2196F3'; // Blue
+        return '#2196F3';
       default:
-        return '#9E9E9E'; // Grey
+        return '#9E9E9E';
     }
   }
 }
@@ -84,32 +81,21 @@ class Usuario {
     this.verificado = false,
   });
 
-  // ============================================================
-  // FACTORY DESDE JSON (Manejo robusto)
-  // ============================================================
   factory Usuario.fromJson(Map<String, dynamic> json) {
-    try {
-      return Usuario(
-        id: _parseId(json['id_usuario']),
-        nombre: _parseString(json['nombre'], defaultValue: 'Sin nombre') ?? 'Sin nombre',
+    return Usuario(
+      id: _parseId(json['id_usuario'] ?? json['id'] ?? json['idUsuario']),
+      nombre: _parseString(json['nombre'], defaultValue: 'Sin nombre') ?? 'Sin nombre',
       correo: _parseString(json['correo'], defaultValue: 'sin@correo.com') ?? 'sin@correo.com',
-        rol: UserRole.fromId(json['id_rol']),
-        avatarUrl: _parseString(json['avatar_url'] ?? json['avatar']),
-        cedula: _parseString(json['cedula'] ?? json['dni'] ?? json['numero_cedula']),
-        creadoEn: _parseDateTime(json['creado_en']),
-        actualizadoEn: _parseDateTime(json['actualizado_en']),
-        activo: json['activo'] == true || json['activo'] == 1,
-        verificado: json['verificado'] == true || json['verificado'] == 1,
-      );
-    } catch (e) {
-      
-      rethrow;
-    }
+      rol: UserRole.fromId(json['id_rol'] ?? json['rol_id'] ?? json['idRol']),
+      avatarUrl: _parseString(json['avatar_url'] ?? json['avatar']),
+      cedula: _parseString(json['cedula'] ?? json['dni'] ?? json['numero_cedula']),
+      creadoEn: _parseDateTime(json['creado_en'] ?? json['created_at']),
+      actualizadoEn: _parseDateTime(json['actualizado_en'] ?? json['updated_at']),
+      activo: json['activo'] == true || json['activo'] == 1,
+      verificado: json['verificado'] == true || json['verificado'] == 1,
+    );
   }
 
-  // ============================================================
-  // TO JSON (Para persistencia y API)
-  // ============================================================
   Map<String, dynamic> toJson() {
     return {
       'id_usuario': id,
@@ -125,9 +111,6 @@ class Usuario {
     };
   }
 
-  // ============================================================
-  // COPYWITH (Inmutabilidad)
-  // ============================================================
   Usuario copyWith({
     String? nombre,
     String? correo,
@@ -156,47 +139,33 @@ class Usuario {
   // MÉTODOS DE NEGOCIO
   // ============================================================
 
-  /// Obtener iniciales (para avatares)
   String get initials {
     final parts = nombre.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty) return 'U';
     if (parts.length == 1) {
-      return parts[0].substring(0, parts[0].length.clamp(0, 2)).toUpperCase();
+      final take = parts[0].length.clamp(0, 2);
+      return parts[0].substring(0, take).toUpperCase();
     }
     return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
   }
 
-  /// Verificar si el usuario puede ser editado
   bool canBeEditedBy(Usuario currentUser) {
-    // Admin puede editar a todos
     if (currentUser.rol.isAdmin) return true;
-    
-    // Usuarios no pueden editar a otros
-    if (!currentUser.rol.isAdmin) return false;
-    
     return false;
   }
 
-  /// Verificar si el usuario puede ser eliminado
   bool canBeDeletedBy(Usuario currentUser) {
-    // No se puede eliminar a sí mismo
     if (id == currentUser.id) return false;
-    
-    // Solo admin puede eliminar
     if (!currentUser.rol.isAdmin) return false;
-    
-    // No se puede eliminar a otros admins (política de seguridad)
     if (rol.isAdmin) return false;
-    
     return true;
   }
 
-  /// Formato legible de fecha de creación
   String get fechaCreacionFormatted {
     if (creadoEn == null) return 'Desconocida';
     final now = DateTime.now();
     final diff = now.difference(creadoEn!);
-    
+
     if (diff.inDays == 0) return 'Hoy';
     if (diff.inDays == 1) return 'Ayer';
     if (diff.inDays < 7) return 'Hace ${diff.inDays} días';
@@ -230,10 +199,6 @@ class Usuario {
     return null;
   }
 
-  // ============================================================
-  // EQUALITY & HASHCODE (Para comparaciones y caching)
-  // ============================================================
-
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
@@ -244,9 +209,7 @@ class Usuario {
   int get hashCode => id.hashCode;
 
   @override
-  String toString() {
-    return 'Usuario(id: $id, nombre: $nombre, rol: ${rol.label})';
-  }
+  String toString() => 'Usuario(id: $id, nombre: $nombre, rol: ${rol.label})';
 }
 
 // =========================================================
@@ -266,25 +229,19 @@ class PagedResult<T> {
     this.pageSize = 10,
   });
 
-  /// Total de páginas
   int get totalPages => (total / pageSize).ceil();
 
-  /// Hay página siguiente
   bool get hasNextPage => page < totalPages;
 
-  /// Hay página anterior
   bool get hasPreviousPage => page > 1;
 
-  /// Índice del primer item
   int get fromIndex => items.isEmpty ? 0 : ((page - 1) * pageSize + 1);
 
-  /// Índice del último item
   int get toIndex {
     final calculatedTo = page * pageSize;
     return calculatedTo > total ? total : calculatedTo;
   }
 
-  /// Factory desde JSON genérico
   factory PagedResult.fromJson(
     Map<String, dynamic> json,
     T Function(Map<String, dynamic>) fromJsonT,
@@ -299,7 +256,6 @@ class PagedResult<T> {
     );
   }
 
-  /// CopyWith para inmutabilidad
   PagedResult<T> copyWith({
     List<T>? items,
     int? total,
@@ -315,7 +271,5 @@ class PagedResult<T> {
   }
 
   @override
-  String toString() {
-    return 'PagedResult(items: ${items.length}, total: $total, page: $page/$totalPages)';
-  }
+  String toString() => 'PagedResult(items: ${items.length}, total: $total, page: $page/$totalPages)';
 }

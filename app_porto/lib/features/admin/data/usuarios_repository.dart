@@ -1,4 +1,3 @@
-
 import '../../../core/constants/endpoints.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/network/api_error.dart';
@@ -50,11 +49,11 @@ class UsuariosRepository {
               .map((e) {
                 try {
                   return Usuario.fromJson(Map<String, dynamic>.from(e));
-                } catch (e) {
+                } catch (_) {
                   return null;
                 }
               })
-              .whereType<Usuario>() // Filtra nulos
+              .whereType<Usuario>()
               .toList()
           : [];
 
@@ -62,9 +61,14 @@ class UsuariosRepository {
       final totalStr = headers['x-total-count'];
       final total = int.tryParse(totalStr ?? '') ?? items.length;
 
-      return PagedResult(items: items, total: total);
+      return PagedResult<Usuario>(
+        items: items,
+        total: total,
+        page: page,
+        pageSize: pageSize,
+      );
     } on ApiError {
-      rethrow; // Propagamos errores de API
+      rethrow;
     } catch (e) {
       throw ApiError('Error obteniendo usuarios: ${e.toString()}');
     }
@@ -134,7 +138,6 @@ class UsuariosRepository {
     String? cedula,
   }) async {
     try {
-      // Validación de entrada
       if (nombre.trim().length < 3) {
         throw ArgumentError('El nombre debe tener al menos 3 caracteres');
       }
@@ -151,17 +154,15 @@ class UsuariosRepository {
         'id_rol': idRol,
         'password': password,
         'activo': true,
-        if (cedula != null && cedula.isNotEmpty) 'cedula': cedula.trim(),
+        if (cedula != null && cedula.trim().isNotEmpty) 'cedula': cedula.trim(),
       };
 
       final res = await _http.post(Endpoints.usuarios, body: body);
 
-      // El backend puede devolver el usuario creado
       if (res is Map) {
         return Usuario.fromJson(Map<String, dynamic>.from(res));
       }
 
-      // Si no devuelve el usuario, retornamos uno básico
       return Usuario(
         id: 0,
         nombre: nombre.trim(),
@@ -185,7 +186,6 @@ class UsuariosRepository {
     bool? activo,
   }) async {
     try {
-      // Validación de entrada
       if (nombre != null && nombre.trim().length < 3) {
         throw ArgumentError('El nombre debe tener al menos 3 caracteres');
       }
@@ -201,19 +201,16 @@ class UsuariosRepository {
         if (activo != null) 'activo': activo,
       };
 
-      // Solo hacer la petición si hay cambios
       if (body.isEmpty) {
         throw ArgumentError('No hay cambios para actualizar');
       }
 
       final res = await _http.put(Endpoints.usuarioId(idUsuario), body: body);
 
-      // Intentar devolver el usuario actualizado
       if (res is Map) {
         return Usuario.fromJson(Map<String, dynamic>.from(res));
       }
 
-      // Fallback: devolver usuario básico
       return Usuario(
         id: idUsuario,
         nombre: nombre ?? '',
@@ -299,8 +296,7 @@ class UsuariosRepository {
 
   bool _isValidEmail(String email) {
     return RegExp(
-      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+\-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
     ).hasMatch(email);
   }
 }
-

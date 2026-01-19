@@ -345,14 +345,12 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
             data: rows,
             headerStyle:
                 pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-            headerDecoration:
-                const pw.BoxDecoration(color: PdfColors.grey200),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
             cellStyle: const pw.TextStyle(fontSize: 9),
             cellAlignment: pw.Alignment.centerLeft,
             cellPadding:
                 const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            border:
-                pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
+            border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.6),
             columnWidths: const {
               0: pw.FixedColumnWidth(36),
               1: pw.FlexColumnWidth(3),
@@ -373,7 +371,11 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
       ),
     );
 
-    await _saveBytes(await doc.save(), 'estudiantes_export.pdf', 'application/pdf');
+    await _saveBytes(
+      await doc.save(),
+      'estudiantes_export.pdf',
+      'application/pdf',
+    );
   }
 
   Future<void> _showExportMenu() async {
@@ -422,7 +424,6 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
     final fecha = TextEditingController(text: row['fechaNacimiento'] ?? '');
     final direccion = TextEditingController(text: row['direccion'] ?? '');
     final telefono = TextEditingController(text: row['telefono'] ?? '');
-    int? idAcademia = row['idAcademia'] ?? 1;
 
     InputDecoration blueDeco(String label, IconData icon) {
       return InputDecoration(
@@ -579,14 +580,9 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                           decoration:
                               blueDeco('Dirección', Icons.location_on_outlined),
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          initialValue: idAcademia.toString(),
-                          decoration:
-                              blueDeco('ID Academia', Icons.school_outlined),
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) => idAcademia = int.tryParse(v) ?? 1,
-                        ),
+
+                        // ✅ ID Academia eliminado (siempre es 1)
+
                         const SizedBox(height: 32),
                         SizedBox(
                           width: double.infinity,
@@ -614,7 +610,9 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                                   telefono: telefono.text.trim().isEmpty
                                       ? null
                                       : telefono.text.trim(),
-                                  idAcademia: idAcademia,
+
+                                  // ✅ fijo: siempre 1
+                                  idAcademia: 1,
                                 );
                                 if (!mounted) return;
                                 Navigator.pop(ctx, true);
@@ -747,8 +745,9 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
               child: Stack(
                 children: [
                   AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      child: content),
+                    duration: const Duration(milliseconds: 220),
+                    child: content,
+                  ),
                   if (_loading && !isFirstLoad)
                     const Positioned(right: 12, top: 8, child: _LoadingChip()),
                 ],
@@ -794,11 +793,7 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
           ),
         ],
       ),
-
-      // Se movió "Nuevo" al header superior (junto a filtros/Exportar),
-      // por eso ya no hay FloatingActionButton.
       floatingActionButton: null,
-
       body: Padding(padding: const EdgeInsets.all(12), child: core),
     );
   }
@@ -1099,8 +1094,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                   if (_selected.isNotEmpty) ...[
                     Checkbox(
                       value: isSelected,
-                      onChanged: (v) => setState(
-                          () => v == true ? _selected.add(id) : _selected.remove(id)),
+                      onChanged: (v) => setState(() =>
+                          v == true ? _selected.add(id) : _selected.remove(id)),
                     ),
                     const SizedBox(width: 8),
                   ],
@@ -1137,7 +1132,8 @@ class _AdminEstudiantesScreenState extends State<AdminEstudiantesScreen> {
                           Row(
                             children: [
                               Icon(Icons.category_outlined,
-                                  size: 14, color: Theme.of(context).hintColor),
+                                  size: 14,
+                                  color: Theme.of(context).hintColor),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
@@ -1403,7 +1399,11 @@ class _PaginationControls extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: cs.surface,
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).dividerColor.withOpacity(0.5),
+          ),
+        ),
       ),
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
@@ -1421,7 +1421,6 @@ class _PaginationControls extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Selector de tamaño de página
               SizedBox(
                 width: 170,
                 child: DropdownButtonFormField<int>(
@@ -1429,8 +1428,10 @@ class _PaginationControls extends StatelessWidget {
                   decoration: InputDecoration(
                     labelText: 'Filas por página',
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: cs.surfaceContainerHighest.withOpacity(0.35),
                   ),
@@ -1450,14 +1451,16 @@ class _PaginationControls extends StatelessWidget {
                 message: 'Anterior',
                 child: IconButton(
                   icon: const Icon(Icons.chevron_left),
-                  onPressed: canBack ? () => onPageChange(currentPage - 1) : null,
+                  onPressed:
+                      canBack ? () => onPageChange(currentPage - 1) : null,
                 ),
               ),
               Tooltip(
                 message: 'Siguiente',
                 child: IconButton(
                   icon: const Icon(Icons.chevron_right),
-                  onPressed: canNext ? () => onPageChange(currentPage + 1) : null,
+                  onPressed:
+                      canNext ? () => onPageChange(currentPage + 1) : null,
                 ),
               ),
             ],
@@ -1499,7 +1502,9 @@ class _EmptyState extends StatelessWidget {
                 FilledButton(onPressed: primary.$2, child: Text(primary.$1)),
                 if (secondary != null)
                   OutlinedButton(
-                      onPressed: secondary!.$2, child: Text(secondary!.$1)),
+                    onPressed: secondary!.$2,
+                    child: Text(secondary!.$1),
+                  ),
               ],
             )
           ],
@@ -1542,9 +1547,10 @@ class _LoadingChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Chip(
         avatar: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2)),
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
         label: Text('Cargando…'),
       );
 }
@@ -1568,10 +1574,8 @@ class _LoadingPlaceholder extends StatelessWidget {
           child: Container(
             height: dense ? 72 : 88,
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .colorScheme
-                  .surfaceVariant
-                  .withOpacity(0.35),
+              color:
+                  Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
               borderRadius: BorderRadius.circular(12),
             ),
           ),

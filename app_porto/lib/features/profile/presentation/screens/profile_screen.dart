@@ -33,6 +33,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadMe());
+
+    // Validación en vivo (mientras escribe)
+    _dniCtrl.addListener(() {
+      final dni = _dniCtrl.text.trim();
+      final ok = dni.isNotEmpty && _validarCedulaEcu(dni);
+      if (ok != _cedulaVerificada && mounted) {
+        setState(() => _cedulaVerificada = ok);
+      }
+    });
   }
 
   @override
@@ -46,20 +55,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadMe() async {
     try {
       final usuario = await AppScope.of(context).auth.me();
-      
+
       _nameCtrl.text = usuario.nombre;
       _emailCtrl.text = usuario.correo;
       _dniCtrl.text = usuario.cedula ?? '';
-      
+
       if (mounted) {
         setState(() {
           _avatarUrl = usuario.avatarUrl ?? '';
-          _cedulaVerificada = _dniCtrl.text.isNotEmpty && _validarCedulaEcu(_dniCtrl.text);
+          _cedulaVerificada =
+              _dniCtrl.text.trim().isNotEmpty && _validarCedulaEcu(_dniCtrl.text.trim());
         });
       }
       await AuthScope.of(context).setUser(usuario.toJson());
-    } catch (e) {
-      
+    } catch (_) {
+      // opcional: snackbar/log
     }
   }
 
@@ -91,29 +101,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  // ==========================
+  // VALIDACIÓN CÉDULA ECUADOR
+  // ==========================
   bool _validarCedulaEcu(String? s) {
-    final ci = (s ?? '').trim();
-    if (ci.isEmpty) return false;
-    if (!RegExp(r'^\d{10}$').hasMatch(ci)) return false;
-    final prov = int.tryParse(ci.substring(0, 2)) ?? -1;
-    if (!((prov >= 1 && prov <= 24) || prov == 30)) return false;
-    final tercero = int.parse(ci[2]);
-    if (tercero >= 6) return false;
+  final ci = (s ?? '').trim();
+  if (!RegExp(r'^\d{10}$').hasMatch(ci)) return false;
 
-    int suma = 0;
-    for (int i = 0; i < 9; i++) {
-      final d = int.parse(ci[i]);
-      if (i % 2 == 0) {
-        int k = d * 2;
-        if (k >= 10) k -= 9;
-        suma += k;
-      } else {
-        suma += d;
-      }
+  // Bloquear cédulas “obvias” inventadas
+  if (_cedulaEsTrivial(ci)) return false;
+
+  final prov = int.tryParse(ci.substring(0, 2)) ?? -1;
+  if (!(prov >= 1 && prov <= 24)) return false; // (quita 30 si no lo necesitas)
+
+  final tercero = int.parse(ci[2]);
+  if (tercero >= 6) return false;
+
+  int suma = 0;
+  for (int i = 0; i < 9; i++) {
+    final d = int.parse(ci[i]);
+    if (i % 2 == 0) {
+      int k = d * 2;
+      if (k >= 10) k -= 9;
+      suma += k;
+    } else {
+      suma += d;
     }
-    final verif = (10 - (suma % 10)) % 10;
-    return verif == int.parse(ci[9]);
   }
+  final verif = (10 - (suma % 10)) % 10;
+  return verif == int.parse(ci[9]);
+}
+
+bool _cedulaEsTrivial(String ci) {
+  // Todos iguales: 0000000000, 1111111111, etc.
+  if (RegExp(r'^(\d)\1{9}$').hasMatch(ci)) return true;
+
+  // Alternante ABABABABAB: 1212121212, 1010101010, etc.
+  if (RegExp(r'^(\d)(\d)(?:\1\2){4}$').hasMatch(ci)) return true;
+
+  // Secuencias típicas
+  const blacklist = {
+    '0000000000',
+    '1234567890',
+    '0987654321',
+  };
+  if (blacklist.contains(ci)) return true;
+
+  return false;
+}
+
 
   void _verificarCedula() {
     final ok = _validarCedulaEcu(_dniCtrl.text);
@@ -133,6 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     } else {
+      setState(() => _cedulaVerificada = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -150,7 +187,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _save() async {
+    // 1) Valida el form (incluye validator de cédula)
     if (!_form.currentState!.validate()) return;
+
+    // 2) Guard definitivo: si cédula no está vacía y es inválida -> NO guarda
+    final dni = _dniCtrl.text.trim();
+    if (dni.isNotEmpty && !_validarCedulaEcu(dni)) {
+      if (mounted) {
+        setState(() => _cedulaVerificada = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se puede guardar: la cédula ecuatoriana es inválida'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _loading = true);
     try {
@@ -158,7 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       String? url = _avatarUrl;
       String? publicId;
-      
+
       if (_pickedBytes != null && _pickedName != null) {
         final res = await http.uploadBytes(
           Endpoints.meAvatar,
@@ -178,8 +232,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (url != null) 'avatar_url': url,
         if (publicId != null) 'avatar_public_id': publicId,
       };
-      final dni = _dniCtrl.text.trim();
-      if (dni.isNotEmpty) body['cedula'] = dni;
+
+      if (dni.isNotEmpty) {
+        body['cedula'] = dni;
+      }
 
       final updated = await http.patch(
         Endpoints.me,
@@ -206,11 +262,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      
+
       setState(() {
         _avatarUrl = userData['avatar_url'] as String?;
         _pickedBytes = null;
         _pickedName = null;
+        _cedulaVerificada = dni.isNotEmpty ? _validarCedulaEcu(dni) : false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -403,6 +460,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final dni = _dniCtrl.text.trim();
+    final bool cedulaOk = dni.isEmpty || _validarCedulaEcu(dni);
+    final bool canSave = !_loading && cedulaOk;
+
     final avatarWidget = Stack(
       children: [
         Container(
@@ -466,8 +527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 24),
-                  
-                  // Avatar
+
                   avatarWidget,
                   const SizedBox(height: 16),
 
@@ -482,7 +542,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Formulario
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     child: Form(
@@ -499,7 +558,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          
+
                           TextFormField(
                             controller: _nameCtrl,
                             decoration: _modernInput('Nombre completo', Icons.person_outline),
@@ -511,10 +570,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             },
                           ),
                           const SizedBox(height: 14),
-                          
+
+                          // =========================
+                          // CÉDULA ECUADOR (BLOQUEA GUARDAR SI ES INVÁLIDA)
+                          // =========================
                           TextFormField(
                             controller: _dniCtrl,
-                            enabled: !_cedulaVerificada,
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -522,26 +583,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                             decoration: _modernInput('Cédula (Ecuador)', Icons.badge_outlined)
                                 .copyWith(
-                              helperText: _cedulaVerificada 
-                                  ? 'Cédula verificada ✓' 
-                                  : 'Formato: 10 dígitos',
-                              suffixIcon: _cedulaVerificada
-                                  ? const Icon(Icons.check_circle, color: Colors.green)
-                                  : IconButton(
-                                      tooltip: 'Verificar cédula',
-                                      onPressed: _verificarCedula,
-                                      icon: Icon(Icons.verified_outlined, color: Colors.blue.shade700),
-                                    ),
+                              helperText: dni.isEmpty
+                                  ? 'Opcional: 10 dígitos'
+                                  : (_cedulaVerificada ? 'Cédula válida ✓' : 'Cédula inválida'),
+                              suffixIcon: dni.isEmpty
+                                  ? null
+                                  : (_cedulaVerificada
+                                      ? const Icon(Icons.check_circle, color: Colors.green)
+                                      : IconButton(
+                                          tooltip: 'Verificar cédula',
+                                          onPressed: _verificarCedula,
+                                          icon: Icon(Icons.verified_outlined,
+                                              color: Colors.blue.shade700),
+                                        )),
                             ),
                             validator: (v) {
                               final s = (v ?? '').trim();
-                              if (s.isEmpty) return null;
-                              if (_cedulaVerificada) return null;
-                              return _validarCedulaEcu(s) ? null : 'Cédula inválida';
+                              if (s.isEmpty) return null; // opcional
+                              return _validarCedulaEcu(s) ? null : 'Cédula ecuatoriana inválida';
                             },
                           ),
                           const SizedBox(height: 14),
-                          
+
                           TextFormField(
                             controller: _emailCtrl,
                             enabled: false,
@@ -552,15 +615,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               fillColor: Colors.grey.shade100,
                             ),
                           ),
-                          
+
                           const SizedBox(height: 24),
 
-                          // Botón guardar
                           SizedBox(
                             width: double.infinity,
                             height: 46,
                             child: FilledButton.icon(
-                              onPressed: _loading ? null : _save,
+                              onPressed: canSave ? _save : null,
                               style: FilledButton.styleFrom(
                                 backgroundColor: Colors.blue.shade800,
                                 shape: RoundedRectangleBorder(
@@ -587,9 +649,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                           ),
+                          if (!cedulaOk && dni.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                'Corrige la cédula para poder guardar.',
+                                style: TextStyle(color: cs.error, fontSize: 12),
+                              ),
+                            ),
                           const SizedBox(height: 10),
-                          
-                          // Sección Seguridad
+
                           const Divider(height: 24),
                           const Text(
                             'Seguridad',
@@ -600,7 +669,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          
+
                           SizedBox(
                             width: double.infinity,
                             height: 46,

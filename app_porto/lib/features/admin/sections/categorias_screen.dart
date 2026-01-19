@@ -3,8 +3,9 @@
 import 'dart:async'; // Debouncer búsqueda
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:html' as html;
 
+
+import 'package:app_porto/core/utils/save_bytes_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -565,22 +566,18 @@ class _AdminCategoriasScreenState extends State<AdminCategoriasScreen>
     return (data, name);
   }
 
-  Future<void> _saveBytes(Uint8List bytes, String filename, String mimeType, {List<String>? exts}) async {
-    if (kIsWeb) {
-      final blob = html.Blob([bytes], mimeType);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: url)..download = filename;
-      a.click();
-      html.Url.revokeObjectUrl(url);
-      return;
-    }
-    dynamic dir = await getDownloadsDirectory();
-    dir ??= await getApplicationDocumentsDirectory();
-    final String targetPath = '${dir.path}/$filename';
-    final xf = XFile.fromData(bytes, name: filename, mimeType: mimeType);
-    await xf.saveTo(targetPath);
-    _showSnack('Guardado en: $targetPath');
+  Future<void> _saveBytes(
+  Uint8List bytes,
+  String filename,
+  String mimeType, {
+  List<String>? exts,
+}) async {
+  final path = await saveBytes(bytes, filename, mimeType: mimeType);
+  if (path != null) {
+    _showSnack('Guardado en: $path');
   }
+}
+
 
   void _exportCsvCurrent() {
     final (data, base) = _currentExportData();
